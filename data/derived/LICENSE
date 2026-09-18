@@ -1,0 +1,36 @@
+Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+(CC BY-NC-SA 4.0)
+
+The files in this directory, and every other file in this repository that is
+derived from the CSIRO feeder dataset named below, are licensed under the
+Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+License.
+
+Full legal code: https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
+Summary:         https://creativecommons.org/licenses/by-nc-sa/4.0/
+
+You may share and adapt this material for non-commercial purposes, provided
+that you give appropriate credit, indicate if changes were made, and
+distribute your contributions under the same licence.
+
+Source material
+---------------
+
+"Realistic Australian Medium Voltage Feeder with Associated Low Voltage
+Feeders", CSIRO Data Access Portal, DOI 10.25919/ghnz-bk28. Rights held by
+GridQube. Licensed CC BY-NC-SA 4.0.
+
+Changes made
+------------
+
+The LV10_223bus feeder was parsed from OpenDSS into the formats used here
+(JSON fixtures and database rows). Solved node voltages were computed from it
+with OpenDSS. Customer load and generation profiles from the Ausgrid Solar
+Home Electricity Data (CC BY 3.0 AU, (c) Ausgrid) were assigned to the
+feeder's connection points. See data/SOURCES.md for the attribution text of
+both datasets.
+
+Files outside data/derived/ that carry this licence
+---------------------------------------------------
+
+- apps/api/internal/engine/testdata/lv10_*.json
