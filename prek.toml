@@ -1,0 +1,77 @@
+# Git hooks, run by prek (https://prek.j178.dev). Install them with
+# `just hooks`; run them all with `just check`.
+#
+# Every hook calls a `just` recipe or a builtin, so the hooks, `just` and CI
+# run the same commands. Hooks are filtered by path: a commit runs only the
+# checks for the files it touches.
+#:schema https://www.schemastore.org/prek.json
+
+default_install_hook_types = ["pre-commit", "pre-push"]
+default_stages = ["pre-commit"]
+
+# ── Style ────────────────────────────────────────────────────────────────────
+
+[[repos]]
+repo = "builtin"
+hooks = [
+    { id = "trailing-whitespace" },
+    { id = "end-of-file-fixer" },
+    { id = "check-yaml" },
+    { id = "check-toml" },
+    { id = "check-json" },
+    { id = "check-merge-conflict" },
+    # Also the guard that keeps raw data out: the Ausgrid archive is 54 MB.
+    { id = "check-added-large-files", args = ["--maxkb=500"] },
+    # ── Secrets (first line of defence; gitleaks is below) ──
+    { id = "detect-private-key" },
+]
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "go-fmt"
+name = "style: gofumpt + goimports"
+language = "system"
+entry = "just fmt-check-go"
+files = '^apps/api/.*\.go$'
+pass_filenames = false
+
+# ── Lint ─────────────────────────────────────────────────────────────────────
+
+[[repos.hooks]]
+id = "go-lint"
+name = "lint: golangci-lint (incl. layering rules)"
+language = "system"
+entry = "just lint-go"
+files = '^(apps/api/.*\.go|apps/api/go\.(mod|sum)|\.golangci\.yml)$'
+pass_filenames = false
+
+# ── Secrets ──────────────────────────────────────────────────────────────────
+
+[[repos.hooks]]
+id = "secrets-staged"
+name = "secrets: gitleaks (staged changes)"
+language = "system"
+entry = "just secrets-staged"
+always_run = true
+pass_filenames = false
+
+[[repos.hooks]]
+id = "secrets-push"
+name = "secrets: gitleaks (commits being pushed)"
+language = "system"
+entry = "just secrets-push"
+stages = ["pre-push"]
+always_run = true
+pass_filenames = false
+
+# ── Unit test coverage ───────────────────────────────────────────────────────
+
+[[repos.hooks]]
+id = "go-cover"
+name = "coverage: Go unit tier + per-package floors"
+language = "system"
+entry = "just cover-go"
+files = '^apps/api/(.*\.go|go\.(mod|sum)|coverage\.json|.*/testdata/.*)$'
+pass_filenames = false
