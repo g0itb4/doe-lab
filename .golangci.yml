@@ -1,0 +1,179 @@
+# golangci-lint v2. Run through `just lint-go` and `just fmt`; the prek hooks
+# call the same recipes.
+version: "2"
+
+run:
+  tests: true
+  # Paths in this file are relative to apps/api/go.mod, not to this file.
+  relative-path-mode: gomod
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    gofumpt:
+      # The module path has no dot, so gofumpt would take it for the standard
+      # library and want it in the first import group.
+      module-path: doelab/api
+    goimports:
+      local-prefixes:
+        - doelab/api
+  exclusions:
+    generated: strict
+    paths:
+      - ^gen/
+      - ^internal/repo/pg/gen/
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  enable:
+    - bodyclose
+    - copyloopvar
+    - depguard
+    - errorlint
+    - gocritic
+    - gosec
+    - misspell
+    - nolintlint
+    - revive
+    - unconvert
+    - unparam
+  settings:
+    errcheck:
+      # Writing a report line to a terminal or a buffer; there is nothing
+      # useful to do when it fails.
+      exclude-functions:
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+    govet:
+      enable-all: true
+      disable:
+        # Reordering struct fields for a few bytes costs more in readability
+        # than it saves.
+        - fieldalignment
+    nolintlint:
+      # A suppression names the linter and says why.
+      require-explanation: true
+      require-specific: true
+    misspell:
+      locale: UK
+      # Protocol and library spellings that are not ours to change.
+      ignore-rules:
+        - color
+        - center
+        - serialize
+        - initialize
+        - normalize
+        - authorization
+        - unauthorized
+    revive:
+      rules:
+        - name: exported
+          arguments: [checkPrivateReceivers, disableStutteringCheck]
+        - name: package-comments
+        - name: context-as-argument
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: range
+        - name: receiver-naming
+        - name: unexported-return
+        - name: var-declaration
+    depguard:
+      # The dependency arrow points inwards. These rules are the layering
+      # table in CONTRIBUTING.md, as lint.
+      rules:
+        engine:
+          files:
+            - "**/internal/engine/**"
+            - "!**/*_test.go"
+          deny:
+            - pkg: doelab/api/internal
+              desc: the engine is pure and imports nothing else from this module
+            - pkg: doelab/api/gen
+              desc: the engine is pure and does not know the wire format
+            - pkg: net
+              desc: the engine does no I/O
+            - pkg: os
+              desc: the engine does no I/O
+            - pkg: database/sql
+              desc: the engine does no I/O
+            - pkg: time
+              desc: the engine reads no clock; pass times in as data
+        domain:
+          files:
+            - "**/internal/domain/**"
+          deny:
+            - pkg: doelab/api/gen
+              desc: domain types are plain Go; proto mapping lives in protomap
+            - pkg: doelab/api/internal/service
+              desc: domain is the innermost layer
+            - pkg: doelab/api/internal/controller
+              desc: domain is the innermost layer
+            - pkg: doelab/api/internal/repo
+              desc: domain is the innermost layer
+            - pkg: connectrpc.com
+              desc: domain does not know the transport
+            - pkg: google.golang.org/protobuf
+              desc: domain does not know the wire format
+            - pkg: github.com/jackc
+              desc: domain does no I/O
+            - pkg: github.com/aws
+              desc: domain does no I/O
+        service:
+          files:
+            - "**/internal/service/**"
+          deny:
+            - pkg: doelab/api/gen
+              desc: services take and return domain types, never proto messages
+            - pkg: doelab/api/internal/repo
+              desc: services declare their ports in ports.go and never import a repository
+            - pkg: doelab/api/internal/controller
+              desc: the dependency arrow points inwards
+            - pkg: connectrpc.com
+              desc: services do not know the transport; return domain errors
+            - pkg: google.golang.org/protobuf
+              desc: services do not know the wire format
+            - pkg: github.com/jackc
+              desc: SQL belongs in internal/repo/pg
+            - pkg: github.com/aws
+              desc: object storage belongs in internal/repo/objstore
+        controller:
+          files:
+            - "**/internal/controller/**"
+          deny:
+            - pkg: doelab/api/internal/repo
+              desc: controllers call services, never a repository
+            - pkg: github.com/jackc
+              desc: SQL belongs in internal/repo/pg
+            - pkg: github.com/aws
+              desc: object storage belongs in internal/repo/objstore
+  exclusions:
+    generated: strict
+    paths:
+      - ^gen/
+      - ^internal/repo/pg/gen/
+    rules:
+      # Tests may shadow err, skip error checks on cleanup, and use weak
+      # randomness with a fixed seed.
+      - path: _test\.go
+        linters:
+          - gosec
+          - unparam
+      # Command-line tools open the paths their flags name. That is their job.
+      - path: ^cmd/
+        linters: [gosec]
+        text: "G304"
+      - path: _test\.go
+        linters: [govet]
+        text: "shadow:"
+      - linters: [govet]
+        text: 'shadow: declaration of "err"'
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
