@@ -66,6 +66,10 @@ secrets:
 # covergate, which holds each package to its floor in apps/api/coverage.json.
 # The recipe prints its duration; the pre-commit budget is 15 s warm.
 #
+# -short skips the tests that are slow under the race detector (the dense
+# solver on the full feeder). Coverage must reach its floors without them;
+# `just test-go` runs everything.
+#
 # Go unit tests with the race detector, then the per-package coverage gate
 cover-go:
     #!/usr/bin/env zsh
@@ -74,10 +78,14 @@ cover-go:
     cd apps/api
     mkdir -p coverage
     start=$EPOCHREALTIME
-    go test -race -coverprofile=coverage/unit.coverprofile ./... >coverage/unit.log 2>&1 \
+    go test -short -race -coverprofile=coverage/unit.coverprofile ./... >coverage/unit.log 2>&1 \
       || { cat coverage/unit.log; exit 1 }
     go run ./cmd/covergate
     printf 'cover-go: %.1f s\n' $(( EPOCHREALTIME - start ))
+
+# every Go test of the offline tier, including the slow ones, with the race detector
+test-go:
+    cd apps/api && go test -race ./...
 
 # ── fixtures ─────────────────────────────────────────────────────────────────
 
