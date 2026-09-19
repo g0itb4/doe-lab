@@ -33,4 +33,4 @@ both datasets.
 Files outside data/derived/ that carry this licence
 ---------------------------------------------------
 
-- apps/api/internal/engine/testdata/lv10_*.json
+- apps/api/internal/engine/testdata/lv10_*.json (the network, and node voltages solved by OpenDSS)

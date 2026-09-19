@@ -78,3 +78,12 @@ cover-go:
       || { cat coverage/unit.log; exit 1 }
     go run ./cmd/covergate
     printf 'cover-go: %.1f s\n' $(( EPOCHREALTIME - start ))
+
+# ── fixtures ─────────────────────────────────────────────────────────────────
+
+# Needs the raw data (`just data`) and the tools venv with OpenDSSDirect.py.
+#
+# regenerate the engine fixtures: the LV10 network and the OpenDSS reference voltages
+fixtures:
+    cd apps/api && go test ./internal/engine/dss -run TestLV10Network -update
+    .venv-tools/bin/python tools/opendss_snapshots.py
