@@ -92,7 +92,13 @@ linters:
             - "**/internal/engine/**"
             - "!**/*_test.go"
           deny:
-            - pkg: doelab/api/internal
+            - pkg: doelab/api/internal/domain
+              desc: the engine is pure and imports nothing else from this module
+            - pkg: doelab/api/internal/service
+              desc: the engine is pure and imports nothing else from this module
+            - pkg: doelab/api/internal/controller
+              desc: the engine is pure and imports nothing else from this module
+            - pkg: doelab/api/internal/repo
               desc: the engine is pure and imports nothing else from this module
             - pkg: doelab/api/gen
               desc: the engine is pure and does not know the wire format
