@@ -170,6 +170,11 @@ linters:
         linters:
           - gosec
           - unparam
+      # The development defaults of .env.example: credentials of the local
+      # containers, which Load refuses in production (refuseDevSecrets).
+      - path: ^internal/config/config\.go$
+        linters: [gosec]
+        text: "G101"
       # Command-line tools open the paths their flags name. That is their job.
       - path: ^cmd/
         linters: [gosec]

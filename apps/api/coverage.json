@@ -3,6 +3,7 @@
   "floors": {
     "doelab/api/internal/engine": 100,
     "doelab/api/internal/domain": 100,
-    "doelab/api/internal/covergate": 100
+    "doelab/api/internal/covergate": 100,
+    "doelab/api/internal/config": 100
   }
 }

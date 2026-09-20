@@ -1,0 +1,11 @@
+{
+  "name": "@doelab/api",
+  "version": "0.0.0",
+  "private": true,
+  "//": "A Go module wearing a package.json so Turbo and bun's workspace glob can see it.",
+  "scripts": {
+    "dev": "DOELAB_ENV=development go tool wgo run ./cmd/api",
+    "build": "go build -trimpath -o dist/ ./cmd/api ./cmd/engine ./cmd/dersim ./cmd/migrate ./cmd/import",
+    "typecheck": "go vet ./..."
+  }
+}

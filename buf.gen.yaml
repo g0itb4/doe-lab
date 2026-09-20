@@ -1,0 +1,45 @@
+version: v2
+clean: true
+
+# The Go import path is derived from the proto package, so no .proto file has to
+# repeat it as a go_package option. The disable entry keeps buf from rewriting
+# go_package for modules we do not own.
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: doelab/api/gen
+  disable:
+    - module: buf.build/bufbuild/protovalidate
+
+plugins:
+  # Browser client. include_imports because the generated files import their
+  # dependencies (buf/validate) by relative path, so those must exist as files
+  # in the output tree.
+  - local: protoc-gen-es
+    out: packages/gen/src/gen
+    include_imports: true
+    opt:
+      - target=js+dts
+
+  # Go server. Invoked through `go tool` so the plugin versions are pinned in
+  # apps/api/go.mod and there is nothing to install globally.
+  - local: ["go", "-C", "apps/api", "tool", "protoc-gen-go"]
+    out: apps/api/gen
+    opt:
+      - paths=source_relative
+  - local: ["go", "-C", "apps/api", "tool", "protoc-gen-connect-go"]
+    out: apps/api/gen
+    opt:
+      - paths=source_relative
+
+  # OpenAPI 3.1 description of the Connect surface, for the README and for
+  # anyone who wants to call the API with plain HTTP and JSON.
+  - local: ["go", "-C", "apps/api", "tool", "protoc-gen-connect-openapi"]
+    out: docs/openapi
+    strategy: all
+    opt:
+      - path=doelab.openapi.yaml
+
+inputs:
+  - directory: proto

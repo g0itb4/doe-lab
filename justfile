@@ -3,9 +3,58 @@ set shell := ["zsh", "-cu"]
 # So a recipe can forward its arguments with "$@" and keep the caller's quoting.
 set positional-arguments := true
 
+# podman compose delegates to the docker-compose binary, but sets DOCKER_HOST to
+# the podman machine socket first; plain `docker-compose` would look for a
+# Docker daemon that is not there.
+compose := "podman compose -f infra/compose.yaml"
+
 # list recipes
 default:
     @just --list
+
+# install dependencies, generate code and install the git hooks, on a fresh clone
+setup:
+    bun install
+    cd apps/api && go mod download
+    @just gen
+    @just hooks
+
+# regenerate: buf (proto to Go, TypeScript and OpenAPI) and sqlc (SQL to Go)
+gen:
+    bun run generate
+    cd packages/db && sqlc generate
+    cd apps/api && go mod tidy
+
+# --wait blocks on the healthchecks. Without it the migration races the
+# database.
+#
+# start Postgres + TimescaleDB and the S3 gateway, and bring the schema up to date
+up:
+    {{compose}} up -d --wait postgres
+    {{compose}} up -d s3
+    @just migrate up
+
+# golang-migrate, driven by apps/api/cmd/migrate. The SQL lives in
+# packages/db/migrations, because sqlc reads the same directory as its schema.
+#
+# migrations: up | down [n] | status | force <v>
+migrate *args:
+    cd apps/api && DOELAB_ENV=development go run ./cmd/migrate "$@"
+
+# psql into the dev database
+psql *args:
+    {{compose}} exec postgres psql -U doelab -d doelab "$@"
+
+# destroy the dev database, the object store and everything running against them
+nuke: _kill
+    {{compose}} --profile obs down -v --remove-orphans
+    @echo "fresh start: just up"
+
+# By PORT, not by process name: `go run` execs a binary out of the build cache,
+# which no sensible pkill pattern matches.
+[private]
+_kill:
+    -@lsof -ti:3100,5273,4273 -sTCP:LISTEN 2>/dev/null | xargs -r kill 2>/dev/null || true
 
 # install the git hooks (pre-commit and pre-push)
 hooks:
@@ -26,21 +75,39 @@ data-verify:
 
 # ── style ────────────────────────────────────────────────────────────────────
 
-# rewrite files in place: gofumpt + goimports
+# rewrite files in place: gofumpt + goimports, buf format, prettier
 fmt:
     cd apps/api && golangci-lint fmt
+    bunx buf format -w
+    bunx prettier --write --log-level warn .
 
-# fail on a formatting diff, without rewriting (the pre-commit hook)
-fmt-check: fmt-check-go
+# fail on a formatting diff, without rewriting (the pre-commit hooks)
+fmt-check: fmt-check-go fmt-check-proto fmt-check-web
 
 [private]
 fmt-check-go:
     cd apps/api && golangci-lint fmt --diff
 
+[private]
+fmt-check-proto:
+    bunx buf format --diff --exit-code
+
+[private]
+fmt-check-web:
+    bunx prettier --check --log-level warn .
+
 # ── lint ─────────────────────────────────────────────────────────────────────
 
 # every linter
-lint: lint-go
+lint: lint-go lint-proto lint-sql
+
+# buf lint: naming, packages, and the STANDARD rule set
+lint-proto:
+    bunx buf lint
+
+# sqlc type-checks every query against the migrations
+lint-sql:
+    cd packages/db && sqlc compile
 
 # govet, staticcheck, errcheck, revive, gosec, and depguard for the layering
 lint-go:

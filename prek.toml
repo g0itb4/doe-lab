@@ -37,7 +37,40 @@ entry = "just fmt-check-go"
 files = '^apps/api/.*\.go$'
 pass_filenames = false
 
+[[repos.hooks]]
+id = "proto-fmt"
+name = "style: buf format"
+language = "system"
+entry = "just fmt-check-proto"
+files = '^proto/.*\.proto$'
+pass_filenames = false
+
+[[repos.hooks]]
+id = "prettier"
+name = "style: prettier"
+language = "system"
+entry = "just fmt-check-web"
+files = '\.(ts|js|mjs|cjs|svelte|css|html|json|ya?ml)$'
+exclude = '^(data/|apps/api/internal/engine/testdata/|docs/openapi/)'
+pass_filenames = false
+
 # ── Lint ─────────────────────────────────────────────────────────────────────
+
+[[repos.hooks]]
+id = "proto-lint"
+name = "lint: buf lint"
+language = "system"
+entry = "just lint-proto"
+files = '^(proto/.*\.proto|buf\.yaml)$'
+pass_filenames = false
+
+[[repos.hooks]]
+id = "sql-lint"
+name = "lint: sqlc compile (queries against the schema)"
+language = "system"
+entry = "just lint-sql"
+files = '^packages/db/'
+pass_filenames = false
 
 [[repos.hooks]]
 id = "go-lint"

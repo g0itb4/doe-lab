@@ -1,0 +1,10 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "extends": ["//"],
+  "//": "Go sources are part of the task hash, so `just gen` regenerating apps/api/gen correctly invalidates typecheck. Without these inputs Turbo would hash only package.json and serve a stale cached pass.",
+  "tasks": {
+    "typecheck": {
+      "inputs": ["**/*.go", "go.mod", "go.sum"]
+    }
+  }
+}

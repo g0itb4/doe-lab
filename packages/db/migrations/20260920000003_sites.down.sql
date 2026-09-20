@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS device_status;
+DROP TABLE IF EXISTS devices;
+DROP TYPE IF EXISTS der_type;
+DROP TABLE IF EXISTS sites;
+DROP FUNCTION IF EXISTS nmi_checksum(text);

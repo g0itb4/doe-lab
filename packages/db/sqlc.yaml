@@ -1,0 +1,63 @@
+version: "2"
+
+sql:
+  - engine: postgresql
+    # The migrations themselves are the schema; no second copy to drift. The
+    # shim comes first: it declares the TimescaleDB functions that the
+    # migrations call, which sqlc has no catalog for.
+    schema:
+      - sqlc/timescaledb_shim.sql
+      - migrations
+    queries: queries
+    gen:
+      go:
+        package: gen
+        # Across the workspace into the Go module: the SQL stays beside the
+        # migrations that type it; only the generated Go crosses.
+        out: ../../apps/api/internal/repo/pg/gen
+        sql_package: pgx/v5
+
+        # Nullable columns become POINTERS rather than pgtype wrappers, so
+        # nothing unwraps a pgtype.Text to find out whether a column was set.
+        emit_pointers_for_null_types: true
+
+        # Keeps hand-written code compiler-checked against the generated
+        # queries. Nothing outside internal/repo/pg may depend on it.
+        emit_interface: true
+
+        # One absent-case, not two (nil vs empty slice).
+        emit_empty_slices: true
+
+        emit_enum_valid_method: true
+        emit_all_enum_values: true
+
+        overrides:
+          # google/uuid rather than pgtype.UUID, so ids compare, print and
+          # marshal without a wrapper.
+          - db_type: "uuid"
+            go_type: "github.com/google/uuid.UUID"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/google/uuid"
+              type: "UUID"
+              pointer: true
+          # "timestamptz", not "pg_catalog.timestamptz": the qualified form is
+          # accepted silently and matches nothing.
+          - db_type: "timestamptz"
+            go_type: "time.Time"
+          - db_type: "timestamptz"
+            nullable: true
+            go_type:
+              type: "time.Time"
+              pointer: true
+          - db_type: "jsonb"
+            go_type: "encoding/json.RawMessage"
+          # sqlc cannot see that a view's column is nullable. These are
+          # averages over a column that is itself optional.
+          - column: "site_power_1m.avg_soc_pct"
+            go_type: { type: "float64", pointer: true }
+          - column: "site_power_1m.avg_voltage_v"
+            go_type: { type: "float64", pointer: true }
+          - column: "fleet_1m.avg_soc_pct"
+            go_type: { type: "float64", pointer: true }

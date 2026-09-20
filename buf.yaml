@@ -1,0 +1,15 @@
+version: v2
+modules:
+  - path: proto
+# CEL field constraints, compiled into the Go server via buf.build/go/protovalidate
+# and run as an interceptor. Every rule here mirrors a constraint in the
+# PostgreSQL schema: the rule gives the caller a good error, the constraint
+# binds every writer.
+deps:
+  - buf.build/bufbuild/protovalidate
+lint:
+  use:
+    - STANDARD
+breaking:
+  use:
+    - FILE

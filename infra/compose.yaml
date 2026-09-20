@@ -1,0 +1,85 @@
+name: doelab
+
+# Postgres with TimescaleDB, and Versity Gateway as the S3-compatible object
+# store.
+#
+# The API, the engine, the simulator and the web app run on the HOST, not in
+# containers: `just dev` starts them with wgo and vite, which is what makes a
+# save reload in under a second.
+#
+# Ports are offset from the defaults (5432, 7070) so this stack can run beside
+# other projects' databases.
+services:
+  postgres:
+    # Production runs PGDG Postgres 17 with Timescale's apt package; this image
+    # is the same pair.
+    image: docker.io/timescale/timescaledb:latest-pg17
+    command:
+      - postgres
+      - -c
+      - max_connections=150
+      # The image's tuning script would otherwise size shared_buffers from
+      # the host's RAM.
+      - -c
+      - shared_buffers=256MB
+    environment:
+      POSTGRES_USER: doelab
+      POSTGRES_PASSWORD: doelab
+      POSTGRES_DB: doelab
+      TS_TUNE_MEMORY: 1GB
+      TS_TUNE_NUM_CPUS: "2"
+      TIMESCALEDB_TELEMETRY: "off"
+    ports:
+      - "127.0.0.1:5436:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U doelab -d doelab"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  s3:
+    # Versity Gateway serves the S3 API over a plain directory. Production uses
+    # DigitalOcean Spaces; both speak S3, which is all repo/objstore knows.
+    # (MinIO was the first choice, but its community images were withdrawn
+    # from the public registries in 2025.)
+    image: docker.io/versity/versitygw:v1.8.0
+    command: ["--access", "doelab", "--secret", "doelab-dev-only", "posix", "/data"]
+    ports:
+      - "127.0.0.1:9200:7070"
+    volumes:
+      - s3data:/data
+
+  # Observability, off by default: `just obs`.
+  prometheus:
+    profiles: ["obs"]
+    image: docker.io/prom/prometheus:latest
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=2d
+    volumes:
+      - ./obs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9290:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    profiles: ["obs"]
+    image: docker.io/grafana/grafana-oss:latest
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+    volumes:
+      - ./obs/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./obs/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "127.0.0.1:3300:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  pgdata:
+  s3data:

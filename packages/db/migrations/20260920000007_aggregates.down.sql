@@ -1,0 +1,3 @@
+DROP VIEW IF EXISTS site_compliance_1m;
+DROP VIEW IF EXISTS fleet_1m;
+DROP MATERIALIZED VIEW IF EXISTS site_power_1m;

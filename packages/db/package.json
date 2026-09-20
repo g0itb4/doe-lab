@@ -1,0 +1,10 @@
+{
+  "name": "@doelab/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "//": "No JavaScript here. The package exists so the workspace and Turbo can see the SQL: migrations are the schema, and sqlc reads them to generate the Go repository code.",
+  "scripts": {
+    "generate": "sqlc generate"
+  }
+}

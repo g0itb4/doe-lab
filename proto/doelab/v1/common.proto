@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+// doelab.v1 is the API of the dynamic operating envelope demo.
+//
+// The resources in this package mirror the tables of the PostgreSQL schema in
+// packages/db/migrations: one message per table, with the same field names,
+// units and nullability. See packages/db/README.md.
+package doelab.v1;
