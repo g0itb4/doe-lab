@@ -153,6 +153,8 @@ func (c *Circuit) line(l Line) (*engine.Line, error) {
 	if !ok || lc.Conductors != engine.Conductors {
 		return nil, fmt.Errorf("line %s: no 4-conductor linecode %q", l.Name, l.Linecode)
 	}
+	// Zero when the cable type has no assumed rating.
+	line.AmpacityA, _ = engine.AssumedAmpacity(l.Linecode)
 	for i := range engine.Conductors {
 		for j := range engine.Conductors {
 			line.ROhm[i][j] = lc.R[i][j] * l.LengthKm

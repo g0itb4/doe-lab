@@ -76,6 +76,9 @@ type Line struct {
 	// BS is the shunt susceptance of the whole length in siemens. Half of it
 	// sits at each end.
 	BS Matrix `json:"b_s"`
+	// AmpacityA is the continuous current rating of each conductor. Zero
+	// means the line has no rating and is not checked.
+	AmpacityA float64 `json:"ampacity_a,omitempty"`
 }
 
 // Site is a single-phase customer connection, between one phase and the

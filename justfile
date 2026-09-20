@@ -87,6 +87,12 @@ cover-go:
 test-go:
     cd apps/api && go test -race ./...
 
+# A plain build: timings mean nothing under the race detector or coverage.
+#
+# engine benchmarks, and the time budget for one day of envelopes on LV10
+bench:
+    cd apps/api && go test -run '^TestDayBudget$' -bench . -benchmem -v ./internal/engine/ | grep -vE '^(=== RUN|PASS|ok)'
+
 # ── fixtures ─────────────────────────────────────────────────────────────────
 
 # Needs the raw data (`just data`) and the tools venv with OpenDSSDirect.py.
