@@ -1,0 +1,277 @@
+syntax = "proto3";
+
+package doelab.v1;
+
+import "buf/validate/validate.proto";
+import "doelab/v1/common.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+
+// FeederService reads the network model, and lets an operator change the two
+// things about it that are a matter of operation: the transformer tap and a
+// line's rating. The model itself is created by the import.
+service FeederService {
+  rpc GetFeeder(GetFeederRequest) returns (GetFeederResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  rpc ListFeeders(ListFeedersRequest) returns (ListFeedersResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // Mutable fields: name, tap_pu. Needs the operator scope.
+  rpc UpdateFeeder(UpdateFeederRequest) returns (UpdateFeederResponse);
+
+  rpc GetFeederNode(GetFeederNodeRequest) returns (GetFeederNodeResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  rpc ListFeederNodes(ListFeederNodesRequest) returns (ListFeederNodesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+
+  rpc GetFeederLine(GetFeederLineRequest) returns (GetFeederLineResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  rpc ListFeederLines(ListFeederLinesRequest) returns (ListFeederLinesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // Mutable field: ampacity_a. Setting it marks the rating as the operator's;
+  // clearing it makes the line unrated. Needs the operator scope.
+  rpc UpdateFeederLine(UpdateFeederLineRequest) returns (UpdateFeederLineResponse);
+}
+
+// A low-voltage feeder below one distribution transformer. Mirrors the
+// feeders table.
+message Feeder {
+  string id = 1 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // Short stable identifier, for example LV10.
+  string code = 2 [
+    (buf.validate.field).string.pattern = "^[A-Z0-9][A-Z0-9_-]{0,31}$",
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  string name = 3 [(buf.validate.field).string.max_len = 200];
+  // Phase-to-neutral nominal voltage. Per-unit limits are against this.
+  double nominal_voltage_v = 4 [(buf.validate.field).double.gte = 0];
+  double transformer_kva = 5 [(buf.validate.field).double.gte = 0];
+  // Open-circuit phase-to-earth voltage at the low-voltage terminals at the
+  // nominal tap.
+  double source_voltage_v = 6 [(buf.validate.field).double.gte = 0];
+  // Angle of phase 1. Phases 2 and 3 lag by 120 and 240 degrees.
+  double source_angle_deg = 7 [(buf.validate.field).double = {
+    gt: -360
+    lt: 360
+  }];
+  double source_r_ohm = 8 [(buf.validate.field).double.gte = 0];
+  double source_x_ohm = 9 [(buf.validate.field).double.gte = 0];
+  // Transformer tap, as a multiplier of source_voltage_v. 0.975 is one 2.5 %
+  // step down.
+  double tap_pu = 10 [
+    (buf.validate.field).double = {
+      gte: 0.85
+      lte: 1.15
+    },
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // IANA zone the feeder is in. Times on the wire are UTC.
+  string timezone = 11;
+  // Licence and attribution of the dataset the feeder came from.
+  string attribution = 12;
+  google.protobuf.Timestamp created_at = 13;
+  google.protobuf.Timestamp updated_at = 14;
+}
+
+// A bus of the feeder tree. Mirrors the feeder_nodes table.
+message FeederNode {
+  string id = 1 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  string feeder_id = 2 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  string name = 3;
+  // The bus towards the transformer. Unset for the root, the transformer's
+  // low-voltage bus.
+  optional string parent_node_id = 4 [(buf.validate.field).string.uuid = true];
+  // Impedance from the neutral to earth, when the neutral is earthed here.
+  optional double ground_r_ohm = 5 [(buf.validate.field).double.gte = 0];
+  optional double ground_x_ohm = 6 [(buf.validate.field).double.gte = 0];
+  google.protobuf.Timestamp created_at = 7;
+  google.protobuf.Timestamp updated_at = 8;
+}
+
+// The four-conductor line, or closed switch, into a bus from its parent.
+// Mirrors the feeder_lines table.
+message FeederLine {
+  string id = 1 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  string feeder_id = 2 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  string name = 3;
+  string from_node_id = 4 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  string to_node_id = 5 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // Cable type, as the OpenDSS linecode name of the source dataset.
+  string linecode = 6;
+  double length_m = 7 [(buf.validate.field).double.gte = 0];
+  bool is_switch = 8;
+  // Series resistance with earth return: 4x4, row-major (16 values), ohms,
+  // for the whole length. Conductors are phases 1 to 3, then the neutral.
+  repeated double r_ohm = 9 [(buf.validate.field).repeated = {
+    min_items: 0
+    max_items: 16
+  }];
+  // Series reactance with earth return, as r_ohm.
+  repeated double x_ohm = 10 [(buf.validate.field).repeated = {
+    min_items: 0
+    max_items: 16
+  }];
+  // Shunt susceptance in siemens, as r_ohm. Half sits at each end.
+  repeated double b_s = 11 [(buf.validate.field).repeated = {
+    min_items: 0
+    max_items: 16
+  }];
+  // Continuous current rating per conductor. Unset means unrated: the line
+  // is not checked against a thermal limit.
+  optional double ampacity_a = 12 [(buf.validate.field).double.gt = 0];
+  optional AmpacitySource ampacity_source = 13 [(buf.validate.field).enum.defined_only = true];
+  google.protobuf.Timestamp created_at = 14;
+  google.protobuf.Timestamp updated_at = 15;
+}
+
+message GetFeederRequest {
+  // The feeder's id or its code: exactly one.
+  oneof key {
+    option (buf.validate.oneof).required = true;
+    string id = 1 [(buf.validate.field).string.uuid = true];
+    string code = 2 [(buf.validate.field).string.pattern = "^[A-Z0-9][A-Z0-9_-]{0,31}$"];
+  }
+}
+
+message GetFeederResponse {
+  Feeder feeder = 1;
+}
+
+message ListFeedersRequest {
+  // At most this many feeders. 0 means the default, 100.
+  int32 page_size = 1 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 500
+  }];
+  // next_page_token of the previous page. Empty for the first page.
+  string page_token = 2 [(buf.validate.field).string.max_len = 1024];
+}
+
+message ListFeedersResponse {
+  repeated Feeder feeders = 1;
+  // Empty when there are no more pages.
+  string next_page_token = 2;
+}
+
+message UpdateFeederRequest {
+  // feeder.id says which feeder; the fields named in update_mask are applied.
+  Feeder feeder = 1 [(buf.validate.field).required = true];
+  // Allowed paths: name, tap_pu.
+  google.protobuf.FieldMask update_mask = 2 [(buf.validate.field).required = true];
+
+  option (buf.validate.message).cel = {
+    id: "update_feeder.id"
+    message: "feeder.id is required"
+    expression: "this.feeder.id != ''"
+  };
+  option (buf.validate.message).cel = {
+    id: "update_feeder.mask"
+    message: "update_mask must name at least one of: name, tap_pu"
+    expression: "size(this.update_mask.paths) > 0 && this.update_mask.paths.all(p, p in ['name', 'tap_pu'])"
+  };
+  option (buf.validate.message).cel = {
+    id: "update_feeder.name"
+    message: "name must not be empty"
+    expression: "!('name' in this.update_mask.paths) || this.feeder.name != ''"
+  };
+  option (buf.validate.message).cel = {
+    id: "update_feeder.tap_pu"
+    message: "tap_pu must be between 0.85 and 1.15"
+    expression: "!('tap_pu' in this.update_mask.paths) || (this.feeder.tap_pu >= 0.85 && this.feeder.tap_pu <= 1.15)"
+  };
+}
+
+message UpdateFeederResponse {
+  Feeder feeder = 1;
+}
+
+message GetFeederNodeRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message GetFeederNodeResponse {
+  FeederNode feeder_node = 1;
+}
+
+message ListFeederNodesRequest {
+  string feeder_id = 1 [(buf.validate.field).string.uuid = true];
+  int32 page_size = 2 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 500
+  }];
+  string page_token = 3 [(buf.validate.field).string.max_len = 1024];
+}
+
+message ListFeederNodesResponse {
+  repeated FeederNode feeder_nodes = 1;
+  string next_page_token = 2;
+}
+
+message GetFeederLineRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message GetFeederLineResponse {
+  FeederLine feeder_line = 1;
+}
+
+message ListFeederLinesRequest {
+  string feeder_id = 1 [(buf.validate.field).string.uuid = true];
+  int32 page_size = 2 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 500
+  }];
+  string page_token = 3 [(buf.validate.field).string.max_len = 1024];
+}
+
+message ListFeederLinesResponse {
+  repeated FeederLine feeder_lines = 1;
+  string next_page_token = 2;
+}
+
+message UpdateFeederLineRequest {
+  FeederLine feeder_line = 1 [(buf.validate.field).required = true];
+  // Allowed path: ampacity_a.
+  google.protobuf.FieldMask update_mask = 2 [(buf.validate.field).required = true];
+
+  option (buf.validate.message).cel = {
+    id: "update_feeder_line.id"
+    message: "feeder_line.id is required"
+    expression: "this.feeder_line.id != ''"
+  };
+  option (buf.validate.message).cel = {
+    id: "update_feeder_line.mask"
+    message: "update_mask must be exactly: ampacity_a"
+    expression: "this.update_mask.paths == ['ampacity_a']"
+  };
+}
+
+message UpdateFeederLineResponse {
+  FeederLine feeder_line = 1;
+}

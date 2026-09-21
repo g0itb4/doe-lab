@@ -4,8 +4,8 @@
 -- name: GetDevice :one
 SELECT * FROM devices WHERE id = $1 AND deleted_at IS NULL;
 
--- Served by devices_site_type_live_key (site_id, der_type) WHERE deleted_at
--- IS NULL when a site is given, and by the primary key otherwise.
+-- Served by devices_site_idx (site_id, id) when a site is given, and by
+-- devices_live_idx (id) otherwise; both are partial on deleted_at IS NULL.
 --
 -- name: ListDevices :many
 SELECT * FROM devices

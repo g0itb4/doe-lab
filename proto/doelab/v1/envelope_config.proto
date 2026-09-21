@@ -1,0 +1,173 @@
+syntax = "proto3";
+
+package doelab.v1;
+
+import "buf/validate/validate.proto";
+import "doelab/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// EnvelopeConfigService manages the envelope policy of a feeder.
+//
+// A config is immutable. There is no update and no delete: a change is a new
+// version, and the highest version is the active one.
+service EnvelopeConfigService {
+  rpc GetEnvelopeConfig(GetEnvelopeConfigRequest) returns (GetEnvelopeConfigResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // The config in force: the highest version of the feeder.
+  rpc GetActiveEnvelopeConfig(GetActiveEnvelopeConfigRequest) returns (GetActiveEnvelopeConfigResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // The versions of a feeder, newest first.
+  rpc ListEnvelopeConfigs(ListEnvelopeConfigsRequest) returns (ListEnvelopeConfigsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // Creates the next version. Needs the operator scope.
+  rpc CreateEnvelopeConfig(CreateEnvelopeConfigRequest) returns (CreateEnvelopeConfigResponse);
+}
+
+// The envelope policy of a feeder, as one immutable version. Mirrors the
+// envelope_configs table.
+message EnvelopeConfig {
+  string id = 1 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  string feeder_id = 2 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // Set by the server: 1, 2, 3, ...
+  int32 version = 3 [(buf.validate.field).int32.gte = 0];
+  EnvelopePolicy policy = 4 [(buf.validate.field).enum.defined_only = true];
+  // Lower voltage limit at a customer, per unit of the nominal voltage.
+  double v_min_pu = 5 [
+    (buf.validate.field).double = {
+      gte: 0.8
+      lte: 1.2
+    },
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // Upper voltage limit at a customer, per unit of the nominal voltage.
+  double v_max_pu = 6 [
+    (buf.validate.field).double = {
+      gte: 0.8
+      lte: 1.2
+    },
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // Allowed transformer loading, as a percentage of its rating.
+  double transformer_limit_pct = 7 [
+    (buf.validate.field).double = {
+      gt: 0
+      lte: 200
+    },
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // Allowed conductor current, as a percentage of each line's ampacity.
+  double line_limit_pct = 8 [
+    (buf.validate.field).double = {
+      gt: 0
+      lte: 200
+    },
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // Multiplier on the 2010-2013 PV profiles, to represent present-day uptake.
+  double pv_scale = 9 [(buf.validate.field).double = {
+    gte: 0
+    lte: 20
+  }];
+  // The fixed export limit that reports compare the envelopes with.
+  double static_limit_w = 10 [(buf.validate.field).double.gte = 0];
+  int32 interval_minutes = 11 [
+    (buf.validate.field).int32 = {
+      in: [
+        5,
+        15,
+        30,
+        60
+      ]
+    },
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  int32 horizon_intervals = 12 [
+    (buf.validate.field).int32 = {
+      gte: 1
+      lte: 288
+    },
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // How long a site may exceed its export limit before a breach alert opens.
+  int32 breach_grace_seconds = 13 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 3600
+  }];
+  // How long a device may be silent before an offline alert opens.
+  int32 offline_after_seconds = 14 [
+    (buf.validate.field).int32 = {
+      gte: 10
+      lte: 86400
+    },
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  string note = 15 [(buf.validate.field).string.max_len = 2000];
+  // Set by the server: the scope that created the version.
+  string created_by = 16;
+  google.protobuf.Timestamp created_at = 17;
+
+  option (buf.validate.message).cel = {
+    id: "envelope_config.voltage_band"
+    message: "v_min_pu must be below v_max_pu"
+    expression: "this.v_min_pu == 0.0 || this.v_max_pu == 0.0 || this.v_min_pu < this.v_max_pu"
+  };
+}
+
+message GetEnvelopeConfigRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message GetEnvelopeConfigResponse {
+  EnvelopeConfig envelope_config = 1;
+}
+
+message GetActiveEnvelopeConfigRequest {
+  string feeder_id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message GetActiveEnvelopeConfigResponse {
+  EnvelopeConfig envelope_config = 1;
+}
+
+message ListEnvelopeConfigsRequest {
+  string feeder_id = 1 [(buf.validate.field).string.uuid = true];
+  int32 page_size = 2 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 500
+  }];
+  string page_token = 3 [(buf.validate.field).string.max_len = 1024];
+}
+
+message ListEnvelopeConfigsResponse {
+  repeated EnvelopeConfig envelope_configs = 1;
+  string next_page_token = 2;
+}
+
+message CreateEnvelopeConfigRequest {
+  // id, version, created_by and created_at are set by the server.
+  EnvelopeConfig envelope_config = 1 [(buf.validate.field).required = true];
+
+  option (buf.validate.message).cel = {
+    id: "create_envelope_config.required"
+    message: "feeder_id, policy, v_min_pu, v_max_pu, transformer_limit_pct, line_limit_pct, interval_minutes, horizon_intervals and offline_after_seconds are required"
+    expression: "this.envelope_config.feeder_id != '' && this.envelope_config.policy != 0 && this.envelope_config.v_min_pu != 0.0 && this.envelope_config.v_max_pu != 0.0 && this.envelope_config.transformer_limit_pct != 0.0 && this.envelope_config.line_limit_pct != 0.0 && this.envelope_config.interval_minutes != 0 && this.envelope_config.horizon_intervals != 0 && this.envelope_config.offline_after_seconds != 0"
+  };
+  option (buf.validate.message).cel = {
+    id: "create_envelope_config.server_set"
+    message: "id, version and created_by are set by the server"
+    expression: "this.envelope_config.id == '' && this.envelope_config.version == 0 && this.envelope_config.created_by == ''"
+  };
+}
+
+message CreateEnvelopeConfigResponse {
+  EnvelopeConfig envelope_config = 1;
+}

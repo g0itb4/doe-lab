@@ -1,9 +1,23 @@
 {
-  "exclude": ["doelab/api/gen", "doelab/api/cmd", "doelab/api/internal/repo"],
+  "exclude": [
+    "doelab/api/gen",
+    "doelab/api/cmd",
+    "doelab/api/internal/repo/pg",
+    "doelab/api/internal/testutil",
+    "doelab/api/internal/repo/repotest"
+  ],
   "floors": {
     "doelab/api/internal/engine": 100,
     "doelab/api/internal/domain": 100,
     "doelab/api/internal/covergate": 100,
-    "doelab/api/internal/config": 100
+    "doelab/api/internal/config": 100,
+    "doelab/api/internal/auth": 100,
+    "doelab/api/internal/service": 100,
+    "doelab/api/internal/server": 100,
+    "doelab/api/internal/protomap": 100,
+    "doelab/api/internal/repo/pagetoken": 100,
+    "doelab/api/internal/controller": 99,
+    "doelab/api/internal/interceptor": 99,
+    "doelab/api/internal/repo/mem": 99
   }
 }

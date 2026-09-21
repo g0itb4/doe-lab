@@ -88,6 +88,10 @@ CREATE TABLE devices (
 -- One live device of each type per site. Partial, so a replaced inverter does
 -- not block its successor.
 CREATE UNIQUE INDEX devices_site_type_live_key ON devices (site_id, der_type) WHERE deleted_at IS NULL;
+-- ListDevices pages in id order: over every live device, and over one
+-- site's.
+CREATE INDEX devices_live_idx ON devices (id) WHERE deleted_at IS NULL;
+CREATE INDEX devices_site_idx ON devices (site_id, id) WHERE deleted_at IS NULL;
 
 COMMENT ON TABLE devices IS
   'A distributed energy resource behind a site: an inverter, a battery or an EV charger. Each reports telemetry and receives the site''s envelope.';

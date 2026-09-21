@@ -3,6 +3,2228 @@ info:
   title: API
   description: API documentation for API
   version: 1.0.0
-paths: {}
-components: {}
+paths:
+  /doelab.v1.DeviceService/CreateDevice:
+    post:
+      tags:
+        - doelab.v1.DeviceService
+      summary: CreateDevice
+      description: Needs the operator scope.
+      operationId: doelab.v1.DeviceService.CreateDevice
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.CreateDeviceRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.CreateDeviceResponse'
+  /doelab.v1.DeviceService/DeleteDevice:
+    post:
+      tags:
+        - doelab.v1.DeviceService
+      summary: DeleteDevice
+      description: Soft delete. Needs the operator scope.
+      operationId: doelab.v1.DeviceService.DeleteDevice
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.DeleteDeviceRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.DeleteDeviceResponse'
+  /doelab.v1.DeviceService/GetDevice:
+    post:
+      tags:
+        - doelab.v1.DeviceService
+      summary: GetDevice
+      operationId: doelab.v1.DeviceService.GetDevice
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetDeviceRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetDeviceResponse'
+  /doelab.v1.DeviceService/ListDevices:
+    post:
+      tags:
+        - doelab.v1.DeviceService
+      summary: ListDevices
+      operationId: doelab.v1.DeviceService.ListDevices
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.ListDevicesRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.ListDevicesResponse'
+  /doelab.v1.DeviceService/UpdateDevice:
+    post:
+      tags:
+        - doelab.v1.DeviceService
+      summary: UpdateDevice
+      description: 'Mutable field: rated_w. Needs the operator scope.'
+      operationId: doelab.v1.DeviceService.UpdateDevice
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.UpdateDeviceRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.UpdateDeviceResponse'
+  /doelab.v1.EnvelopeConfigService/CreateEnvelopeConfig:
+    post:
+      tags:
+        - doelab.v1.EnvelopeConfigService
+      summary: CreateEnvelopeConfig
+      description: Creates the next version. Needs the operator scope.
+      operationId: doelab.v1.EnvelopeConfigService.CreateEnvelopeConfig
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.CreateEnvelopeConfigRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.CreateEnvelopeConfigResponse'
+  /doelab.v1.EnvelopeConfigService/GetActiveEnvelopeConfig:
+    post:
+      tags:
+        - doelab.v1.EnvelopeConfigService
+      summary: GetActiveEnvelopeConfig
+      description: 'The config in force: the highest version of the feeder.'
+      operationId: doelab.v1.EnvelopeConfigService.GetActiveEnvelopeConfig
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetActiveEnvelopeConfigRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetActiveEnvelopeConfigResponse'
+  /doelab.v1.EnvelopeConfigService/GetEnvelopeConfig:
+    post:
+      tags:
+        - doelab.v1.EnvelopeConfigService
+      summary: GetEnvelopeConfig
+      operationId: doelab.v1.EnvelopeConfigService.GetEnvelopeConfig
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetEnvelopeConfigRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetEnvelopeConfigResponse'
+  /doelab.v1.EnvelopeConfigService/ListEnvelopeConfigs:
+    post:
+      tags:
+        - doelab.v1.EnvelopeConfigService
+      summary: ListEnvelopeConfigs
+      description: The versions of a feeder, newest first.
+      operationId: doelab.v1.EnvelopeConfigService.ListEnvelopeConfigs
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.ListEnvelopeConfigsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.ListEnvelopeConfigsResponse'
+  /doelab.v1.FeederService/GetFeeder:
+    post:
+      tags:
+        - doelab.v1.FeederService
+      summary: GetFeeder
+      operationId: doelab.v1.FeederService.GetFeeder
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetFeederRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetFeederResponse'
+  /doelab.v1.FeederService/GetFeederLine:
+    post:
+      tags:
+        - doelab.v1.FeederService
+      summary: GetFeederLine
+      operationId: doelab.v1.FeederService.GetFeederLine
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetFeederLineRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetFeederLineResponse'
+  /doelab.v1.FeederService/GetFeederNode:
+    post:
+      tags:
+        - doelab.v1.FeederService
+      summary: GetFeederNode
+      operationId: doelab.v1.FeederService.GetFeederNode
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetFeederNodeRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetFeederNodeResponse'
+  /doelab.v1.FeederService/ListFeederLines:
+    post:
+      tags:
+        - doelab.v1.FeederService
+      summary: ListFeederLines
+      operationId: doelab.v1.FeederService.ListFeederLines
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.ListFeederLinesRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.ListFeederLinesResponse'
+  /doelab.v1.FeederService/ListFeederNodes:
+    post:
+      tags:
+        - doelab.v1.FeederService
+      summary: ListFeederNodes
+      operationId: doelab.v1.FeederService.ListFeederNodes
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.ListFeederNodesRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.ListFeederNodesResponse'
+  /doelab.v1.FeederService/ListFeeders:
+    post:
+      tags:
+        - doelab.v1.FeederService
+      summary: ListFeeders
+      operationId: doelab.v1.FeederService.ListFeeders
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.ListFeedersRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.ListFeedersResponse'
+  /doelab.v1.FeederService/UpdateFeeder:
+    post:
+      tags:
+        - doelab.v1.FeederService
+      summary: UpdateFeeder
+      description: 'Mutable fields: name, tap_pu. Needs the operator scope.'
+      operationId: doelab.v1.FeederService.UpdateFeeder
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.UpdateFeederRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.UpdateFeederResponse'
+  /doelab.v1.FeederService/UpdateFeederLine:
+    post:
+      tags:
+        - doelab.v1.FeederService
+      summary: UpdateFeederLine
+      description: |-
+        Mutable field: ampacity_a. Setting it marks the rating as the operator's;
+         clearing it makes the line unrated. Needs the operator scope.
+      operationId: doelab.v1.FeederService.UpdateFeederLine
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.UpdateFeederLineRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.UpdateFeederLineResponse'
+  /doelab.v1.SiteService/CreateSite:
+    post:
+      tags:
+        - doelab.v1.SiteService
+      summary: CreateSite
+      description: Needs the operator scope.
+      operationId: doelab.v1.SiteService.CreateSite
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.CreateSiteRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.CreateSiteResponse'
+  /doelab.v1.SiteService/DeleteSite:
+    post:
+      tags:
+        - doelab.v1.SiteService
+      summary: DeleteSite
+      description: |-
+        Soft delete: the site disappears from reads, and its NMI is never reused.
+         Needs the operator scope.
+      operationId: doelab.v1.SiteService.DeleteSite
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.DeleteSiteRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.DeleteSiteResponse'
+  /doelab.v1.SiteService/GetSite:
+    post:
+      tags:
+        - doelab.v1.SiteService
+      summary: GetSite
+      operationId: doelab.v1.SiteService.GetSite
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetSiteRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetSiteResponse'
+  /doelab.v1.SiteService/ListSiteProfiles:
+    post:
+      tags:
+        - doelab.v1.SiteService
+      summary: ListSiteProfiles
+      description: 'The half-hourly load and PV of a site: the forecast.'
+      operationId: doelab.v1.SiteService.ListSiteProfiles
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.ListSiteProfilesRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.ListSiteProfilesResponse'
+  /doelab.v1.SiteService/ListSites:
+    post:
+      tags:
+        - doelab.v1.SiteService
+      summary: ListSites
+      operationId: doelab.v1.SiteService.ListSites
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.ListSitesRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.ListSitesResponse'
+  /doelab.v1.SiteService/UpdateSite:
+    post:
+      tags:
+        - doelab.v1.SiteService
+      summary: UpdateSite
+      description: |-
+        Mutable fields: pv_kw, inverter_kva, export_cap_w, import_cap_w,
+         has_battery, battery_kwh, has_ev. Needs the operator scope.
+      operationId: doelab.v1.SiteService.UpdateSite
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.UpdateSiteRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.UpdateSiteResponse'
+components:
+  schemas:
+    connect-protocol-version:
+      type: number
+      examples:
+        - 1
+      title: Connect-Protocol-Version
+      description: Define the version of the Connect protocol
+      const: 1
+    connect-timeout-header:
+      type: number
+      examples:
+        - 1000
+      title: Connect-Timeout-Ms
+      description: Define the timeout, in ms
+    connect.error:
+      type: object
+      properties:
+        code:
+          type: string
+          examples:
+            - not_found
+          enum:
+            - canceled
+            - unknown
+            - invalid_argument
+            - deadline_exceeded
+            - not_found
+            - already_exists
+            - permission_denied
+            - resource_exhausted
+            - failed_precondition
+            - aborted
+            - out_of_range
+            - unimplemented
+            - internal
+            - unavailable
+            - data_loss
+            - unauthenticated
+          description: The status code, which should be an enum value of [google.rpc.Code][google.rpc.Code].
+        message:
+          type: string
+          description: A developer-facing error message, which should be in English. Any user-facing error message should be localized and sent in the [google.rpc.Status.details][google.rpc.Status.details] field, or localized by the client.
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/connect.error_details.Any'
+          description: A list of messages that carry the error details. There is no limit on the number of messages.
+      title: Connect Error
+      additionalProperties: true
+      description: 'Error type returned by Connect: https://connectrpc.com/docs/go/errors/#http-representation'
+    connect.error_details.Any:
+      type: object
+      properties:
+        type:
+          type: string
+          description: 'A URL that acts as a globally unique identifier for the type of the serialized message. For example: `type.googleapis.com/google.rpc.ErrorInfo`.'
+        value:
+          type: string
+          format: byte
+          description: The Protobuf message, serialized as bytes and base64-encoded. The specific message type is identified by the `type` field.
+        debug:
+          type: object
+          title: Debug
+          additionalProperties: true
+          description: Deserialized error detail payload. The 'type' field indicates the schema. This field is for easier debugging and should not be relied upon for application logic.
+      additionalProperties: true
+      description: Contains an arbitrary serialized message along with a @type that describes the type of the serialized message, with an additional debug field for ConnectRPC error details.
+    doelab.v1.AlertKind:
+      type: string
+      title: AlertKind
+      enum:
+        - ALERT_KIND_UNSPECIFIED
+        - ALERT_KIND_CONSTRAINT_BREACH
+        - ALERT_KIND_DEVICE_OFFLINE
+      description: What an alert is about. Mirrors the alert_kind type.
+    doelab.v1.AlertSeverity:
+      type: string
+      title: AlertSeverity
+      enum:
+        - ALERT_SEVERITY_UNSPECIFIED
+        - ALERT_SEVERITY_INFO
+        - ALERT_SEVERITY_WARNING
+        - ALERT_SEVERITY_CRITICAL
+      description: How serious an alert is. Mirrors the alert_severity type.
+    doelab.v1.AmpacitySource:
+      type: string
+      title: AmpacitySource
+      enum:
+        - AMPACITY_SOURCE_UNSPECIFIED
+        - AMPACITY_SOURCE_ASSUMED
+        - AMPACITY_SOURCE_OPERATOR
+      description: Where a line's current rating came from. Mirrors the ampacity_source type.
+    doelab.v1.BindingConstraint:
+      type: string
+      title: BindingConstraint
+      enum:
+        - BINDING_CONSTRAINT_UNSPECIFIED
+        - BINDING_CONSTRAINT_NONE
+        - BINDING_CONSTRAINT_VOLTAGE_HIGH
+        - BINDING_CONSTRAINT_VOLTAGE_LOW
+        - BINDING_CONSTRAINT_TRANSFORMER
+        - BINDING_CONSTRAINT_LINE
+        - BINDING_CONSTRAINT_SITE_CAP
+      description: |-
+        What stops an envelope from being larger. Mirrors the binding_constraint
+         type.
+    doelab.v1.CreateDeviceRequest:
+      type: object
+      properties:
+        device:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.Device'
+          title: device
+          description: id, created_at and updated_at are set by the server.
+      title: CreateDeviceRequest
+      required:
+        - device
+      additionalProperties: false
+      description: |
+        create_device.required // site_id, der_type and a positive rated_w are required
+        create_device.server_set // id is set by the server
+    doelab.v1.CreateDeviceResponse:
+      type: object
+      properties:
+        device:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.Device'
+          title: device
+      title: CreateDeviceResponse
+      additionalProperties: false
+    doelab.v1.CreateEnvelopeConfigRequest:
+      type: object
+      properties:
+        envelopeConfig:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.EnvelopeConfig'
+          title: envelope_config
+          description: id, version, created_by and created_at are set by the server.
+      title: CreateEnvelopeConfigRequest
+      required:
+        - envelopeConfig
+      additionalProperties: false
+      description: |
+        create_envelope_config.required // feeder_id, policy, v_min_pu, v_max_pu, transformer_limit_pct, line_limit_pct, interval_minutes, horizon_intervals and offline_after_seconds are required
+        create_envelope_config.server_set // id, version and created_by are set by the server
+    doelab.v1.CreateEnvelopeConfigResponse:
+      type: object
+      properties:
+        envelopeConfig:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.EnvelopeConfig'
+          title: envelope_config
+      title: CreateEnvelopeConfigResponse
+      additionalProperties: false
+    doelab.v1.CreateSiteRequest:
+      type: object
+      properties:
+        site:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.Site'
+          title: site
+          description: id, created_at and updated_at are set by the server.
+      title: CreateSiteRequest
+      required:
+        - site
+      additionalProperties: false
+      description: |
+        create_site.required // nmi, feeder_id, node_id, name and phase are required
+        create_site.server_set // id is set by the server
+    doelab.v1.CreateSiteResponse:
+      type: object
+      properties:
+        site:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.Site'
+          title: site
+      title: CreateSiteResponse
+      additionalProperties: false
+    doelab.v1.DeleteDeviceRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+      title: DeleteDeviceRequest
+      additionalProperties: false
+    doelab.v1.DeleteDeviceResponse:
+      type: object
+      title: DeleteDeviceResponse
+      additionalProperties: false
+    doelab.v1.DeleteSiteRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+      title: DeleteSiteRequest
+      additionalProperties: false
+    doelab.v1.DeleteSiteResponse:
+      type: object
+      title: DeleteSiteResponse
+      additionalProperties: false
+    doelab.v1.DerType:
+      type: string
+      title: DerType
+      enum:
+        - DER_TYPE_UNSPECIFIED
+        - DER_TYPE_SOLAR
+        - DER_TYPE_BATTERY
+        - DER_TYPE_EV
+      description: The kind of distributed energy resource. Mirrors the der_type type.
+    doelab.v1.Device:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+        siteId:
+          type: string
+          title: site_id
+          format: uuid
+        derType:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.DerType'
+          title: der_type
+          description: |
+            enum.defined_only = true
+        ratedW:
+          type: number
+          title: rated_w
+          minimum: 0
+          format: double
+          description: Nameplate power.
+        createdAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: created_at
+        updatedAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: updated_at
+      title: Device
+      additionalProperties: false
+      description: |-
+        A distributed energy resource behind a site: an inverter, a battery or an
+         EV charger. Mirrors the devices table. deleted_at is not on the wire.
+    doelab.v1.EnvelopeConfig:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+        version:
+          type: integer
+          title: version
+          minimum: 0
+          format: int32
+          description: 'Set by the server: 1, 2, 3, ...'
+        policy:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.EnvelopePolicy'
+          title: policy
+          description: |
+            enum.defined_only = true
+        vMinPu:
+          type: number
+          title: v_min_pu
+          maximum: 1.2
+          minimum: 0.8
+          format: double
+          description: Lower voltage limit at a customer, per unit of the nominal voltage.
+        vMaxPu:
+          type: number
+          title: v_max_pu
+          maximum: 1.2
+          minimum: 0.8
+          format: double
+          description: Upper voltage limit at a customer, per unit of the nominal voltage.
+        transformerLimitPct:
+          exclusiveMinimum: 0
+          type: number
+          title: transformer_limit_pct
+          maximum: 200
+          format: double
+          description: Allowed transformer loading, as a percentage of its rating.
+        lineLimitPct:
+          exclusiveMinimum: 0
+          type: number
+          title: line_limit_pct
+          maximum: 200
+          format: double
+          description: Allowed conductor current, as a percentage of each line's ampacity.
+        pvScale:
+          type: number
+          title: pv_scale
+          maximum: 20
+          minimum: 0
+          format: double
+          description: Multiplier on the 2010-2013 PV profiles, to represent present-day uptake.
+        staticLimitW:
+          type: number
+          title: static_limit_w
+          minimum: 0
+          format: double
+          description: The fixed export limit that reports compare the envelopes with.
+        intervalMinutes:
+          type: integer
+          title: interval_minutes
+          format: int32
+          enum:
+            - 5
+            - 15
+            - 30
+            - 60
+        horizonIntervals:
+          type: integer
+          title: horizon_intervals
+          maximum: 288
+          minimum: 1
+          format: int32
+        breachGraceSeconds:
+          type: integer
+          title: breach_grace_seconds
+          maximum: 3600
+          minimum: 0
+          format: int32
+          description: How long a site may exceed its export limit before a breach alert opens.
+        offlineAfterSeconds:
+          type: integer
+          title: offline_after_seconds
+          maximum: 86400
+          minimum: 10
+          format: int32
+          description: How long a device may be silent before an offline alert opens.
+        note:
+          type: string
+          title: note
+          maxLength: 2000
+        createdBy:
+          type: string
+          title: created_by
+          description: 'Set by the server: the scope that created the version.'
+        createdAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: created_at
+      title: EnvelopeConfig
+      additionalProperties: false
+      description: |
+        The envelope policy of a feeder, as one immutable version. Mirrors the
+         envelope_configs table.
+        envelope_config.voltage_band // v_min_pu must be below v_max_pu
+    doelab.v1.EnvelopePolicy:
+      type: string
+      title: EnvelopePolicy
+      enum:
+        - ENVELOPE_POLICY_UNSPECIFIED
+        - ENVELOPE_POLICY_EQUAL
+        - ENVELOPE_POLICY_PROPORTIONAL
+      description: How capacity is shared between sites. Mirrors the envelope_policy type.
+    doelab.v1.EnvelopeSource:
+      type: string
+      title: EnvelopeSource
+      enum:
+        - ENVELOPE_SOURCE_UNSPECIFIED
+        - ENVELOPE_SOURCE_ENGINE
+        - ENVELOPE_SOURCE_BACKSTOP
+      description: What produced an envelope. Mirrors the envelope_source type.
+    doelab.v1.Feeder:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+        code:
+          type: string
+          title: code
+          pattern: ^[A-Z0-9][A-Z0-9_-]{0,31}$
+          description: Short stable identifier, for example LV10.
+        name:
+          type: string
+          title: name
+          maxLength: 200
+        nominalVoltageV:
+          type: number
+          title: nominal_voltage_v
+          minimum: 0
+          format: double
+          description: Phase-to-neutral nominal voltage. Per-unit limits are against this.
+        transformerKva:
+          type: number
+          title: transformer_kva
+          minimum: 0
+          format: double
+        sourceVoltageV:
+          type: number
+          title: source_voltage_v
+          minimum: 0
+          format: double
+          description: |-
+            Open-circuit phase-to-earth voltage at the low-voltage terminals at the
+             nominal tap.
+        sourceAngleDeg:
+          exclusiveMaximum: 360
+          exclusiveMinimum: -360
+          type: number
+          title: source_angle_deg
+          format: double
+          description: Angle of phase 1. Phases 2 and 3 lag by 120 and 240 degrees.
+        sourceROhm:
+          type: number
+          title: source_r_ohm
+          minimum: 0
+          format: double
+        sourceXOhm:
+          type: number
+          title: source_x_ohm
+          minimum: 0
+          format: double
+        tapPu:
+          type: number
+          title: tap_pu
+          maximum: 1.15
+          minimum: 0.85
+          format: double
+          description: |-
+            Transformer tap, as a multiplier of source_voltage_v. 0.975 is one 2.5 %
+             step down.
+        timezone:
+          type: string
+          title: timezone
+          description: IANA zone the feeder is in. Times on the wire are UTC.
+        attribution:
+          type: string
+          title: attribution
+          description: Licence and attribution of the dataset the feeder came from.
+        createdAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: created_at
+        updatedAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: updated_at
+      title: Feeder
+      additionalProperties: false
+      description: |-
+        A low-voltage feeder below one distribution transformer. Mirrors the
+         feeders table.
+    doelab.v1.FeederLine:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+        name:
+          type: string
+          title: name
+        fromNodeId:
+          type: string
+          title: from_node_id
+          format: uuid
+        toNodeId:
+          type: string
+          title: to_node_id
+          format: uuid
+        linecode:
+          type: string
+          title: linecode
+          description: Cable type, as the OpenDSS linecode name of the source dataset.
+        lengthM:
+          type: number
+          title: length_m
+          minimum: 0
+          format: double
+        isSwitch:
+          type: boolean
+          title: is_switch
+        rOhm:
+          type: array
+          items:
+            type: number
+            format: double
+          title: r_ohm
+          maxItems: 16
+          minItems: 0
+          description: |-
+            Series resistance with earth return: 4x4, row-major (16 values), ohms,
+             for the whole length. Conductors are phases 1 to 3, then the neutral.
+        xOhm:
+          type: array
+          items:
+            type: number
+            format: double
+          title: x_ohm
+          maxItems: 16
+          minItems: 0
+          description: Series reactance with earth return, as r_ohm.
+        bS:
+          type: array
+          items:
+            type: number
+            format: double
+          title: b_s
+          maxItems: 16
+          minItems: 0
+          description: Shunt susceptance in siemens, as r_ohm. Half sits at each end.
+        ampacityA:
+          exclusiveMinimum: 0
+          type:
+            - number
+            - "null"
+          title: ampacity_a
+          format: double
+          description: |-
+            Continuous current rating per conductor. Unset means unrated: the line
+             is not checked against a thermal limit.
+        ampacitySource:
+          oneOf:
+            - $ref: '#/components/schemas/doelab.v1.AmpacitySource'
+            - type: "null"
+          title: ampacity_source
+          description: |
+            enum.defined_only = true
+        createdAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: created_at
+        updatedAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: updated_at
+      title: FeederLine
+      additionalProperties: false
+      description: |-
+        The four-conductor line, or closed switch, into a bus from its parent.
+         Mirrors the feeder_lines table.
+    doelab.v1.FeederNode:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+        name:
+          type: string
+          title: name
+        parentNodeId:
+          type:
+            - string
+            - "null"
+          title: parent_node_id
+          format: uuid
+          description: |-
+            The bus towards the transformer. Unset for the root, the transformer's
+             low-voltage bus.
+        groundROhm:
+          type:
+            - number
+            - "null"
+          title: ground_r_ohm
+          minimum: 0
+          format: double
+          description: Impedance from the neutral to earth, when the neutral is earthed here.
+        groundXOhm:
+          type:
+            - number
+            - "null"
+          title: ground_x_ohm
+          minimum: 0
+          format: double
+        createdAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: created_at
+        updatedAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: updated_at
+      title: FeederNode
+      additionalProperties: false
+      description: A bus of the feeder tree. Mirrors the feeder_nodes table.
+    doelab.v1.GetActiveEnvelopeConfigRequest:
+      type: object
+      properties:
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+      title: GetActiveEnvelopeConfigRequest
+      additionalProperties: false
+    doelab.v1.GetActiveEnvelopeConfigResponse:
+      type: object
+      properties:
+        envelopeConfig:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.EnvelopeConfig'
+          title: envelope_config
+      title: GetActiveEnvelopeConfigResponse
+      additionalProperties: false
+    doelab.v1.GetDeviceRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+      title: GetDeviceRequest
+      additionalProperties: false
+    doelab.v1.GetDeviceResponse:
+      type: object
+      properties:
+        device:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.Device'
+          title: device
+      title: GetDeviceResponse
+      additionalProperties: false
+    doelab.v1.GetEnvelopeConfigRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+      title: GetEnvelopeConfigRequest
+      additionalProperties: false
+    doelab.v1.GetEnvelopeConfigResponse:
+      type: object
+      properties:
+        envelopeConfig:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.EnvelopeConfig'
+          title: envelope_config
+      title: GetEnvelopeConfigResponse
+      additionalProperties: false
+    doelab.v1.GetFeederLineRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+      title: GetFeederLineRequest
+      additionalProperties: false
+    doelab.v1.GetFeederLineResponse:
+      type: object
+      properties:
+        feederLine:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.FeederLine'
+          title: feeder_line
+      title: GetFeederLineResponse
+      additionalProperties: false
+    doelab.v1.GetFeederNodeRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+      title: GetFeederNodeRequest
+      additionalProperties: false
+    doelab.v1.GetFeederNodeResponse:
+      type: object
+      properties:
+        feederNode:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.FeederNode'
+          title: feeder_node
+      title: GetFeederNodeResponse
+      additionalProperties: false
+    doelab.v1.GetFeederRequest:
+      type: object
+      allOf:
+        - oneOf:
+            - required:
+                - id
+            - required:
+                - code
+      anyOf:
+        - type: object
+          properties:
+            code:
+              type: string
+              title: code
+              pattern: ^[A-Z0-9][A-Z0-9_-]{0,31}$
+          title: code
+        - type: object
+          properties:
+            id:
+              type: string
+              title: id
+              format: uuid
+          title: id
+      unevaluatedProperties: false
+      not:
+        allOf:
+          - anyOf:
+              - required:
+                  - code
+              - required:
+                  - id
+          - not:
+              oneOf:
+                - required:
+                    - code
+                - required:
+                    - id
+      title: GetFeederRequest
+    doelab.v1.GetFeederResponse:
+      type: object
+      properties:
+        feeder:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.Feeder'
+          title: feeder
+      title: GetFeederResponse
+      additionalProperties: false
+    doelab.v1.GetSiteRequest:
+      type: object
+      allOf:
+        - oneOf:
+            - required:
+                - id
+            - required:
+                - nmi
+      anyOf:
+        - type: object
+          properties:
+            id:
+              type: string
+              title: id
+              format: uuid
+          title: id
+        - type: object
+          properties:
+            nmi:
+              type: string
+              title: nmi
+              pattern: ^[A-Z0-9]{10}[0-9]$
+          title: nmi
+      unevaluatedProperties: false
+      not:
+        allOf:
+          - anyOf:
+              - required:
+                  - id
+              - required:
+                  - nmi
+          - not:
+              oneOf:
+                - required:
+                    - id
+                - required:
+                    - nmi
+      title: GetSiteRequest
+    doelab.v1.GetSiteResponse:
+      type: object
+      properties:
+        site:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.Site'
+          title: site
+      title: GetSiteResponse
+      additionalProperties: false
+    doelab.v1.ListDevicesRequest:
+      type: object
+      properties:
+        siteId:
+          type:
+            - string
+            - "null"
+          title: site_id
+          format: uuid
+          description: Only devices of this site.
+        derType:
+          oneOf:
+            - $ref: '#/components/schemas/doelab.v1.DerType'
+            - type: "null"
+          not:
+            enum:
+              - DER_TYPE_UNSPECIFIED
+          title: der_type
+          description: |
+            Only devices of this type.
+            enum.defined_only = true
+        pageSize:
+          type: integer
+          title: page_size
+          maximum: 500
+          minimum: 0
+          format: int32
+        pageToken:
+          type: string
+          title: page_token
+          maxLength: 1024
+      title: ListDevicesRequest
+      additionalProperties: false
+    doelab.v1.ListDevicesResponse:
+      type: object
+      properties:
+        devices:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.Device'
+          title: devices
+        nextPageToken:
+          type: string
+          title: next_page_token
+      title: ListDevicesResponse
+      additionalProperties: false
+    doelab.v1.ListEnvelopeConfigsRequest:
+      type: object
+      properties:
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+        pageSize:
+          type: integer
+          title: page_size
+          maximum: 500
+          minimum: 0
+          format: int32
+        pageToken:
+          type: string
+          title: page_token
+          maxLength: 1024
+      title: ListEnvelopeConfigsRequest
+      additionalProperties: false
+    doelab.v1.ListEnvelopeConfigsResponse:
+      type: object
+      properties:
+        envelopeConfigs:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.EnvelopeConfig'
+          title: envelope_configs
+        nextPageToken:
+          type: string
+          title: next_page_token
+      title: ListEnvelopeConfigsResponse
+      additionalProperties: false
+    doelab.v1.ListFeederLinesRequest:
+      type: object
+      properties:
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+        pageSize:
+          type: integer
+          title: page_size
+          maximum: 500
+          minimum: 0
+          format: int32
+        pageToken:
+          type: string
+          title: page_token
+          maxLength: 1024
+      title: ListFeederLinesRequest
+      additionalProperties: false
+    doelab.v1.ListFeederLinesResponse:
+      type: object
+      properties:
+        feederLines:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.FeederLine'
+          title: feeder_lines
+        nextPageToken:
+          type: string
+          title: next_page_token
+      title: ListFeederLinesResponse
+      additionalProperties: false
+    doelab.v1.ListFeederNodesRequest:
+      type: object
+      properties:
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+        pageSize:
+          type: integer
+          title: page_size
+          maximum: 500
+          minimum: 0
+          format: int32
+        pageToken:
+          type: string
+          title: page_token
+          maxLength: 1024
+      title: ListFeederNodesRequest
+      additionalProperties: false
+    doelab.v1.ListFeederNodesResponse:
+      type: object
+      properties:
+        feederNodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.FeederNode'
+          title: feeder_nodes
+        nextPageToken:
+          type: string
+          title: next_page_token
+      title: ListFeederNodesResponse
+      additionalProperties: false
+    doelab.v1.ListFeedersRequest:
+      type: object
+      properties:
+        pageSize:
+          type: integer
+          title: page_size
+          maximum: 500
+          minimum: 0
+          format: int32
+          description: At most this many feeders. 0 means the default, 100.
+        pageToken:
+          type: string
+          title: page_token
+          maxLength: 1024
+          description: next_page_token of the previous page. Empty for the first page.
+      title: ListFeedersRequest
+      additionalProperties: false
+    doelab.v1.ListFeedersResponse:
+      type: object
+      properties:
+        feeders:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.Feeder'
+          title: feeders
+        nextPageToken:
+          type: string
+          title: next_page_token
+          description: Empty when there are no more pages.
+      title: ListFeedersResponse
+      additionalProperties: false
+    doelab.v1.ListSiteProfilesRequest:
+      type: object
+      properties:
+        siteId:
+          type: string
+          title: site_id
+          format: uuid
+        from:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: from
+          description: Start of the range, inclusive.
+        to:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: to
+          description: End of the range, exclusive.
+        pageSize:
+          type: integer
+          title: page_size
+          maximum: 2000
+          minimum: 0
+          format: int32
+        pageToken:
+          type: string
+          title: page_token
+          maxLength: 1024
+      title: ListSiteProfilesRequest
+      required:
+        - from
+        - to
+      additionalProperties: false
+      description: |
+        list_site_profiles.range // to must be after from
+    doelab.v1.ListSiteProfilesResponse:
+      type: object
+      properties:
+        siteProfiles:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.SiteProfile'
+          title: site_profiles
+        nextPageToken:
+          type: string
+          title: next_page_token
+      title: ListSiteProfilesResponse
+      additionalProperties: false
+    doelab.v1.ListSitesRequest:
+      type: object
+      properties:
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+        phase:
+          type:
+            - integer
+            - "null"
+          title: phase
+          maximum: 3
+          minimum: 1
+          format: int32
+          description: Only sites on this phase.
+        pageSize:
+          type: integer
+          title: page_size
+          maximum: 500
+          minimum: 0
+          format: int32
+        pageToken:
+          type: string
+          title: page_token
+          maxLength: 1024
+      title: ListSitesRequest
+      additionalProperties: false
+    doelab.v1.ListSitesResponse:
+      type: object
+      properties:
+        sites:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.Site'
+          title: sites
+        nextPageToken:
+          type: string
+          title: next_page_token
+      title: ListSitesResponse
+      additionalProperties: false
+    doelab.v1.RunStatus:
+      type: string
+      title: RunStatus
+      enum:
+        - RUN_STATUS_UNSPECIFIED
+        - RUN_STATUS_RUNNING
+        - RUN_STATUS_COMPLETED
+        - RUN_STATUS_FAILED
+      description: The state of an engine run. Mirrors the run_status type.
+    doelab.v1.Site:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+        nmi:
+          type: string
+          title: nmi
+          pattern: ^[A-Z0-9]{10}[0-9]$
+          description: |-
+            National Metering Identifier with its checksum digit: 11 characters. The
+             checksum is verified by the service and by the schema.
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+        nodeId:
+          type: string
+          title: node_id
+          format: uuid
+        name:
+          type: string
+          title: name
+          maxLength: 200
+          description: The connection's name in the source dataset.
+        phase:
+          type: integer
+          title: phase
+          maximum: 3
+          minimum: 1
+          format: int32
+          description: 'The phase the site is connected to: 1, 2 or 3.'
+        pvKw:
+          type: number
+          title: pv_kw
+          minimum: 0
+          format: double
+          description: Installed PV capacity. 0 for a site with no PV.
+        inverterKva:
+          type: number
+          title: inverter_kva
+          minimum: 0
+          format: double
+        exportCapW:
+          type: number
+          title: export_cap_w
+          minimum: 0
+          format: double
+          description: |-
+            The largest export limit the site may be given. 0 means the site is
+             passive: it gets no export envelope and is forecast instead.
+        importCapW:
+          type: number
+          title: import_cap_w
+          minimum: 0
+          format: double
+          description: |-
+            The largest import limit the site may be given. 0 means no import
+             envelope.
+        hasBattery:
+          type: boolean
+          title: has_battery
+        batteryKwh:
+          exclusiveMinimum: 0
+          type:
+            - number
+            - "null"
+          title: battery_kwh
+          format: double
+          description: Set exactly when has_battery is true.
+        hasEv:
+          type: boolean
+          title: has_ev
+        profileCustomer:
+          type:
+            - integer
+            - "null"
+          title: profile_customer
+          maximum: 300
+          minimum: 1
+          format: int32
+          description: The Ausgrid Solar Home customer (1 to 300) whose data this site replays.
+        createdAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: created_at
+        updatedAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: updated_at
+      title: Site
+      additionalProperties: false
+      description: |
+        A customer connection point: single phase, between one phase and the
+         neutral of a bus. Mirrors the sites table. deleted_at is not on the wire: a
+         deleted site is not returned.
+        site.battery_sized // battery_kwh must be set exactly when has_battery is true
+    doelab.v1.SiteProfile:
+      type: object
+      properties:
+        siteId:
+          type: string
+          title: site_id
+        ts:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: ts
+          description: Start of the half-hour interval, in the profile year.
+        loadW:
+          type: number
+          title: load_w
+          format: double
+          description: Average general consumption over the interval.
+        pvW:
+          type: number
+          title: pv_w
+          format: double
+          description: Average gross PV generation over the interval, before pv_scale.
+        controlledLoadW:
+          type: number
+          title: controlled_load_w
+          format: double
+          description: Average controlled load (off-peak hot water) over the interval.
+      title: SiteProfile
+      additionalProperties: false
+      description: One half-hour of a site's load and PV. Mirrors the site_profiles table.
+    doelab.v1.UpdateDeviceRequest:
+      type: object
+      properties:
+        device:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.Device'
+          title: device
+        updateMask:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.FieldMask'
+          title: update_mask
+          description: 'Allowed path: rated_w.'
+      title: UpdateDeviceRequest
+      required:
+        - device
+        - updateMask
+      additionalProperties: false
+      description: |
+        update_device.id // device.id is required
+        update_device.mask // update_mask must be exactly: rated_w
+        update_device.rated_w // rated_w must be positive
+    doelab.v1.UpdateDeviceResponse:
+      type: object
+      properties:
+        device:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.Device'
+          title: device
+      title: UpdateDeviceResponse
+      additionalProperties: false
+    doelab.v1.UpdateFeederLineRequest:
+      type: object
+      properties:
+        feederLine:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.FeederLine'
+          title: feeder_line
+        updateMask:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.FieldMask'
+          title: update_mask
+          description: 'Allowed path: ampacity_a.'
+      title: UpdateFeederLineRequest
+      required:
+        - feederLine
+        - updateMask
+      additionalProperties: false
+      description: |
+        update_feeder_line.id // feeder_line.id is required
+        update_feeder_line.mask // update_mask must be exactly: ampacity_a
+    doelab.v1.UpdateFeederLineResponse:
+      type: object
+      properties:
+        feederLine:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.FeederLine'
+          title: feeder_line
+      title: UpdateFeederLineResponse
+      additionalProperties: false
+    doelab.v1.UpdateFeederRequest:
+      type: object
+      properties:
+        feeder:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.Feeder'
+          title: feeder
+          description: feeder.id says which feeder; the fields named in update_mask are applied.
+        updateMask:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.FieldMask'
+          title: update_mask
+          description: 'Allowed paths: name, tap_pu.'
+      title: UpdateFeederRequest
+      required:
+        - feeder
+        - updateMask
+      additionalProperties: false
+      description: |
+        update_feeder.id // feeder.id is required
+        update_feeder.mask // update_mask must name at least one of: name, tap_pu
+        update_feeder.name // name must not be empty
+        update_feeder.tap_pu // tap_pu must be between 0.85 and 1.15
+    doelab.v1.UpdateFeederResponse:
+      type: object
+      properties:
+        feeder:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.Feeder'
+          title: feeder
+      title: UpdateFeederResponse
+      additionalProperties: false
+    doelab.v1.UpdateSiteRequest:
+      type: object
+      properties:
+        site:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.Site'
+          title: site
+        updateMask:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.FieldMask'
+          title: update_mask
+          description: |-
+            Allowed paths: pv_kw, inverter_kva, export_cap_w, import_cap_w,
+             has_battery, battery_kwh, has_ev.
+      title: UpdateSiteRequest
+      required:
+        - site
+        - updateMask
+      additionalProperties: false
+      description: |
+        update_site.id // site.id is required
+        update_site.mask // update_mask must name at least one of: pv_kw, inverter_kva, export_cap_w, import_cap_w, has_battery, battery_kwh, has_ev
+    doelab.v1.UpdateSiteResponse:
+      type: object
+      properties:
+        site:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.Site'
+          title: site
+      title: UpdateSiteResponse
+      additionalProperties: false
+    google.protobuf.FieldMask:
+      type: string
+      description: Comma-separated field paths in lowerCamelCase (for example, `user.displayName,photo`).
+    google.protobuf.Timestamp:
+      type: string
+      examples:
+        - "2023-01-15T01:30:15.01Z"
+        - "2024-12-25T12:00:00Z"
+      format: date-time
+      description: A point in time in RFC 3339 format, with up to nanosecond precision. Output uses UTC (`Z`); input may use an offset from UTC.
 security: []
+tags:
+  - name: doelab.v1.DeviceService
+    description: DeviceService manages the DER behind each site.
+  - name: doelab.v1.EnvelopeConfigService
+    description: |-
+      EnvelopeConfigService manages the envelope policy of a feeder.
+
+       A config is immutable. There is no update and no delete: a change is a new
+       version, and the highest version is the active one.
+  - name: doelab.v1.FeederService
+    description: |-
+      FeederService reads the network model, and lets an operator change the two
+       things about it that are a matter of operation: the transformer tap and a
+       line's rating. The model itself is created by the import.
+  - name: doelab.v1.SiteService
+    description: SiteService manages customer connection points and reads their profiles.

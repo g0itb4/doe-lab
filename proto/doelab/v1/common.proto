@@ -4,5 +4,90 @@ syntax = "proto3";
 //
 // The resources in this package mirror the tables of the PostgreSQL schema in
 // packages/db/migrations: one message per table, with the same field names,
-// units and nullability. See packages/db/README.md.
+// units and nullability. A nullable column is an `optional` field. Every
+// validation rule here has a matching constraint in the schema.
+//
+// Standard methods have the same shape for every resource:
+//
+//   Get<Resource>     by id
+//   List<Resources>   page_size, page_token, filters; returns next_page_token
+//   Create<Resource>  the resource; the server sets id and timestamps
+//   Update<Resource>  the resource and an update_mask naming the fields to change
+//   Delete<Resource>  by id
 package doelab.v1;
+
+// Where a line's current rating came from. Mirrors the ampacity_source type.
+enum AmpacitySource {
+  AMPACITY_SOURCE_UNSPECIFIED = 0;
+  // Assumed from typical catalogue values for the cable type.
+  AMPACITY_SOURCE_ASSUMED = 1;
+  // Set by an operator.
+  AMPACITY_SOURCE_OPERATOR = 2;
+}
+
+// The kind of distributed energy resource. Mirrors the der_type type.
+enum DerType {
+  DER_TYPE_UNSPECIFIED = 0;
+  DER_TYPE_SOLAR = 1;
+  DER_TYPE_BATTERY = 2;
+  DER_TYPE_EV = 3;
+}
+
+// How capacity is shared between sites. Mirrors the envelope_policy type.
+enum EnvelopePolicy {
+  ENVELOPE_POLICY_UNSPECIFIED = 0;
+  // Every site gets the same limit, up to its own cap.
+  ENVELOPE_POLICY_EQUAL = 1;
+  // Every site gets the same fraction of its cap.
+  ENVELOPE_POLICY_PROPORTIONAL = 2;
+}
+
+// The state of an engine run. Mirrors the run_status type.
+enum RunStatus {
+  RUN_STATUS_UNSPECIFIED = 0;
+  RUN_STATUS_RUNNING = 1;
+  RUN_STATUS_COMPLETED = 2;
+  RUN_STATUS_FAILED = 3;
+}
+
+// What produced an envelope. Mirrors the envelope_source type.
+enum EnvelopeSource {
+  ENVELOPE_SOURCE_UNSPECIFIED = 0;
+  ENVELOPE_SOURCE_ENGINE = 1;
+  ENVELOPE_SOURCE_BACKSTOP = 2;
+}
+
+// What stops an envelope from being larger. Mirrors the binding_constraint
+// type.
+enum BindingConstraint {
+  BINDING_CONSTRAINT_UNSPECIFIED = 0;
+  // Nothing: the site has no cap in this direction.
+  BINDING_CONSTRAINT_NONE = 1;
+  // A customer's voltage would rise above the band.
+  BINDING_CONSTRAINT_VOLTAGE_HIGH = 2;
+  // A customer's voltage would fall below the band.
+  BINDING_CONSTRAINT_VOLTAGE_LOW = 3;
+  // The transformer would exceed its rating.
+  BINDING_CONSTRAINT_TRANSFORMER = 4;
+  // A conductor would exceed its current rating.
+  BINDING_CONSTRAINT_LINE = 5;
+  // The network could take more; every site is at its own cap.
+  BINDING_CONSTRAINT_SITE_CAP = 6;
+}
+
+// What an alert is about. Mirrors the alert_kind type.
+enum AlertKind {
+  ALERT_KIND_UNSPECIFIED = 0;
+  // A site exported more than its limit for longer than the grace period.
+  ALERT_KIND_CONSTRAINT_BREACH = 1;
+  // A device sent no reading for longer than the offline period.
+  ALERT_KIND_DEVICE_OFFLINE = 2;
+}
+
+// How serious an alert is. Mirrors the alert_severity type.
+enum AlertSeverity {
+  ALERT_SEVERITY_UNSPECIFIED = 0;
+  ALERT_SEVERITY_INFO = 1;
+  ALERT_SEVERITY_WARNING = 2;
+  ALERT_SEVERITY_CRITICAL = 3;
+}

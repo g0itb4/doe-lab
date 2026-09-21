@@ -137,6 +137,11 @@ secrets:
 # solver on the full feeder). Coverage must reach its floors without them;
 # `just test-go` runs everything.
 #
+# -coverpkg=./... counts a statement as covered whichever package's tests ran
+# it: the end-to-end tests in internal/server drive the controllers, the
+# services and protomap through the real interceptor chain, and that is where
+# most of their coverage comes from.
+#
 # Go unit tests with the race detector, then the per-package coverage gate
 cover-go:
     #!/usr/bin/env zsh
@@ -145,7 +150,7 @@ cover-go:
     cd apps/api
     mkdir -p coverage
     start=$EPOCHREALTIME
-    go test -short -race -coverprofile=coverage/unit.coverprofile ./... >coverage/unit.log 2>&1 \
+    go test -short -race -coverpkg=./... -coverprofile=coverage/unit.coverprofile ./... >coverage/unit.log 2>&1 \
       || { cat coverage/unit.log; exit 1 }
     go run ./cmd/covergate
     printf 'cover-go: %.1f s\n' $(( EPOCHREALTIME - start ))
@@ -153,6 +158,18 @@ cover-go:
 # every Go test of the offline tier, including the slow ones, with the race detector
 test-go:
     cd apps/api && go test -race ./...
+
+# Needs a container runtime: the tier runs against a throwaway TimescaleDB and
+# S3 gateway through testcontainers. Ryuk, the reaper, is off because podman
+# does not grant it the privileged container it wants; testutil.TestMain stops
+# the containers instead.
+#
+# the container tier: migrations, schema constraints, parity, repositories
+test-db:
+    cd apps/api && DOELAB_TEST_DB=1 TESTCONTAINERS_RYUK_DISABLED=true go test -count=1 ./internal/repo/... ./internal/testutil/...
+
+# everything: hooks on every file, both Go tiers, and the engine's time budget
+test: check test-go test-db bench
 
 # A plain build: timings mean nothing under the race detector or coverage.
 #

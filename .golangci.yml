@@ -71,7 +71,7 @@ linters:
     revive:
       rules:
         - name: exported
-          arguments: [checkPrivateReceivers, disableStutteringCheck]
+          arguments: [disableStutteringCheck]
         - name: package-comments
         - name: context-as-argument
         - name: error-return
@@ -133,6 +133,8 @@ linters:
         service:
           files:
             - "**/internal/service/**"
+            # Tests run a service against the in-memory store.
+            - "!**/*_test.go"
           deny:
             - pkg: doelab/api/gen
               desc: services take and return domain types, never proto messages
@@ -151,6 +153,7 @@ linters:
         controller:
           files:
             - "**/internal/controller/**"
+            - "!**/*_test.go"
           deny:
             - pkg: doelab/api/internal/repo
               desc: controllers call services, never a repository

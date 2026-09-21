@@ -1,0 +1,122 @@
+syntax = "proto3";
+
+package doelab.v1;
+
+import "buf/validate/validate.proto";
+import "doelab/v1/common.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+
+// DeviceService manages the DER behind each site.
+service DeviceService {
+  rpc GetDevice(GetDeviceRequest) returns (GetDeviceResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // Needs the operator scope.
+  rpc CreateDevice(CreateDeviceRequest) returns (CreateDeviceResponse);
+  // Mutable field: rated_w. Needs the operator scope.
+  rpc UpdateDevice(UpdateDeviceRequest) returns (UpdateDeviceResponse);
+  // Soft delete. Needs the operator scope.
+  rpc DeleteDevice(DeleteDeviceRequest) returns (DeleteDeviceResponse);
+}
+
+// A distributed energy resource behind a site: an inverter, a battery or an
+// EV charger. Mirrors the devices table. deleted_at is not on the wire.
+message Device {
+  string id = 1 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  string site_id = 2 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  DerType der_type = 3 [(buf.validate.field).enum.defined_only = true];
+  // Nameplate power.
+  double rated_w = 4 [(buf.validate.field).double.gte = 0];
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+message GetDeviceRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message GetDeviceResponse {
+  Device device = 1;
+}
+
+message ListDevicesRequest {
+  // Only devices of this site.
+  optional string site_id = 1 [(buf.validate.field).string.uuid = true];
+  // Only devices of this type.
+  optional DerType der_type = 2 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: [0]
+  }];
+  int32 page_size = 3 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 500
+  }];
+  string page_token = 4 [(buf.validate.field).string.max_len = 1024];
+}
+
+message ListDevicesResponse {
+  repeated Device devices = 1;
+  string next_page_token = 2;
+}
+
+message CreateDeviceRequest {
+  // id, created_at and updated_at are set by the server.
+  Device device = 1 [(buf.validate.field).required = true];
+
+  option (buf.validate.message).cel = {
+    id: "create_device.required"
+    message: "site_id, der_type and a positive rated_w are required"
+    expression: "this.device.site_id != '' && this.device.der_type != 0 && this.device.rated_w > 0.0"
+  };
+  option (buf.validate.message).cel = {
+    id: "create_device.server_set"
+    message: "id is set by the server"
+    expression: "this.device.id == ''"
+  };
+}
+
+message CreateDeviceResponse {
+  Device device = 1;
+}
+
+message UpdateDeviceRequest {
+  Device device = 1 [(buf.validate.field).required = true];
+  // Allowed path: rated_w.
+  google.protobuf.FieldMask update_mask = 2 [(buf.validate.field).required = true];
+
+  option (buf.validate.message).cel = {
+    id: "update_device.id"
+    message: "device.id is required"
+    expression: "this.device.id != ''"
+  };
+  option (buf.validate.message).cel = {
+    id: "update_device.mask"
+    message: "update_mask must be exactly: rated_w"
+    expression: "this.update_mask.paths == ['rated_w']"
+  };
+  option (buf.validate.message).cel = {
+    id: "update_device.rated_w"
+    message: "rated_w must be positive"
+    expression: "this.device.rated_w > 0.0"
+  };
+}
+
+message UpdateDeviceResponse {
+  Device device = 1;
+}
+
+message DeleteDeviceRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message DeleteDeviceResponse {}

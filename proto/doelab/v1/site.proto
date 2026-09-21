@@ -1,0 +1,207 @@
+syntax = "proto3";
+
+package doelab.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/field_mask.proto";
+import "google/protobuf/timestamp.proto";
+
+// SiteService manages customer connection points and reads their profiles.
+service SiteService {
+  rpc GetSite(GetSiteRequest) returns (GetSiteResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  rpc ListSites(ListSitesRequest) returns (ListSitesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // Needs the operator scope.
+  rpc CreateSite(CreateSiteRequest) returns (CreateSiteResponse);
+  // Mutable fields: pv_kw, inverter_kva, export_cap_w, import_cap_w,
+  // has_battery, battery_kwh, has_ev. Needs the operator scope.
+  rpc UpdateSite(UpdateSiteRequest) returns (UpdateSiteResponse);
+  // Soft delete: the site disappears from reads, and its NMI is never reused.
+  // Needs the operator scope.
+  rpc DeleteSite(DeleteSiteRequest) returns (DeleteSiteResponse);
+
+  // The half-hourly load and PV of a site: the forecast.
+  rpc ListSiteProfiles(ListSiteProfilesRequest) returns (ListSiteProfilesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+}
+
+// A customer connection point: single phase, between one phase and the
+// neutral of a bus. Mirrors the sites table. deleted_at is not on the wire: a
+// deleted site is not returned.
+message Site {
+  string id = 1 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // National Metering Identifier with its checksum digit: 11 characters. The
+  // checksum is verified by the service and by the schema.
+  string nmi = 2 [
+    (buf.validate.field).string.pattern = "^[A-Z0-9]{10}[0-9]$",
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  string feeder_id = 3 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  string node_id = 4 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // The connection's name in the source dataset.
+  string name = 5 [(buf.validate.field).string.max_len = 200];
+  // The phase the site is connected to: 1, 2 or 3.
+  int32 phase = 6 [
+    (buf.validate.field).int32 = {
+      gte: 1
+      lte: 3
+    },
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // Installed PV capacity. 0 for a site with no PV.
+  double pv_kw = 7 [(buf.validate.field).double.gte = 0];
+  double inverter_kva = 8 [(buf.validate.field).double.gte = 0];
+  // The largest export limit the site may be given. 0 means the site is
+  // passive: it gets no export envelope and is forecast instead.
+  double export_cap_w = 9 [(buf.validate.field).double.gte = 0];
+  // The largest import limit the site may be given. 0 means no import
+  // envelope.
+  double import_cap_w = 10 [(buf.validate.field).double.gte = 0];
+  bool has_battery = 11;
+  // Set exactly when has_battery is true.
+  optional double battery_kwh = 12 [(buf.validate.field).double.gt = 0];
+  bool has_ev = 13;
+  // The Ausgrid Solar Home customer (1 to 300) whose data this site replays.
+  optional int32 profile_customer = 14 [(buf.validate.field).int32 = {
+    gte: 1
+    lte: 300
+  }];
+  google.protobuf.Timestamp created_at = 15;
+  google.protobuf.Timestamp updated_at = 16;
+
+  option (buf.validate.message).cel = {
+    id: "site.battery_sized"
+    message: "battery_kwh must be set exactly when has_battery is true"
+    expression: "this.has_battery == has(this.battery_kwh)"
+  };
+}
+
+// One half-hour of a site's load and PV. Mirrors the site_profiles table.
+message SiteProfile {
+  string site_id = 1;
+  // Start of the half-hour interval, in the profile year.
+  google.protobuf.Timestamp ts = 2;
+  // Average general consumption over the interval.
+  double load_w = 3;
+  // Average gross PV generation over the interval, before pv_scale.
+  double pv_w = 4;
+  // Average controlled load (off-peak hot water) over the interval.
+  double controlled_load_w = 5;
+}
+
+message GetSiteRequest {
+  // The site's id or its NMI: exactly one.
+  oneof key {
+    option (buf.validate.oneof).required = true;
+    string id = 1 [(buf.validate.field).string.uuid = true];
+    string nmi = 2 [(buf.validate.field).string.pattern = "^[A-Z0-9]{10}[0-9]$"];
+  }
+}
+
+message GetSiteResponse {
+  Site site = 1;
+}
+
+message ListSitesRequest {
+  string feeder_id = 1 [(buf.validate.field).string.uuid = true];
+  // Only sites on this phase.
+  optional int32 phase = 2 [(buf.validate.field).int32 = {
+    gte: 1
+    lte: 3
+  }];
+  int32 page_size = 3 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 500
+  }];
+  string page_token = 4 [(buf.validate.field).string.max_len = 1024];
+}
+
+message ListSitesResponse {
+  repeated Site sites = 1;
+  string next_page_token = 2;
+}
+
+message CreateSiteRequest {
+  // id, created_at and updated_at are set by the server.
+  Site site = 1 [(buf.validate.field).required = true];
+
+  option (buf.validate.message).cel = {
+    id: "create_site.required"
+    message: "nmi, feeder_id, node_id, name and phase are required"
+    expression: "this.site.nmi != '' && this.site.feeder_id != '' && this.site.node_id != '' && this.site.name != '' && this.site.phase != 0"
+  };
+  option (buf.validate.message).cel = {
+    id: "create_site.server_set"
+    message: "id is set by the server"
+    expression: "this.site.id == ''"
+  };
+}
+
+message CreateSiteResponse {
+  Site site = 1;
+}
+
+message UpdateSiteRequest {
+  Site site = 1 [(buf.validate.field).required = true];
+  // Allowed paths: pv_kw, inverter_kva, export_cap_w, import_cap_w,
+  // has_battery, battery_kwh, has_ev.
+  google.protobuf.FieldMask update_mask = 2 [(buf.validate.field).required = true];
+
+  option (buf.validate.message).cel = {
+    id: "update_site.id"
+    message: "site.id is required"
+    expression: "this.site.id != ''"
+  };
+  option (buf.validate.message).cel = {
+    id: "update_site.mask"
+    message: "update_mask must name at least one of: pv_kw, inverter_kva, export_cap_w, import_cap_w, has_battery, battery_kwh, has_ev"
+    expression: "size(this.update_mask.paths) > 0 && this.update_mask.paths.all(p, p in ['pv_kw', 'inverter_kva', 'export_cap_w', 'import_cap_w', 'has_battery', 'battery_kwh', 'has_ev'])"
+  };
+}
+
+message UpdateSiteResponse {
+  Site site = 1;
+}
+
+message DeleteSiteRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message DeleteSiteResponse {}
+
+message ListSiteProfilesRequest {
+  string site_id = 1 [(buf.validate.field).string.uuid = true];
+  // Start of the range, inclusive.
+  google.protobuf.Timestamp from = 2 [(buf.validate.field).required = true];
+  // End of the range, exclusive.
+  google.protobuf.Timestamp to = 3 [(buf.validate.field).required = true];
+  int32 page_size = 4 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 2000
+  }];
+  string page_token = 5 [(buf.validate.field).string.max_len = 1024];
+
+  option (buf.validate.message).cel = {
+    id: "list_site_profiles.range"
+    message: "to must be after from"
+    expression: "this.to > this.from"
+  };
+}
+
+message ListSiteProfilesResponse {
+  repeated SiteProfile site_profiles = 1;
+  string next_page_token = 2;
+}
