@@ -21,7 +21,7 @@ SELECT create_hypertable('site_profiles', by_range('ts', INTERVAL '30 days'));
 
 COMMENT ON TABLE site_profiles IS
   'Half-hourly load and PV of each site, imported from the Ausgrid Solar Home data. It is the forecast the engine works from and what the simulated devices replay.';
-COMMENT ON COLUMN site_profiles.ts IS 'Start of the half-hour interval, in the profile year (1 July 2012 to 30 June 2013).';
+COMMENT ON COLUMN site_profiles.ts IS 'Start of the half-hour interval, in the profile year (1 July 2010 to 30 June 2011, Sydney time), stored in UTC.';
 COMMENT ON COLUMN site_profiles.load_w IS 'Average general consumption over the interval.';
 COMMENT ON COLUMN site_profiles.pv_w IS 'Average gross PV generation over the interval, before pv_scale.';
 COMMENT ON COLUMN site_profiles.controlled_load_w IS 'Average controlled load (off-peak hot water) over the interval.';

@@ -124,3 +124,15 @@ func page(p domain.Page) domain.Page {
 	}
 	return p
 }
+
+// ObjectStore keeps files: the raw datasets an import read, and the exports a
+// run produces. It is an S3 bucket in every deployment.
+type ObjectStore interface {
+	// Put stores body under key, replacing what was there.
+	Put(ctx context.Context, key, contentType string, body []byte) error
+	// Get returns the object at key, or domain.ErrNotFound.
+	Get(ctx context.Context, key string) ([]byte, error)
+	// PresignGet returns a URL that lets anyone download the object at key
+	// until ttl has passed, with no credentials.
+	PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error)
+}

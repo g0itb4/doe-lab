@@ -185,3 +185,13 @@ bench:
 fixtures:
     cd apps/api && go test ./internal/engine/dss -run TestLV10Network -update
     .venv-tools/bin/python tools/opendss_snapshots.py
+
+# ── demo data ────────────────────────────────────────────────────────────────
+
+# Needs `just up` and `just data`. Safe to run again: it changes nothing.
+#
+# load the LV10 feeder and a year of Ausgrid profiles into the dev database
+import *args:
+    cd apps/api && DOELAB_ENV=development go run ./cmd/import \
+      -feeder ../../data/raw/csiro/LV/LV10_223bus \
+      -ausgrid ../../data/raw/ausgrid/Ausgrid_solar_home_data.zip "$@"
