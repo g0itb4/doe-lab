@@ -142,13 +142,13 @@ func TestSiteCreate(t *testing.T) {
 	wantViolation(t, "an NMI with the wrong checksum", err, "checksum")
 	_, err = create(operatorToken, change(func(s *doelabv1.Site) { s.NodeId = unknownID }))
 	wantCode(t, "an unknown node", err, connect.CodeFailedPrecondition)
-	other := repotest.Seed(t, a.store, "LV20", 11)
+	other := repotest.Seed(t, a.Store, "LV20", 11)
 	_, err = create(operatorToken, change(func(s *doelabv1.Site) { s.NodeId = other.HouseA.ID.String() }))
 	wantCode(t, "a node of another feeder", err, connect.CodeFailedPrecondition)
 
 	_, err = create("", change(func(*doelabv1.Site) {}))
 	wantCode(t, "anonymous", err, connect.CodeUnauthenticated)
-	_, err = create(a.tokens.DeviceToken(a.fixture.SiteA.NMI), change(func(*doelabv1.Site) {}))
+	_, err = create(a.Tokens.DeviceToken(a.fixture.SiteA.NMI), change(func(*doelabv1.Site) {}))
 	wantCode(t, "a device", err, connect.CodePermissionDenied)
 }
 
@@ -238,7 +238,7 @@ func TestSiteDelete(t *testing.T) {
 func TestSiteProfiles(t *testing.T) {
 	t.Parallel()
 	a := newAPI(t)
-	noErr(t, "seed profiles", a.store.ReplaceSiteProfiles(repotest.Ctx(), a.fixture.SiteA.ID, repotest.Profiles(48, 100)))
+	noErr(t, "seed profiles", a.Store.ReplaceSiteProfiles(repotest.Ctx(), a.fixture.SiteA.ID, repotest.Profiles(48, 100)))
 	c := a.sites("")
 	siteID := a.fixture.SiteA.ID.String()
 	from, to := timestamppb.New(repotest.Day.Add(time.Hour)), timestamppb.New(repotest.Day.Add(3*time.Hour))

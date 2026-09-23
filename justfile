@@ -137,10 +137,15 @@ secrets:
 # solver on the full feeder). Coverage must reach its floors without them;
 # `just test-go` runs everything.
 #
-# -coverpkg=./... counts a statement as covered whichever package's tests ran
-# it: the end-to-end tests in internal/server drive the controllers, the
-# services and protomap through the real interceptor chain, and that is where
-# most of their coverage comes from.
+# -coverpkg counts a statement as covered whichever package's tests ran it:
+# the end-to-end tests in internal/server drive the controllers, the services
+# and protomap through the real interceptor chain, and that is where most of
+# their coverage comes from.
+#
+# The engine is measured on its own, by its own tests. Counting it from other
+# packages' tests as well would instrument its inner loops in every test
+# binary that solves a power flow, and under the race detector that makes a
+# two-second test take a minute.
 #
 # Go unit tests with the race detector, then the per-package coverage gate
 cover-go:
@@ -150,8 +155,12 @@ cover-go:
     cd apps/api
     mkdir -p coverage
     start=$EPOCHREALTIME
-    go test -short -race -coverpkg=./... -coverprofile=coverage/unit.coverprofile ./... >coverage/unit.log 2>&1 \
+    rest=(${(f)"$(go list ./... | grep -vE '/internal/engine(/|$)')"})
+    go test -short -race -coverprofile=coverage/engine.coverprofile ./internal/engine/... >coverage/unit.log 2>&1 \
       || { cat coverage/unit.log; exit 1 }
+    go test -short -race -coverpkg=${(j:,:)rest} -coverprofile=coverage/rest.coverprofile $rest >coverage/unit.log 2>&1 \
+      || { cat coverage/unit.log; exit 1 }
+    cat coverage/engine.coverprofile coverage/rest.coverprofile >coverage/unit.coverprofile
     go run ./cmd/covergate
     printf 'cover-go: %.1f s\n' $(( EPOCHREALTIME - start ))
 
@@ -166,7 +175,7 @@ test-go:
 #
 # the container tier: migrations, schema constraints, parity, repositories
 test-db:
-    cd apps/api && DOELAB_TEST_DB=1 TESTCONTAINERS_RYUK_DISABLED=true go test -count=1 ./internal/repo/... ./internal/testutil/...
+    cd apps/api && DOELAB_TEST_DB=1 TESTCONTAINERS_RYUK_DISABLED=true go test -count=1 -race ./internal/repo/... ./internal/testutil/...
 
 # everything: hooks on every file, both Go tiers, and the engine's time budget
 test: check test-go test-db bench
@@ -195,3 +204,23 @@ import *args:
     cd apps/api && DOELAB_ENV=development go run ./cmd/import \
       -feeder ../../data/raw/csiro/LV/LV10_223bus \
       -ausgrid ../../data/raw/ausgrid/Ausgrid_solar_home_data.zip "$@"
+
+# ── run ──────────────────────────────────────────────────────────────────────
+
+# Feeder time in development: sixty times the wall clock, anchored at the start
+# of today (UTC), so a day on the feeder passes in 24 minutes.
+dev_env := "DOELAB_ENV=development DEMO_CLOCK_SPEED=60 DEMO_CLOCK_ANCHOR=" + `date -u +%Y-%m-%dT00:00:00Z`
+
+# the API on :3100, restarted when a Go file changes (needs `just up`)
+api: _kill
+    cd apps/api && {{dev_env}} go tool wgo run ./cmd/api
+
+# Needs the API up, and `just import` done.
+#
+# one engine run: a day of envelopes for every enrolled site
+engine *args:
+    cd apps/api && {{dev_env}} go run ./cmd/engine -once "$@"
+
+# the engine on its schedule: a run now, and another every two intervals
+engine-loop *args:
+    cd apps/api && {{dev_env}} go run ./cmd/engine "$@"

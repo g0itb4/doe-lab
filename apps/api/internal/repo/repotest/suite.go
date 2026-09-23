@@ -3,6 +3,7 @@ package repotest
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -24,6 +25,9 @@ func Run(t *testing.T, newStore func(t *testing.T) service.Store) {
 		"Devices":         testDevices,
 		"EnvelopeConfigs": testEnvelopeConfigs,
 		"SiteProfiles":    testSiteProfiles,
+		"EnvelopeRuns":    testEnvelopeRuns,
+		"Envelopes":       testEnvelopes,
+		"IdempotencyKeys": testIdempotencyKeys,
 		"Transactions":    testTransactions,
 		"PageTokens":      testPageTokens,
 	}
@@ -560,6 +564,13 @@ func testPageTokens(t *testing.T, s service.Store) {
 	_, _, err = s.ListSiteProfiles(ctx, f.SiteA.ID, Day, Day.Add(time.Hour), bad)
 	wantErr(t, "profiles", err, domain.ErrInvalid)
 
+	_, _, err = s.ListEnvelopeRuns(ctx, f.Feeder.ID, nil, bad)
+	wantErr(t, "runs", err, domain.ErrInvalid)
+	_, _, err = s.ListEnvelopes(ctx, f.SiteA.ID, Day, Day.Add(time.Hour), false, bad)
+	wantErr(t, "envelopes", err, domain.ErrInvalid)
+	_, _, err = s.ListRunEnvelopes(ctx, uuid.New(), bad)
+	wantErr(t, "run envelopes", err, domain.ErrInvalid)
+
 	// Well-formed tokens that hold the wrong kind of key: made for one list,
 	// sent to another.
 	foreign := domain.Page{Size: 10, Token: pagetoken.Encode("abc")}
@@ -567,4 +578,291 @@ func testPageTokens(t *testing.T, s service.Store) {
 	wantErr(t, "a config token that is not a version", err, domain.ErrInvalid)
 	_, _, err = s.ListSiteProfiles(ctx, f.SiteA.ID, Day, Day.Add(time.Hour), foreign)
 	wantErr(t, "a profile token that is not a time", err, domain.ErrInvalid)
+	pair := domain.Page{Size: 10, Token: pagetoken.Encode("abc", "def")}
+	_, _, err = s.ListEnvelopeRuns(ctx, f.Feeder.ID, nil, pair)
+	wantErr(t, "a run token that is not a time", err, domain.ErrInvalid)
+	_, _, err = s.ListEnvelopes(ctx, f.SiteA.ID, Day, Day.Add(time.Hour), false, pair)
+	wantErr(t, "an envelope token that is not a time", err, domain.ErrInvalid)
+	_, _, err = s.ListRunEnvelopes(ctx, uuid.New(), pair)
+	wantErr(t, "a run-envelope token that is not a time", err, domain.ErrInvalid)
+}
+
+// NewRun returns a run ready to create, covering the profile day.
+func NewRun(feederID, configID uuid.UUID, key string) domain.EnvelopeRun {
+	return domain.EnvelopeRun{
+		FeederID: feederID, EnvelopeConfigID: configID, IdempotencyKey: key,
+		HorizonFrom: Day, HorizonTo: Day.Add(24 * time.Hour), EngineVersion: "test",
+	}
+}
+
+// Envelope returns an engine envelope ready to store: the half hour that
+// starts slot half hours into Day.
+func Envelope(siteID, runID uuid.UUID, slot int, exportW float64) domain.Envelope {
+	from := Day.Add(time.Duration(slot) * 30 * time.Minute)
+	return domain.Envelope{
+		SiteID: siteID, ValidFrom: from, ValidTo: from.Add(30 * time.Minute),
+		ExportLimitW: exportW, ImportLimitW: 7000,
+		Source: domain.SourceEngine, EnvelopeRunID: &runID,
+		ExportBinding: domain.BindingVoltageHigh, ExportBindingElement: "Ld1_LOAD_A",
+		ImportBinding: domain.BindingSiteCap,
+	}
+}
+
+func testEnvelopeRuns(t *testing.T, s service.Store) {
+	ctx := Ctx()
+	f := Seed(t, s, "LV10", 1)
+	other := Seed(t, s, "LV20", 11)
+	config, err := s.CreateEnvelopeConfig(ctx, Config(f.Feeder.ID))
+	noErr(t, "config", err)
+
+	first, created, err := s.CreateEnvelopeRun(ctx, NewRun(f.Feeder.ID, config.ID, "run-0001"))
+	noErr(t, "create", err)
+	if !created || first.ID == uuid.Nil || first.Status != domain.RunRunning || first.CompletedAt != nil ||
+		first.DurationMS != nil || first.Error != nil || first.StartedAt.IsZero() || first.EnvelopeCount != 0 {
+		t.Errorf("first = %+v, created %v", first, created)
+	}
+
+	// The same key again creates nothing and returns the first run.
+	again, created, err := s.CreateEnvelopeRun(ctx, NewRun(f.Feeder.ID, config.ID, "run-0001"))
+	noErr(t, "create again", err)
+	if created || again.ID != first.ID {
+		t.Errorf("the same key created run %s (created %v), want %s", again.ID, created, first.ID)
+	}
+
+	// A config of another feeder.
+	_, _, err = s.CreateEnvelopeRun(ctx, NewRun(other.Feeder.ID, config.ID, "run-other"))
+	wantErr(t, "a run with another feeder's config", err, domain.ErrFailedPrecondition)
+	inverted := NewRun(f.Feeder.ID, config.ID, "run-inverted")
+	inverted.HorizonFrom, inverted.HorizonTo = inverted.HorizonTo, inverted.HorizonFrom
+	_, _, err = s.CreateEnvelopeRun(ctx, inverted)
+	wantErr(t, "an inverted horizon", err, domain.ErrInvalid)
+
+	noErr(t, "count", s.AddEnvelopeRunCount(ctx, first.ID, 94))
+	noErr(t, "count", s.AddEnvelopeRunCount(ctx, first.ID, 6))
+
+	done, err := s.CompleteEnvelopeRun(ctx, first.ID, service.RunResult{
+		Status: domain.RunCompleted, DurationMS: 241, SiteCount: 94, IntervalCount: 48,
+	})
+	noErr(t, "complete", err)
+	if done.Status != domain.RunCompleted || done.CompletedAt == nil || *done.DurationMS != 241 ||
+		done.SiteCount != 94 || done.IntervalCount != 48 || done.EnvelopeCount != 100 || done.Error != nil {
+		t.Errorf("completed = %+v", done)
+	}
+	_, err = s.CompleteEnvelopeRun(ctx, first.ID, service.RunResult{Status: domain.RunCompleted})
+	wantErr(t, "complete a finished run", err, domain.ErrFailedPrecondition)
+	_, err = s.CompleteEnvelopeRun(ctx, uuid.New(), service.RunResult{Status: domain.RunCompleted})
+	wantErr(t, "complete an unknown run", err, domain.ErrNotFound)
+
+	failed, _, err := s.CreateEnvelopeRun(ctx, NewRun(f.Feeder.ID, config.ID, "run-0002"))
+	noErr(t, "create a second run", err)
+	_, err = s.CompleteEnvelopeRun(ctx, failed.ID, service.RunResult{Status: domain.RunFailed})
+	wantErr(t, "fail a run with no error text", err, domain.ErrInvalid)
+	reason := "no convergence at 12:30"
+	failed, err = s.CompleteEnvelopeRun(ctx, failed.ID, service.RunResult{Status: domain.RunFailed, DurationMS: 5, Error: &reason})
+	noErr(t, "fail", err)
+	if failed.Status != domain.RunFailed || *failed.Error != reason {
+		t.Errorf("failed = %+v", failed)
+	}
+	running, _, err := s.CreateEnvelopeRun(ctx, NewRun(f.Feeder.ID, config.ID, "run-0003"))
+	noErr(t, "create a third run", err)
+
+	got, err := s.GetEnvelopeRun(ctx, first.ID)
+	noErr(t, "get", err)
+	if got.ID != first.ID || got.Status != domain.RunCompleted {
+		t.Errorf("get = %+v", got)
+	}
+	_, err = s.GetEnvelopeRun(ctx, uuid.New())
+	wantErr(t, "get an unknown run", err, domain.ErrNotFound)
+
+	// Newest first, in two pages, then by status.
+	page1, next, err := s.ListEnvelopeRuns(ctx, f.Feeder.ID, nil, domain.Page{Size: 2})
+	noErr(t, "list page 1", err)
+	page2, end, err := s.ListEnvelopeRuns(ctx, f.Feeder.ID, nil, domain.Page{Size: 2, Token: next})
+	noErr(t, "list page 2", err)
+	if len(page1) != 2 || page1[0].ID != running.ID || page1[1].ID != failed.ID || len(page2) != 1 || page2[0].ID != first.ID || end != "" {
+		t.Errorf("pages of %d and %d runs, end %q", len(page1), len(page2), end)
+	}
+	onlyFailed, _, err := s.ListEnvelopeRuns(ctx, f.Feeder.ID, Ptr(domain.RunFailed), domain.Page{Size: 10})
+	noErr(t, "list failed", err)
+	if len(onlyFailed) != 1 || onlyFailed[0].ID != failed.ID {
+		t.Errorf("failed runs = %d", len(onlyFailed))
+	}
+	elsewhere, _, err := s.ListEnvelopeRuns(ctx, other.Feeder.ID, nil, domain.Page{Size: 10})
+	noErr(t, "list the other feeder", err)
+	if len(elsewhere) != 0 {
+		t.Errorf("the other feeder lists %d runs", len(elsewhere))
+	}
+	wantErr(t, "count on an unknown run", ignoreMissing(s.AddEnvelopeRunCount(ctx, uuid.New(), 1)), nil)
+}
+
+// ignoreMissing accepts either answer to a write on a row that is not there:
+// Postgres updates nothing and says nothing, the in-memory store says "not
+// found". No caller depends on which.
+func ignoreMissing(err error) error {
+	if errors.Is(err, domain.ErrNotFound) {
+		return nil
+	}
+	return err
+}
+
+func testEnvelopes(t *testing.T, s service.Store) {
+	ctx := Ctx()
+	f := Seed(t, s, "LV10", 1)
+	config, err := s.CreateEnvelopeConfig(ctx, Config(f.Feeder.ID))
+	noErr(t, "config", err)
+	run, _, err := s.CreateEnvelopeRun(ctx, NewRun(f.Feeder.ID, config.ID, "run-0001"))
+	noErr(t, "run", err)
+	a, b := f.SiteA.ID, f.SiteB.ID
+
+	// Four half hours for site A and two for site B.
+	stored, superseded, err := s.ReplaceEnvelopes(ctx, []domain.Envelope{
+		Envelope(a, run.ID, 0, 1000), Envelope(a, run.ID, 1, 1100), Envelope(a, run.ID, 2, 1200), Envelope(a, run.ID, 3, 1300),
+		Envelope(b, run.ID, 0, 2000), Envelope(b, run.ID, 1, 2100),
+	})
+	noErr(t, "store", err)
+	if len(stored) != 6 || superseded != 0 || stored[0].ID == uuid.Nil || stored[0].ID == stored[1].ID || stored[0].CreatedAt.IsZero() {
+		t.Fatalf("stored %d, superseded %d, first %+v", len(stored), superseded, stored[0])
+	}
+
+	// The envelope in force: from <= at < to.
+	at := func(minutes int) time.Time { return Day.Add(time.Duration(minutes) * time.Minute) }
+	for minutes, want := range map[int]float64{0: 1000, 29: 1000, 30: 1100, 119: 1300} {
+		got, err := s.GetCurrentEnvelope(ctx, a, at(minutes))
+		noErr(t, "current", err)
+		if got.ExportLimitW != want {
+			t.Errorf("at %d minutes: %v W, want %v", minutes, got.ExportLimitW, want)
+		}
+	}
+	got, err := s.GetCurrentEnvelope(ctx, a, at(45))
+	noErr(t, "current", err)
+	if got.Source != domain.SourceEngine || *got.EnvelopeRunID != run.ID || got.BackstopEventID != nil || got.SupersededAt != nil ||
+		got.ExportBinding != domain.BindingVoltageHigh || got.ExportBindingElement != "Ld1_LOAD_A" || got.ImportBinding != domain.BindingSiteCap ||
+		got.ImportLimitW != 7000 || !got.ValidTo.Equal(at(60)) {
+		t.Errorf("current = %+v", got)
+	}
+	_, err = s.GetCurrentEnvelope(ctx, a, at(120))
+	wantErr(t, "after the last interval", err, domain.ErrNotFound)
+	_, err = s.GetCurrentEnvelope(ctx, a, at(-1))
+	wantErr(t, "before the first interval", err, domain.ErrNotFound)
+
+	// A newer run replaces two of site A's intervals. The old rows are kept.
+	second, _, err := s.CreateEnvelopeRun(ctx, NewRun(f.Feeder.ID, config.ID, "run-0002"))
+	noErr(t, "second run", err)
+	_, superseded, err = s.ReplaceEnvelopes(ctx, []domain.Envelope{
+		Envelope(a, second.ID, 1, 1150), Envelope(a, second.ID, 2, 1250), Envelope(a, second.ID, 4, 1450),
+	})
+	noErr(t, "replace", err)
+	if superseded != 2 {
+		t.Errorf("superseded %d, want 2: only the intervals that overlap", superseded)
+	}
+	got, err = s.GetCurrentEnvelope(ctx, a, at(45))
+	noErr(t, "current after replace", err)
+	if got.ExportLimitW != 1150 || *got.EnvelopeRunID != second.ID {
+		t.Errorf("current after replace = %+v", got)
+	}
+
+	active, _, err := s.ListEnvelopes(ctx, a, Day, at(24*60), false, domain.Page{Size: 100})
+	noErr(t, "list active", err)
+	if len(active) != 5 || active[1].ExportLimitW != 1150 || active[4].ExportLimitW != 1450 {
+		t.Errorf("%d active envelopes", len(active))
+	}
+	all, next, err := s.ListEnvelopes(ctx, a, Day, at(24*60), true, domain.Page{Size: 4})
+	noErr(t, "list all, page 1", err)
+	rest, end, err := s.ListEnvelopes(ctx, a, Day, at(24*60), true, domain.Page{Size: 4, Token: next})
+	noErr(t, "list all, page 2", err)
+	if len(all) != 4 || len(rest) != 3 || end != "" {
+		t.Fatalf("pages of %d and %d, end %q; want 7 rows in all", len(all), len(rest), end)
+	}
+	// In time order; the superseded row of an interval sorts before its
+	// successor, which was stored later.
+	whole := slices.Concat(all, rest)
+	if whole[1].ExportLimitW != 1100 || whole[1].SupersededAt == nil || whole[2].ExportLimitW != 1150 || whole[2].SupersededAt != nil {
+		t.Errorf("the 00:30 interval lists as %v then %v", whole[1].ExportLimitW, whole[2].ExportLimitW)
+	}
+	ranged, _, err := s.ListEnvelopes(ctx, a, at(30), at(90), false, domain.Page{Size: 100})
+	noErr(t, "list a range", err)
+	if len(ranged) != 2 || !ranged[0].ValidFrom.Equal(at(30)) || !ranged[1].ValidFrom.Equal(at(60)) {
+		t.Errorf("range [00:30, 01:30) = %d envelopes", len(ranged))
+	}
+
+	// What a run published, superseded or not, in time then site order.
+	published, next, err := s.ListRunEnvelopes(ctx, run.ID, domain.Page{Size: 4})
+	noErr(t, "run envelopes page 1", err)
+	more, end, err := s.ListRunEnvelopes(ctx, run.ID, domain.Page{Size: 4, Token: next})
+	noErr(t, "run envelopes page 2", err)
+	if len(published) != 4 || len(more) != 2 || end != "" || !published[0].ValidFrom.Equal(at(0)) || !published[1].ValidFrom.Equal(at(0)) || published[0].SiteID == published[1].SiteID {
+		t.Errorf("run envelopes: pages of %d and %d", len(published), len(more))
+	}
+
+	// The feeder's active envelopes over a range: two sites at 00:00, in NMI
+	// order.
+	feeder, err := s.ListFeederEnvelopes(ctx, f.Feeder.ID, Day, at(60))
+	noErr(t, "feeder envelopes", err)
+	if len(feeder) != 4 || feeder[0].SiteID != a || feeder[1].SiteID != b || feeder[2].ExportLimitW != 1150 {
+		t.Errorf("feeder envelopes = %d", len(feeder))
+	}
+
+	// What the schema refuses.
+	bad := func(change func(*domain.Envelope)) error {
+		e := Envelope(b, run.ID, 10, 500)
+		change(&e)
+		_, _, err := s.ReplaceEnvelopes(ctx, []domain.Envelope{e})
+		return err
+	}
+	wantErr(t, "a negative limit", bad(func(e *domain.Envelope) { e.ExportLimitW = -1 }), domain.ErrInvalid)
+	wantErr(t, "a 20-minute interval", bad(func(e *domain.Envelope) { e.ValidTo = e.ValidFrom.Add(20 * time.Minute) }), domain.ErrInvalid)
+	wantErr(t, "a start off the grid", bad(func(e *domain.Envelope) {
+		e.ValidFrom, e.ValidTo = e.ValidFrom.Add(7*time.Minute), e.ValidTo.Add(7*time.Minute)
+	}), domain.ErrInvalid)
+	wantErr(t, "an engine envelope with no run", bad(func(e *domain.Envelope) { e.EnvelopeRunID = nil }), domain.ErrInvalid)
+	wantErr(t, "a backstop envelope with a run", bad(func(e *domain.Envelope) { e.Source = domain.SourceBackstop }), domain.ErrInvalid)
+	wantErr(t, "an unknown site", bad(func(e *domain.Envelope) { e.SiteID = uuid.New() }), domain.ErrFailedPrecondition)
+	wantErr(t, "an unknown run", bad(func(e *domain.Envelope) { e.EnvelopeRunID = Ptr(uuid.New()) }), domain.ErrFailedPrecondition)
+	_, _, err = s.ReplaceEnvelopes(ctx, []domain.Envelope{Envelope(b, run.ID, 12, 1), Envelope(b, run.ID, 12, 2)})
+	wantErr(t, "one interval twice in a batch", err, domain.ErrAlreadyExists)
+}
+
+func testIdempotencyKeys(t *testing.T, s service.Store) {
+	ctx := Ctx()
+	f := Seed(t, s, "LV10", 1)
+	config, err := s.CreateEnvelopeConfig(ctx, Config(f.Feeder.ID))
+	noErr(t, "config", err)
+	run, _, err := s.CreateEnvelopeRun(ctx, NewRun(f.Feeder.ID, config.ID, "run-0001"))
+	noErr(t, "run", err)
+
+	hash := make([]byte, 32)
+	hash[0] = 7
+	key := domain.IdempotencyKey{Scope: "publish_envelopes", Key: "batch-0001", RequestHash: hash, EnvelopeRunID: &run.ID}
+	held, claimed, err := s.ClaimIdempotencyKey(ctx, key)
+	noErr(t, "claim", err)
+	if !claimed || held.Key != "batch-0001" || held.CreatedAt.IsZero() || !held.ExpiresAt.After(held.CreatedAt) || *held.EnvelopeRunID != run.ID {
+		t.Errorf("claimed = %+v, %v", held, claimed)
+	}
+
+	// Taken: the holder comes back, with the hash of the first request.
+	other := key
+	other.RequestHash = make([]byte, 32)
+	held, claimed, err = s.ClaimIdempotencyKey(ctx, other)
+	noErr(t, "claim again", err)
+	if claimed || held.RequestHash[0] != 7 {
+		t.Errorf("a taken key: claimed %v, hash %v", claimed, held.RequestHash[:2])
+	}
+
+	// The same key in another scope is another key.
+	elsewhere := key
+	elsewhere.Scope, elsewhere.EnvelopeRunID = "create_backstop", nil
+	_, claimed, err = s.ClaimIdempotencyKey(ctx, elsewhere)
+	noErr(t, "claim in another scope", err)
+	if !claimed {
+		t.Error("the same key in another scope was taken")
+	}
+
+	short := key
+	short.Key, short.RequestHash = "batch-0002", []byte{1, 2, 3}
+	_, _, err = s.ClaimIdempotencyKey(ctx, short)
+	wantErr(t, "a hash that is not 32 bytes", err, domain.ErrInvalid)
+	orphan := key
+	orphan.Key, orphan.EnvelopeRunID = "batch-0003", Ptr(uuid.New())
+	_, _, err = s.ClaimIdempotencyKey(ctx, orphan)
+	wantErr(t, "a key for an unknown run", err, domain.ErrFailedPrecondition)
 }

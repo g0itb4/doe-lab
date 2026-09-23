@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package doelab.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// ClockService tells every other process what time it is on the feeder.
+//
+// Feeder time is the clock of the simulation. At speed 1 it is wall-clock
+// time. A demo runs faster: at speed 60 a day on the feeder passes in 24
+// minutes. The API owns the clock; the engine, the simulated devices and the
+// web app ask for it here, so they all agree.
+service ClockService {
+  rpc GetClock(GetClockRequest) returns (GetClockResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+}
+
+message GetClockRequest {}
+
+message GetClockResponse {
+  // Feeder time now.
+  google.protobuf.Timestamp now = 1;
+  // The instant at which feeder time and wall-clock time were equal.
+  google.protobuf.Timestamp anchor = 2;
+  // Seconds of feeder time per second of wall-clock time.
+  double speed = 3;
+  // Wall-clock time at the server when it answered.
+  google.protobuf.Timestamp wall_now = 4;
+}

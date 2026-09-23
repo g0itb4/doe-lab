@@ -73,10 +73,20 @@ func TestListQueriesUseAnIndex(t *testing.T) {
 	if _, err := store.CreateDevice(repotest.Ctx(), domain.Device{SiteID: f.SiteA.ID, DERType: domain.DERSolar, RatedW: 5000}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.CreateEnvelopeConfig(repotest.Ctx(), repotest.Config(f.Feeder.ID)); err != nil {
+	config, err := store.CreateEnvelopeConfig(repotest.Ctx(), repotest.Config(f.Feeder.ID))
+	if err != nil {
 		t.Fatal(err)
 	}
 	if err := store.ReplaceSiteProfiles(repotest.Ctx(), f.SiteA.ID, repotest.Profiles(48, 100)); err != nil {
+		t.Fatal(err)
+	}
+	run, _, err := store.CreateEnvelopeRun(repotest.Ctx(), repotest.NewRun(f.Feeder.ID, config.ID, "run-0001"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.ReplaceEnvelopes(repotest.Ctx(), []domain.Envelope{
+		repotest.Envelope(f.SiteA.ID, run.ID, 0, 1000), repotest.Envelope(f.SiteA.ID, run.ID, 1, 1100),
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `SET enable_seqscan = off; SET enable_bitmapscan = off`); err != nil {
@@ -108,6 +118,22 @@ func TestListQueriesUseAnIndex(t *testing.T) {
 		}},
 		{"GetActiveEnvelopeConfig", "envelope_configs", func() error {
 			_, err := store.GetActiveEnvelopeConfig(ctx, f.Feeder.ID)
+			return err
+		}},
+		{"ListEnvelopeRuns", "envelope_runs", func() error {
+			_, _, err := store.ListEnvelopeRuns(ctx, f.Feeder.ID, nil, page)
+			return err
+		}},
+		{"GetCurrentEnvelope", "envelopes", func() error {
+			_, err := store.GetCurrentEnvelope(ctx, f.SiteA.ID, repotest.Day)
+			return err
+		}},
+		{"ListEnvelopes", "envelopes", func() error {
+			_, _, err := store.ListEnvelopes(ctx, f.SiteA.ID, repotest.Day, repotest.Day.Add(24*time.Hour), false, page)
+			return err
+		}},
+		{"ListRunEnvelopes", "envelopes", func() error {
+			_, _, err := store.ListRunEnvelopes(ctx, run.ID, page)
 			return err
 		}},
 		{"ListSiteProfiles", "site_profiles", func() error {

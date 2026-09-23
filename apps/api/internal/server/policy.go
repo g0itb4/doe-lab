@@ -16,6 +16,8 @@ func Policy() interceptor.Policy {
 	const (
 		public   = auth.ScopePublic
 		operator = auth.ScopeOperator
+		engine   = auth.ScopeEngine
+		device   = auth.ScopeDevice
 	)
 	return interceptor.Policy{
 		doelabv1connect.FeederServiceGetFeederProcedure:        public,
@@ -44,5 +46,21 @@ func Policy() interceptor.Policy {
 		doelabv1connect.EnvelopeConfigServiceGetActiveEnvelopeConfigProcedure: public,
 		doelabv1connect.EnvelopeConfigServiceListEnvelopeConfigsProcedure:     public,
 		doelabv1connect.EnvelopeConfigServiceCreateEnvelopeConfigProcedure:    operator,
+
+		doelabv1connect.FeederServiceGetFeederForecastProcedure: public,
+
+		doelabv1connect.EnvelopeRunServiceGetEnvelopeRunProcedure:      public,
+		doelabv1connect.EnvelopeRunServiceListEnvelopeRunsProcedure:    public,
+		doelabv1connect.EnvelopeRunServiceCreateEnvelopeRunProcedure:   engine,
+		doelabv1connect.EnvelopeRunServiceCompleteEnvelopeRunProcedure: engine,
+
+		doelabv1connect.EnvelopeServiceGetCurrentEnvelopeProcedure: public,
+		doelabv1connect.EnvelopeServiceListEnvelopesProcedure:      public,
+		doelabv1connect.EnvelopeServicePublishEnvelopesProcedure:   engine,
+		// The scope gets a device in; the service then checks that the token
+		// is for the NMI it asks about.
+		doelabv1connect.EnvelopeServiceSubscribeEnvelopesProcedure: device,
+
+		doelabv1connect.ClockServiceGetClockProcedure: public,
 	}
 }

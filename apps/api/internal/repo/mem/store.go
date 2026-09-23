@@ -33,6 +33,10 @@ type state struct {
 	devices  map[uuid.UUID]domain.Device
 	configs  map[uuid.UUID]domain.EnvelopeConfig
 	profiles map[uuid.UUID][]domain.SiteProfile
+	runs     map[uuid.UUID]domain.EnvelopeRun
+	// envelopes holds every envelope, active and superseded, by id.
+	envelopes map[uuid.UUID]domain.Envelope
+	keys      map[[2]string]domain.IdempotencyKey
 }
 
 func newState() *state {
@@ -44,6 +48,10 @@ func newState() *state {
 		devices:  map[uuid.UUID]domain.Device{},
 		configs:  map[uuid.UUID]domain.EnvelopeConfig{},
 		profiles: map[uuid.UUID][]domain.SiteProfile{},
+		runs:     map[uuid.UUID]domain.EnvelopeRun{},
+
+		envelopes: map[uuid.UUID]domain.Envelope{},
+		keys:      map[[2]string]domain.IdempotencyKey{},
 	}
 }
 
@@ -58,6 +66,10 @@ func (s *state) clone() *state {
 		devices:  maps.Clone(s.devices),
 		configs:  maps.Clone(s.configs),
 		profiles: maps.Clone(s.profiles),
+		runs:     maps.Clone(s.runs),
+
+		envelopes: maps.Clone(s.envelopes),
+		keys:      maps.Clone(s.keys),
 	}
 }
 

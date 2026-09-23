@@ -45,7 +45,7 @@ const (
 	// The first year of the Ausgrid data: the one in which every customer has
 	// a complete set of actual readings.
 	profileFile      = "Solar home 2010-2011.csv"
-	profileYearStart = 2010
+	profileYearStart = profile.DefaultYearStart
 )
 
 func main() {

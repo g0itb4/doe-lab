@@ -43,8 +43,8 @@ func TestFeederGet(t *testing.T) {
 func TestFeederList(t *testing.T) {
 	t.Parallel()
 	a := newAPI(t)
-	repotest.Seed(t, a.store, "LV20", 11)
-	repotest.Seed(t, a.store, "LV30", 21)
+	repotest.Seed(t, a.Store, "LV20", 11)
+	repotest.Seed(t, a.Store, "LV30", 21)
 	c := a.feeders("")
 
 	page1, err := c.ListFeeders(ctx, req(&doelabv1.ListFeedersRequest{PageSize: 2}))

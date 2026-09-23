@@ -91,6 +91,12 @@ type Config struct {
 	// APIURL is where the engine and the simulator find the API.
 	APIURL string
 
+	// ClockSpeed and ClockAnchor define feeder time: it equals wall-clock
+	// time at the anchor and runs ClockSpeed times as fast from there. At
+	// speed 1 the anchor does not matter.
+	ClockSpeed  float64
+	ClockAnchor time.Time
+
 	// MetricsAddr serves Prometheus metrics. It must stay on loopback.
 	MetricsAddr string
 	// OTLPEndpoint receives traces when set. In development traces go to
@@ -151,6 +157,20 @@ func Load() (Config, error) {
 	}
 	if c.S3.PathStyle, err = envBool("S3_PATH_STYLE", dev); err != nil {
 		return c, err
+	}
+
+	if c.ClockSpeed, err = envFloat("DEMO_CLOCK_SPEED", 1); err != nil {
+		return c, err
+	}
+	// The Unix epoch is as good an anchor as any at speed 1. A faster clock
+	// must say where it starts: feeder time would otherwise be decades ahead.
+	c.ClockAnchor = time.Unix(0, 0).UTC()
+	if raw := env("DEMO_CLOCK_ANCHOR", ""); raw != "" {
+		if c.ClockAnchor, err = time.Parse(time.RFC3339, raw); err != nil {
+			return c, fmt.Errorf("DEMO_CLOCK_ANCHOR: expected an RFC 3339 time, got %q", raw)
+		}
+	} else if c.ClockSpeed != 1 {
+		return c, errors.New("DEMO_CLOCK_ANCHOR: required when DEMO_CLOCK_SPEED is not 1")
 	}
 
 	c.EngineToken = env("ENGINE_TOKEN", devEngineToken)
@@ -224,6 +244,18 @@ func envInt(key string, fallback int) (int, error) {
 		return 0, fmt.Errorf("%s: expected an integer, got %q", key, raw)
 	}
 	return n, nil
+}
+
+func envFloat(key string, fallback float64) (float64, error) {
+	raw := env(key, "")
+	if raw == "" {
+		return fallback, nil
+	}
+	f, err := strconv.ParseFloat(raw, 64)
+	if err != nil {
+		return 0, fmt.Errorf("%s: expected a number, got %q", key, raw)
+	}
+	return f, nil
 }
 
 func envBool(key string, fallback bool) (bool, error) {

@@ -86,6 +86,8 @@ func TestDeviceCRUD(t *testing.T) {
 	}
 	_, err = a.devices("").ListDevices(ctx, req(&doelabv1.ListDevicesRequest{DerType: repotest.Ptr(doelabv1.DerType_DER_TYPE_UNSPECIFIED)}))
 	wantViolation(t, "filter on the unspecified type", err, "der_type")
+	_, err = a.devices("").ListDevices(ctx, req(&doelabv1.ListDevicesRequest{PageToken: "not-a-token"}))
+	wantCode(t, "a malformed page token", err, connect.CodeInvalidArgument)
 	_, err = a.devices("").ListDevices(ctx, req(&doelabv1.ListDevicesRequest{SiteId: repotest.Ptr("x")}))
 	wantViolation(t, "malformed site filter", err, "site_id")
 

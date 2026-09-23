@@ -1,6 +1,8 @@
 package protomap
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -151,4 +153,167 @@ func Slice[D, P any](in []D, convert func(D) P) []P {
 		out[i] = convert(v)
 	}
 	return out
+}
+
+// optionalTime renders a nullable timestamptz column.
+func optionalTime(t *time.Time) *timestamppb.Timestamp {
+	if t == nil {
+		return nil
+	}
+	return timestamppb.New(*t)
+}
+
+// EnvelopeRun converts a run to its message.
+func EnvelopeRun(r domain.EnvelopeRun) *doelabv1.EnvelopeRun {
+	return &doelabv1.EnvelopeRun{
+		Id: r.ID.String(), FeederId: r.FeederID.String(), EnvelopeConfigId: r.EnvelopeConfigID.String(),
+		Status: RunStatusToProto(r.Status), IdempotencyKey: r.IdempotencyKey,
+		HorizonFrom: timestamppb.New(r.HorizonFrom), HorizonTo: timestamppb.New(r.HorizonTo),
+		StartedAt: timestamppb.New(r.StartedAt), CompletedAt: optionalTime(r.CompletedAt),
+		DurationMs: r.DurationMS,
+		SiteCount:  r.SiteCount, IntervalCount: r.IntervalCount, EnvelopeCount: r.EnvelopeCount,
+		EngineVersion: r.EngineVersion, Error: r.Error,
+		CreatedAt: timestamppb.New(r.CreatedAt), UpdatedAt: timestamppb.New(r.UpdatedAt),
+	}
+}
+
+// EnvelopeRunFromProto converts the client-set fields of a run message.
+func EnvelopeRunFromProto(p *doelabv1.EnvelopeRun) domain.EnvelopeRun {
+	return domain.EnvelopeRun{
+		FeederID: parseID(p.GetFeederId()), EnvelopeConfigID: parseID(p.GetEnvelopeConfigId()),
+		IdempotencyKey: p.GetIdempotencyKey(),
+		HorizonFrom:    p.GetHorizonFrom().AsTime(), HorizonTo: p.GetHorizonTo().AsTime(),
+		EngineVersion: p.GetEngineVersion(),
+	}
+}
+
+// Envelope converts an envelope to its message.
+func Envelope(e domain.Envelope) *doelabv1.Envelope {
+	return &doelabv1.Envelope{
+		Id: e.ID.String(), SiteId: e.SiteID.String(),
+		ValidFrom: timestamppb.New(e.ValidFrom), ValidTo: timestamppb.New(e.ValidTo),
+		ExportLimitW: e.ExportLimitW, ImportLimitW: e.ImportLimitW,
+		Source:        EnvelopeSourceToProto(e.Source),
+		EnvelopeRunId: optionalID(e.EnvelopeRunID), BackstopEventId: optionalID(e.BackstopEventID),
+		ExportBinding: BindingConstraintToProto(e.ExportBinding), ExportBindingElement: e.ExportBindingElement,
+		ImportBinding: BindingConstraintToProto(e.ImportBinding), ImportBindingElement: e.ImportBindingElement,
+		SupersededAt: optionalTime(e.SupersededAt), CreatedAt: timestamppb.New(e.CreatedAt),
+	}
+}
+
+// OptionalEnvelope converts an envelope that may be absent.
+func OptionalEnvelope(e *domain.Envelope) *doelabv1.Envelope {
+	if e == nil {
+		return nil
+	}
+	return Envelope(*e)
+}
+
+// EnvelopeFromProto converts the client-set fields of an envelope message:
+// the site, the interval, the limits and the bindings. An unspecified binding
+// is "none". The source and the run are the server's to set.
+func EnvelopeFromProto(p *doelabv1.Envelope) domain.Envelope {
+	binding := func(b doelabv1.BindingConstraint) domain.BindingConstraint {
+		if d := BindingConstraintFromProto(b); d != "" {
+			return d
+		}
+		return domain.BindingNone
+	}
+	return domain.Envelope{
+		SiteID:    parseID(p.GetSiteId()),
+		ValidFrom: p.GetValidFrom().AsTime(), ValidTo: p.GetValidTo().AsTime(),
+		ExportLimitW: p.GetExportLimitW(), ImportLimitW: p.GetImportLimitW(),
+		ExportBinding: binding(p.GetExportBinding()), ExportBindingElement: p.GetExportBindingElement(),
+		ImportBinding: binding(p.GetImportBinding()), ImportBindingElement: p.GetImportBindingElement(),
+	}
+}
+
+// The functions below read whole resources back from their messages. The
+// engine and the simulator use them: they are clients of the API, and rebuild
+// domain values from what it returns.
+
+// optionalParsedID reads a nullable uuid field.
+func optionalParsedID(s *string) *uuid.UUID {
+	if s == nil {
+		return nil
+	}
+	id := parseID(*s)
+	return &id
+}
+
+// FeederFromMessage reads a whole feeder.
+func FeederFromMessage(p *doelabv1.Feeder) domain.Feeder {
+	return domain.Feeder{
+		ID: parseID(p.GetId()), Code: p.GetCode(), Name: p.GetName(),
+		NominalVoltageV: p.GetNominalVoltageV(), TransformerKVA: p.GetTransformerKva(),
+		SourceVoltageV: p.GetSourceVoltageV(), SourceAngleDeg: p.GetSourceAngleDeg(),
+		SourceROhm: p.GetSourceROhm(), SourceXOhm: p.GetSourceXOhm(), TapPU: p.GetTapPu(),
+		Timezone: p.GetTimezone(), Attribution: p.GetAttribution(),
+		CreatedAt: p.GetCreatedAt().AsTime(), UpdatedAt: p.GetUpdatedAt().AsTime(),
+	}
+}
+
+// FeederNodeFromMessage reads a whole feeder node.
+func FeederNodeFromMessage(p *doelabv1.FeederNode) domain.FeederNode {
+	return domain.FeederNode{
+		ID: parseID(p.GetId()), FeederID: parseID(p.GetFeederId()), Name: p.GetName(),
+		ParentNodeID: optionalParsedID(p.ParentNodeId),
+		GroundROhm:   p.GroundROhm, GroundXOhm: p.GroundXOhm,
+		CreatedAt: p.GetCreatedAt().AsTime(), UpdatedAt: p.GetUpdatedAt().AsTime(),
+	}
+}
+
+// FeederLineFromMessage reads a whole feeder line.
+func FeederLineFromMessage(p *doelabv1.FeederLine) domain.FeederLine {
+	out := domain.FeederLine{
+		ID: parseID(p.GetId()), FeederID: parseID(p.GetFeederId()), Name: p.GetName(),
+		FromNodeID: parseID(p.GetFromNodeId()), ToNodeID: parseID(p.GetToNodeId()),
+		Linecode: p.GetLinecode(), LengthM: p.GetLengthM(), IsSwitch: p.GetIsSwitch(),
+		ROhm: p.GetROhm(), XOhm: p.GetXOhm(), BS: p.GetBS(),
+		AmpacityA: p.AmpacityA,
+		CreatedAt: p.GetCreatedAt().AsTime(), UpdatedAt: p.GetUpdatedAt().AsTime(),
+	}
+	if p.AmpacitySource != nil {
+		source := ampacitySources.fromProto[p.GetAmpacitySource()]
+		out.AmpacitySource = &source
+	}
+	return out
+}
+
+// SiteFromMessage reads a whole site.
+func SiteFromMessage(p *doelabv1.Site) domain.Site {
+	site := SiteFromProto(p)
+	site.ID = parseID(p.GetId())
+	site.CreatedAt, site.UpdatedAt = p.GetCreatedAt().AsTime(), p.GetUpdatedAt().AsTime()
+	return site
+}
+
+// DeviceFromMessage reads a whole device.
+func DeviceFromMessage(p *doelabv1.Device) domain.Device {
+	device := DeviceFromProto(p)
+	device.ID = parseID(p.GetId())
+	device.CreatedAt, device.UpdatedAt = p.GetCreatedAt().AsTime(), p.GetUpdatedAt().AsTime()
+	return device
+}
+
+// EnvelopeConfigFromMessage reads a whole config version.
+func EnvelopeConfigFromMessage(p *doelabv1.EnvelopeConfig) domain.EnvelopeConfig {
+	config := EnvelopeConfigFromProto(p)
+	config.ID, config.Version = parseID(p.GetId()), p.GetVersion()
+	config.CreatedBy, config.CreatedAt = p.GetCreatedBy(), p.GetCreatedAt().AsTime()
+	return config
+}
+
+// EnvelopeFromMessage reads a whole envelope.
+func EnvelopeFromMessage(p *doelabv1.Envelope) domain.Envelope {
+	e := EnvelopeFromProto(p)
+	e.ID = parseID(p.GetId())
+	e.Source = envelopeSources.fromProto[p.GetSource()]
+	e.EnvelopeRunID, e.BackstopEventID = optionalParsedID(p.EnvelopeRunId), optionalParsedID(p.BackstopEventId)
+	e.CreatedAt = p.GetCreatedAt().AsTime()
+	if p.GetSupersededAt() != nil {
+		at := p.GetSupersededAt().AsTime()
+		e.SupersededAt = &at
+	}
+	return e
 }

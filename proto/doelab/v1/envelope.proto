@@ -1,0 +1,187 @@
+syntax = "proto3";
+
+package doelab.v1;
+
+import "buf/validate/validate.proto";
+import "doelab/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// EnvelopeService publishes operating envelopes and dispatches them to
+// devices.
+//
+// An envelope is immutable. There is no update and no delete: publishing an
+// envelope for an interval that already has one supersedes the old row, which
+// is kept for audit.
+//
+// The demo carries CSIP-AUS / IEEE 2030.5 DERControl semantics over ConnectRPC
+// streaming, in place of the 2030.5 REST and XML transport. export_limit_w is
+// opModExpLimW and import_limit_w is opModImpLimW.
+service EnvelopeService {
+  // The envelope in force for a site at an instant.
+  rpc GetCurrentEnvelope(GetCurrentEnvelopeRequest) returns (GetCurrentEnvelopeResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // The envelopes of a site over a range, in time order.
+  rpc ListEnvelopes(ListEnvelopesRequest) returns (ListEnvelopesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // Publishes a batch of envelopes from a run. Idempotent on
+  // idempotency_key: the same batch sent again writes nothing; the same key
+  // with a different batch is refused. Needs the engine scope.
+  rpc PublishEnvelopes(PublishEnvelopesRequest) returns (PublishEnvelopesResponse) {
+    option idempotency_level = IDEMPOTENT;
+  }
+  // Streams the envelope of one site to its device: the envelope in force
+  // first, then a message whenever it changes, because a newer one was
+  // published, a backstop began or ended, or the interval rolled over. Needs
+  // the device token of that site.
+  rpc SubscribeEnvelopes(SubscribeEnvelopesRequest) returns (stream SubscribeEnvelopesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+}
+
+// The operating envelope of a site for one interval: the most it may export
+// and import at its connection point. Mirrors the envelopes table.
+message Envelope {
+  string id = 1 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  string site_id = 2 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // Start of the interval, inclusive, in feeder time. On a 5-minute boundary.
+  google.protobuf.Timestamp valid_from = 3;
+  // End of the interval, exclusive, in feeder time.
+  google.protobuf.Timestamp valid_to = 4;
+  // Largest net export at the connection point, in watts.
+  // CSIP-AUS opModExpLimW.
+  double export_limit_w = 5 [
+    json_name = "opModExpLimW",
+    (buf.validate.field).double = {
+      gte: 0
+      lte: 1000000
+    }
+  ];
+  // Largest net import at the connection point, in watts.
+  // CSIP-AUS opModImpLimW.
+  double import_limit_w = 6 [
+    json_name = "opModImpLimW",
+    (buf.validate.field).double = {
+      gte: 0
+      lte: 1000000
+    }
+  ];
+  // Set by the server: ENGINE for a published envelope, BACKSTOP for an
+  // operator's override.
+  EnvelopeSource source = 7 [(buf.validate.field).enum.defined_only = true];
+  // The run that published the envelope. Set exactly when source is ENGINE.
+  optional string envelope_run_id = 8 [(buf.validate.field).string.uuid = true];
+  // The backstop that imposed the envelope. Set exactly when source is
+  // BACKSTOP.
+  optional string backstop_event_id = 9 [(buf.validate.field).string.uuid = true];
+  // What stops the export limit from being larger, and where.
+  BindingConstraint export_binding = 10 [(buf.validate.field).enum.defined_only = true];
+  string export_binding_element = 11 [(buf.validate.field).string.max_len = 200];
+  // What stops the import limit from being larger, and where.
+  BindingConstraint import_binding = 12 [(buf.validate.field).enum.defined_only = true];
+  string import_binding_element = 13 [(buf.validate.field).string.max_len = 200];
+  // Wall-clock time a newer envelope replaced this one. Unset while it is
+  // the active envelope.
+  optional google.protobuf.Timestamp superseded_at = 14;
+  google.protobuf.Timestamp created_at = 15;
+
+  option (buf.validate.message).cel = {
+    id: "envelope.period"
+    message: "valid_to must be after valid_from"
+    expression: "!has(this.valid_from) || !has(this.valid_to) || this.valid_to > this.valid_from"
+  };
+}
+
+message GetCurrentEnvelopeRequest {
+  // The site's id or its NMI: exactly one.
+  oneof site {
+    option (buf.validate.oneof).required = true;
+    string site_id = 1 [(buf.validate.field).string.uuid = true];
+    string nmi = 2 [(buf.validate.field).string.pattern = "^[A-Z0-9]{10}[0-9]$"];
+  }
+  // The instant, in feeder time. Unset means now.
+  optional google.protobuf.Timestamp at = 3;
+}
+
+message GetCurrentEnvelopeResponse {
+  // Unset when the site has no envelope in force at the instant.
+  optional Envelope envelope = 1;
+}
+
+message ListEnvelopesRequest {
+  string site_id = 1 [(buf.validate.field).string.uuid = true];
+  // Intervals that start in [from, to), in feeder time.
+  google.protobuf.Timestamp from = 2 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp to = 3 [(buf.validate.field).required = true];
+  // Also return the superseded envelopes: the audit trail.
+  bool include_superseded = 4;
+  int32 page_size = 5 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 2000
+  }];
+  string page_token = 6 [(buf.validate.field).string.max_len = 1024];
+
+  option (buf.validate.message).cel = {
+    id: "list_envelopes.range"
+    message: "to must be after from"
+    expression: "this.to > this.from"
+  };
+}
+
+message ListEnvelopesResponse {
+  repeated Envelope envelopes = 1;
+  string next_page_token = 2;
+}
+
+message PublishEnvelopesRequest {
+  // The run the batch belongs to. It must be running.
+  string envelope_run_id = 1 [(buf.validate.field).string.uuid = true];
+  // Unique per batch: 8 to 128 characters of A-Z a-z 0-9 . _ : -
+  string idempotency_key = 2 [(buf.validate.field).string.pattern = "^[A-Za-z0-9._:-]{8,128}$"];
+  // Set by the client for each envelope: site_id, valid_from, valid_to, the
+  // two limits and the two bindings. The rest is the server's.
+  repeated Envelope envelopes = 3 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 5000
+  }];
+
+  option (buf.validate.message).cel = {
+    id: "publish_envelopes.required"
+    message: "every envelope needs site_id, valid_from and valid_to, and must not set id, source, envelope_run_id or backstop_event_id"
+    expression: "this.envelopes.all(e, e.site_id != '' && has(e.valid_from) && has(e.valid_to) && e.id == '' && e.source == 0 && !has(e.envelope_run_id) && !has(e.backstop_event_id))"
+  };
+}
+
+message PublishEnvelopesResponse {
+  // Envelopes written by this call. 0 when the batch was a replay.
+  int32 published = 1;
+  // Older envelopes that this call superseded.
+  int32 superseded = 2;
+  // True when the key had been used with this same batch before, and
+  // nothing was written.
+  bool replayed = 3;
+}
+
+message SubscribeEnvelopesRequest {
+  // The site whose envelope to follow. The caller's device token must be for
+  // this NMI.
+  string nmi = 1 [(buf.validate.field).string.pattern = "^[A-Z0-9]{10}[0-9]$"];
+}
+
+message SubscribeEnvelopesResponse {
+  // The envelope in force. Unset when the site has none: the device then
+  // falls back to its default limit.
+  optional Envelope envelope = 1;
+  // Feeder time at the server when the message was sent.
+  google.protobuf.Timestamp server_time = 2;
+  // True for a periodic message that repeats the envelope already sent. It
+  // keeps the stream alive and lets a device notice a dead connection.
+  bool keepalive = 3;
+}

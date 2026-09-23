@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
 	"doelab/api/internal/domain"
+	"doelab/api/internal/profile"
 )
 
 // Feeders reads the network model and applies the two changes an operator may
@@ -104,4 +106,92 @@ func (s *Feeders) SetLineAmpacity(ctx context.Context, id uuid.UUID, ampacityA *
 		return err
 	})
 	return out, err
+}
+
+// ForecastPoint is the forecast of one site for one half hour.
+type ForecastPoint struct {
+	SiteID uuid.UUID
+	// TS is the start of the half hour, in feeder time.
+	TS time.Time
+	// LoadW is consumption: general load plus controlled load.
+	LoadW float64
+	// PVW is gross PV generation, before any scaling.
+	PVW float64
+}
+
+// halfHour is the grain of the profiles.
+const halfHour = 30 * time.Minute
+
+// MaxForecast is the longest range a forecast may cover.
+const MaxForecast = 7 * 24 * time.Hour
+
+// Forecast returns the load and PV of every site of a feeder for each half
+// hour that starts in [from, to): time order, and within a half hour NMI
+// order.
+//
+// A forecast for a date is read from the profile year, at the same local
+// month, day and time. from is rounded down to a half hour.
+func (s *Feeders) Forecast(ctx context.Context, feederID uuid.UUID, from, to time.Time) ([]ForecastPoint, error) {
+	feeder, err := s.store.GetFeeder(ctx, feederID)
+	if err != nil {
+		return nil, err
+	}
+	if !to.After(from) || to.Sub(from) > MaxForecast {
+		return nil, fmt.Errorf("%w: a forecast covers more than nothing and at most 7 days", domain.ErrInvalid)
+	}
+	zone, err := time.LoadLocation(feeder.Timezone)
+	if err != nil {
+		return nil, fmt.Errorf("feeder %s: time zone %q: %w", feeder.Code, feeder.Timezone, err)
+	}
+	year := profile.Year{Start: profile.DefaultYearStart, Location: zone}
+	sites, err := s.store.ListAllSites(ctx, feederID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Each half hour of the range, and the half hour of the profile year it
+	// reads from.
+	type slot struct{ at, source time.Time }
+	var slots []slot
+	earliest, latest := year.To(), year.From()
+	for at := from.Truncate(halfHour); at.Before(to); at = at.Add(halfHour) {
+		source := year.At(at).UTC()
+		slots = append(slots, slot{at: at.UTC(), source: source})
+		if source.Before(earliest) {
+			earliest = source
+		}
+		if source.After(latest) {
+			latest = source
+		}
+	}
+
+	// One read covers every source half hour. A range that crosses 1 July
+	// reads the whole profile year, which is the simple answer to a wrap.
+	rows, err := s.store.ListFeederProfiles(ctx, feederID, earliest, latest.Add(halfHour))
+	if err != nil {
+		return nil, err
+	}
+	type key struct {
+		site uuid.UUID
+		ts   int64
+	}
+	bySlot := make(map[key]domain.SiteProfile, len(rows))
+	for _, row := range rows {
+		bySlot[key{row.SiteID, row.TS.Unix()}] = row
+	}
+
+	points := make([]ForecastPoint, 0, len(slots)*len(sites))
+	for _, sl := range slots {
+		for _, site := range sites {
+			row, ok := bySlot[key{site.ID, sl.source.Unix()}]
+			if !ok {
+				return nil, fmt.Errorf("%w: site %s has no profile for %s; run the import",
+					domain.ErrFailedPrecondition, site.NMI, sl.source.Format(time.RFC3339))
+			}
+			points = append(points, ForecastPoint{
+				SiteID: site.ID, TS: sl.at, LoadW: row.LoadW + row.ControlledLoadW, PVW: row.PVW,
+			})
+		}
+	}
+	return points, nil
 }

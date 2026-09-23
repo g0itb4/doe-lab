@@ -1,0 +1,152 @@
+syntax = "proto3";
+
+package doelab.v1;
+
+import "buf/validate/validate.proto";
+import "doelab/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// EnvelopeRunService records the runs of the engine. The engine creates a run
+// before it publishes, and completes it when it is done; everyone else reads.
+service EnvelopeRunService {
+  rpc GetEnvelopeRun(GetEnvelopeRunRequest) returns (GetEnvelopeRunResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // The runs of a feeder, newest first.
+  rpc ListEnvelopeRuns(ListEnvelopeRunsRequest) returns (ListEnvelopeRunsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // Starts a run. Idempotent on idempotency_key: creating a run again with
+  // the same key returns the first run. Needs the engine scope.
+  rpc CreateEnvelopeRun(CreateEnvelopeRunRequest) returns (CreateEnvelopeRunResponse) {
+    option idempotency_level = IDEMPOTENT;
+  }
+  // Finishes a run, as completed or as failed. Needs the engine scope.
+  rpc CompleteEnvelopeRun(CompleteEnvelopeRunRequest) returns (CompleteEnvelopeRunResponse) {
+    option idempotency_level = IDEMPOTENT;
+  }
+}
+
+// One run of the engine. Mirrors the envelope_runs table.
+message EnvelopeRun {
+  string id = 1 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  string feeder_id = 2 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // The config version the run used.
+  string envelope_config_id = 3 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  RunStatus status = 4 [(buf.validate.field).enum.defined_only = true];
+  // Chosen by the engine: 8 to 128 characters of A-Z a-z 0-9 . _ : -
+  string idempotency_key = 5 [
+    (buf.validate.field).string.pattern = "^[A-Za-z0-9._:-]{8,128}$",
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // Start of the first interval of the run, in feeder time.
+  google.protobuf.Timestamp horizon_from = 6;
+  // End of the last interval of the run, in feeder time.
+  google.protobuf.Timestamp horizon_to = 7;
+  // Wall-clock time the run was created.
+  google.protobuf.Timestamp started_at = 8;
+  // Wall-clock time the run finished. Unset while it is running.
+  optional google.protobuf.Timestamp completed_at = 9;
+  // How long the engine took. Unset while the run is running.
+  optional int32 duration_ms = 10 [(buf.validate.field).int32.gte = 0];
+  int32 site_count = 11 [(buf.validate.field).int32.gte = 0];
+  int32 interval_count = 12 [(buf.validate.field).int32.gte = 0];
+  // Envelopes published by the run so far.
+  int32 envelope_count = 13 [(buf.validate.field).int32.gte = 0];
+  string engine_version = 14 [(buf.validate.field).string.max_len = 100];
+  // Why the run failed. Set exactly when status is FAILED.
+  optional string error = 15 [(buf.validate.field).string.max_len = 2000];
+  google.protobuf.Timestamp created_at = 16;
+  google.protobuf.Timestamp updated_at = 17;
+}
+
+message GetEnvelopeRunRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message GetEnvelopeRunResponse {
+  EnvelopeRun envelope_run = 1;
+}
+
+message ListEnvelopeRunsRequest {
+  string feeder_id = 1 [(buf.validate.field).string.uuid = true];
+  // Only runs in this state.
+  optional RunStatus status = 2 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: [0]
+  }];
+  int32 page_size = 3 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 500
+  }];
+  string page_token = 4 [(buf.validate.field).string.max_len = 1024];
+}
+
+message ListEnvelopeRunsResponse {
+  repeated EnvelopeRun envelope_runs = 1;
+  string next_page_token = 2;
+}
+
+message CreateEnvelopeRunRequest {
+  // Set by the client: feeder_id, envelope_config_id, idempotency_key,
+  // horizon_from, horizon_to, engine_version. The rest is the server's.
+  EnvelopeRun envelope_run = 1 [(buf.validate.field).required = true];
+
+  option (buf.validate.message).cel = {
+    id: "create_envelope_run.required"
+    message: "feeder_id, envelope_config_id, idempotency_key, horizon_from, horizon_to and engine_version are required"
+    expression: "this.envelope_run.feeder_id != '' && this.envelope_run.envelope_config_id != '' && this.envelope_run.idempotency_key != '' && has(this.envelope_run.horizon_from) && has(this.envelope_run.horizon_to) && this.envelope_run.engine_version != ''"
+  };
+  option (buf.validate.message).cel = {
+    id: "create_envelope_run.horizon"
+    message: "horizon_to must be after horizon_from"
+    expression: "!has(this.envelope_run.horizon_from) || !has(this.envelope_run.horizon_to) || this.envelope_run.horizon_to > this.envelope_run.horizon_from"
+  };
+  option (buf.validate.message).cel = {
+    id: "create_envelope_run.server_set"
+    message: "id and status are set by the server"
+    expression: "this.envelope_run.id == '' && this.envelope_run.status == 0"
+  };
+}
+
+message CreateEnvelopeRunResponse {
+  EnvelopeRun envelope_run = 1;
+}
+
+message CompleteEnvelopeRunRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+  // COMPLETED or FAILED.
+  RunStatus status = 2 [(buf.validate.field).enum = {
+    in: [
+      2,
+      3
+    ]
+  }];
+  int32 duration_ms = 3 [(buf.validate.field).int32.gte = 0];
+  int32 site_count = 4 [(buf.validate.field).int32.gte = 0];
+  int32 interval_count = 5 [(buf.validate.field).int32.gte = 0];
+  // Required exactly when status is FAILED.
+  optional string error = 6 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 2000
+  }];
+
+  option (buf.validate.message).cel = {
+    id: "complete_envelope_run.error"
+    message: "error must be set exactly when status is FAILED"
+    expression: "(this.status == 3) == has(this.error)"
+  };
+}
+
+message CompleteEnvelopeRunResponse {
+  EnvelopeRun envelope_run = 1;
+}

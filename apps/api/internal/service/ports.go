@@ -33,6 +33,9 @@ type Repos interface {
 	SiteRepo
 	DeviceRepo
 	EnvelopeConfigRepo
+	EnvelopeRunRepo
+	EnvelopeRepo
+	IdempotencyRepo
 }
 
 // FeederRepo stores the network model.
@@ -112,6 +115,89 @@ type EnvelopeConfigRepo interface {
 	// CreateEnvelopeConfig stores c as the next version of its feeder. The
 	// repository assigns the version.
 	CreateEnvelopeConfig(ctx context.Context, c domain.EnvelopeConfig) (domain.EnvelopeConfig, error)
+}
+
+// RunResult is how a run ended.
+type RunResult struct {
+	// Status is completed or failed.
+	Status        domain.RunStatus
+	DurationMS    int32
+	SiteCount     int32
+	IntervalCount int32
+	// Error is set exactly when the run failed.
+	Error *string
+}
+
+// EnvelopeRunRepo stores engine runs.
+type EnvelopeRunRepo interface {
+	GetEnvelopeRun(ctx context.Context, id uuid.UUID) (domain.EnvelopeRun, error)
+	// ListEnvelopeRuns returns the runs of a feeder, newest first. A nil
+	// status means every status.
+	ListEnvelopeRuns(ctx context.Context, feederID uuid.UUID, status *domain.RunStatus, page domain.Page) ([]domain.EnvelopeRun, string, error)
+	// CreateEnvelopeRun stores a new running run. When a run with the same
+	// idempotency key exists, it stores nothing and returns that run, with
+	// created false.
+	CreateEnvelopeRun(ctx context.Context, run domain.EnvelopeRun) (stored domain.EnvelopeRun, created bool, err error)
+	// CompleteEnvelopeRun finishes a running run. A run that is not running
+	// is domain.ErrFailedPrecondition; one that does not exist is
+	// domain.ErrNotFound.
+	CompleteEnvelopeRun(ctx context.Context, id uuid.UUID, result RunResult) (domain.EnvelopeRun, error)
+	// AddEnvelopeRunCount adds to the run's count of published envelopes.
+	AddEnvelopeRunCount(ctx context.Context, id uuid.UUID, added int32) error
+}
+
+// EnvelopeRepo stores envelopes. Rows are immutable: an envelope is replaced
+// by superseding it.
+type EnvelopeRepo interface {
+	// GetCurrentEnvelope returns the active envelope of a site whose
+	// interval holds the instant, or domain.ErrNotFound.
+	GetCurrentEnvelope(ctx context.Context, siteID uuid.UUID, at time.Time) (domain.Envelope, error)
+	// ListEnvelopes returns the envelopes of a site whose interval starts in
+	// [from, to), in time order: the active ones, or with includeSuperseded
+	// every one.
+	ListEnvelopes(ctx context.Context, siteID uuid.UUID, from, to time.Time, includeSuperseded bool, page domain.Page) ([]domain.Envelope, string, error)
+	// ListRunEnvelopes returns what a run published, in time order and then
+	// site order.
+	ListRunEnvelopes(ctx context.Context, runID uuid.UUID, page domain.Page) ([]domain.Envelope, string, error)
+	// ListFeederEnvelopes returns the active envelopes of every site of a
+	// feeder whose interval starts in [from, to).
+	ListFeederEnvelopes(ctx context.Context, feederID uuid.UUID, from, to time.Time) ([]domain.Envelope, error)
+	// ReplaceEnvelopes stores the envelopes as the active ones for their
+	// sites and intervals: it supersedes whatever was active there, and
+	// returns how many rows that was. The stored rows come back with their
+	// ids.
+	ReplaceEnvelopes(ctx context.Context, envelopes []domain.Envelope) (stored []domain.Envelope, superseded int, err error)
+}
+
+// IdempotencyRepo stores idempotency keys.
+type IdempotencyRepo interface {
+	// ClaimIdempotencyKey takes a key for a request. When the key is
+	// already taken it stores nothing and returns the row that holds it,
+	// with claimed false.
+	ClaimIdempotencyKey(ctx context.Context, key domain.IdempotencyKey) (held domain.IdempotencyKey, claimed bool, err error)
+}
+
+// EnvelopeBus tells the open subscriptions that the envelope of a site may
+// have changed. It carries no envelope: a subscriber that is told reads the
+// current one. So a slow subscriber misses nothing by missing a signal, and
+// never works through a backlog.
+type EnvelopeBus interface {
+	// Notify signals every subscriber of each site, in this process and in
+	// every other API instance.
+	Notify(ctx context.Context, siteIDs []uuid.UUID) error
+	// Subscribe returns a channel that receives a value after the site is
+	// notified, and a function that ends the subscription. Signals that
+	// arrive while one is pending are merged into it.
+	Subscribe(siteID uuid.UUID) (signal <-chan struct{}, cancel func())
+}
+
+// Clock is feeder time. *simclock.Clock is one.
+type Clock interface {
+	// Now is feeder time now.
+	Now() time.Time
+	// Until is how long to wait, on the wall clock, for feeder time to reach
+	// t; zero when t has passed.
+	Until(t time.Time) time.Duration
 }
 
 // DefaultPageSize is the page size when a request names none.

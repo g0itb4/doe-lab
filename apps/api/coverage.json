@@ -5,7 +5,9 @@
     "doelab/api/internal/repo/pg",
     "doelab/api/internal/testutil",
     "doelab/api/internal/repo/repotest",
-    "doelab/api/internal/repo/objstore"
+    "doelab/api/internal/repo/objstore",
+    "doelab/api/internal/repo/pgbus",
+    "doelab/api/internal/apitest"
   ],
   "floors": {
     "doelab/api/internal/engine": 100,
@@ -22,6 +24,9 @@
     "doelab/api/internal/repo/mem": 99,
     "doelab/api/internal/ausgrid": 100,
     "doelab/api/internal/profile": 100,
-    "doelab/api/internal/topology": 100
+    "doelab/api/internal/topology": 100,
+    "doelab/api/internal/repo/bus": 100,
+    "doelab/api/internal/simclock": 100,
+    "doelab/api/internal/enginerun": 98
   }
 }

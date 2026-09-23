@@ -7,6 +7,7 @@ import (
 	"connectrpc.com/connect"
 
 	doelabv1 "doelab/api/gen/doelab/v1"
+	"doelab/api/internal/repo/bus"
 	"doelab/api/internal/repo/mem"
 	"doelab/api/internal/service"
 )
@@ -25,7 +26,40 @@ func TestHandlersRefuseMalformedIDs(t *testing.T) {
 	ctx := context.Background()
 	const bad = "not-a-uuid"
 
+	runs := NewEnvelopeRuns(service.NewEnvelopeRuns(store))
+	envelopes := NewEnvelopes(service.NewEnvelopes(store, bus.NewLocal(), nil))
+
 	calls := map[string]func() error{
+		"GetFeederForecast": func() error {
+			_, err := feeders.GetFeederForecast(ctx, connect.NewRequest(&doelabv1.GetFeederForecastRequest{FeederId: bad}))
+			return err
+		},
+		"GetEnvelopeRun": func() error {
+			_, err := runs.GetEnvelopeRun(ctx, connect.NewRequest(&doelabv1.GetEnvelopeRunRequest{Id: bad}))
+			return err
+		},
+		"ListEnvelopeRuns": func() error {
+			_, err := runs.ListEnvelopeRuns(ctx, connect.NewRequest(&doelabv1.ListEnvelopeRunsRequest{FeederId: bad}))
+			return err
+		},
+		"CompleteEnvelopeRun": func() error {
+			_, err := runs.CompleteEnvelopeRun(ctx, connect.NewRequest(&doelabv1.CompleteEnvelopeRunRequest{Id: bad}))
+			return err
+		},
+		"GetCurrentEnvelope": func() error {
+			_, err := envelopes.GetCurrentEnvelope(ctx, connect.NewRequest(&doelabv1.GetCurrentEnvelopeRequest{
+				Site: &doelabv1.GetCurrentEnvelopeRequest_SiteId{SiteId: bad},
+			}))
+			return err
+		},
+		"ListEnvelopes": func() error {
+			_, err := envelopes.ListEnvelopes(ctx, connect.NewRequest(&doelabv1.ListEnvelopesRequest{SiteId: bad}))
+			return err
+		},
+		"PublishEnvelopes": func() error {
+			_, err := envelopes.PublishEnvelopes(ctx, connect.NewRequest(&doelabv1.PublishEnvelopesRequest{EnvelopeRunId: bad}))
+			return err
+		},
 		"GetFeeder": func() error {
 			_, err := feeders.GetFeeder(ctx, connect.NewRequest(&doelabv1.GetFeederRequest{Key: &doelabv1.GetFeederRequest_Id{Id: bad}}))
 			return err

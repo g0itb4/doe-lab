@@ -36,6 +36,13 @@ service FeederService {
   // Mutable field: ampacity_a. Setting it marks the rating as the operator's;
   // clearing it makes the line unrated. Needs the operator scope.
   rpc UpdateFeederLine(UpdateFeederLineRequest) returns (UpdateFeederLineResponse);
+
+  // The forecast the engine works from: the load and PV of every site of the
+  // feeder for each half hour of a range. It is read from the profile year,
+  // at the same local month, day and time.
+  rpc GetFeederForecast(GetFeederForecastRequest) returns (GetFeederForecastResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
 }
 
 // A low-voltage feeder below one distribution transformer. Mirrors the
@@ -274,4 +281,33 @@ message UpdateFeederLineRequest {
 
 message UpdateFeederLineResponse {
   FeederLine feeder_line = 1;
+}
+
+message GetFeederForecastRequest {
+  string feeder_id = 1 [(buf.validate.field).string.uuid = true];
+  // Half hours that start in [from, to), in feeder time. At most 7 days.
+  google.protobuf.Timestamp from = 2 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp to = 3 [(buf.validate.field).required = true];
+
+  option (buf.validate.message).cel = {
+    id: "get_feeder_forecast.range"
+    message: "to must be after from, and at most 7 days after it"
+    expression: "this.to > this.from && this.to - this.from <= duration('168h')"
+  };
+}
+
+// The forecast of one site for one half hour.
+message ForecastPoint {
+  string site_id = 1;
+  // Start of the half hour, in feeder time.
+  google.protobuf.Timestamp ts = 2;
+  // Average consumption: general load plus controlled load.
+  double load_w = 3;
+  // Average gross PV generation, before the config's pv_scale.
+  double pv_w = 4;
+}
+
+message GetFeederForecastResponse {
+  // In time order, and within a half hour in NMI order.
+  repeated ForecastPoint points = 1;
 }

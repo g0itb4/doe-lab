@@ -32,6 +32,9 @@ type Deps struct {
 	Sites           doelabv1connect.SiteServiceHandler
 	Devices         doelabv1connect.DeviceServiceHandler
 	EnvelopeConfigs doelabv1connect.EnvelopeConfigServiceHandler
+	EnvelopeRuns    doelabv1connect.EnvelopeRunServiceHandler
+	Envelopes       doelabv1connect.EnvelopeServiceHandler
+	Clock           doelabv1connect.ClockServiceHandler
 
 	// Database answers the health check.
 	Database  Pinger
@@ -47,6 +50,9 @@ var services = []string{
 	doelabv1connect.SiteServiceName,
 	doelabv1connect.DeviceServiceName,
 	doelabv1connect.EnvelopeConfigServiceName,
+	doelabv1connect.EnvelopeRunServiceName,
+	doelabv1connect.EnvelopeServiceName,
+	doelabv1connect.ClockServiceName,
 }
 
 // Handler builds the mux: every service with the interceptor chain, health,
@@ -102,6 +108,9 @@ func Handler(cfg config.Config, log *slog.Logger, deps Deps) http.Handler {
 	mount(doelabv1connect.NewSiteServiceHandler(deps.Sites, opts...))
 	mount(doelabv1connect.NewDeviceServiceHandler(deps.Devices, opts...))
 	mount(doelabv1connect.NewEnvelopeConfigServiceHandler(deps.EnvelopeConfigs, opts...))
+	mount(doelabv1connect.NewEnvelopeRunServiceHandler(deps.EnvelopeRuns, opts...))
+	mount(doelabv1connect.NewEnvelopeServiceHandler(deps.Envelopes, opts...))
+	mount(doelabv1connect.NewClockServiceHandler(deps.Clock, opts...))
 
 	// Health is the gRPC Health service and nothing else. Connect handlers
 	// serve all three protocols, so an uptime checker that speaks only HTTP

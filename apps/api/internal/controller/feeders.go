@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	doelabv1 "doelab/api/gen/doelab/v1"
 	"doelab/api/gen/doelab/v1/doelabv1connect"
@@ -139,4 +140,21 @@ func (c *Feeders) UpdateFeederLine(ctx context.Context, req *connect.Request[doe
 		return nil, err
 	}
 	return connect.NewResponse(&doelabv1.UpdateFeederLineResponse{FeederLine: protomap.FeederLine(line)}), nil
+}
+
+// GetFeederForecast returns the load and PV of every site for a range.
+func (c *Feeders) GetFeederForecast(ctx context.Context, req *connect.Request[doelabv1.GetFeederForecastRequest]) (*connect.Response[doelabv1.GetFeederForecastResponse], error) {
+	feederID, err := parseID("feeder_id", req.Msg.GetFeederId())
+	if err != nil {
+		return nil, err
+	}
+	points, err := c.svc.Forecast(ctx, feederID, req.Msg.GetFrom().AsTime(), req.Msg.GetTo().AsTime())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*doelabv1.ForecastPoint, len(points))
+	for i, p := range points {
+		out[i] = &doelabv1.ForecastPoint{SiteId: p.SiteID.String(), Ts: timestamppb.New(p.TS), LoadW: p.LoadW, PvW: p.PVW}
+	}
+	return connect.NewResponse(&doelabv1.GetFeederForecastResponse{Points: out}), nil
 }

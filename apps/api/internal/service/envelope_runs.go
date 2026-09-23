@@ -1,0 +1,83 @@
+package service
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/google/uuid"
+
+	"doelab/api/internal/domain"
+)
+
+// EnvelopeRuns records the runs of the engine.
+type EnvelopeRuns struct {
+	store Store
+}
+
+// NewEnvelopeRuns builds the service.
+func NewEnvelopeRuns(store Store) *EnvelopeRuns {
+	return &EnvelopeRuns{store: store}
+}
+
+// Get returns a run by id.
+func (s *EnvelopeRuns) Get(ctx context.Context, id uuid.UUID) (domain.EnvelopeRun, error) {
+	return s.store.GetEnvelopeRun(ctx, id)
+}
+
+// List returns a page of a feeder's runs, newest first. A nil status means
+// every status.
+func (s *EnvelopeRuns) List(ctx context.Context, feederID uuid.UUID, status *domain.RunStatus, p domain.Page) ([]domain.EnvelopeRun, string, error) {
+	if _, err := s.store.GetFeeder(ctx, feederID); err != nil {
+		return nil, "", fmt.Errorf("feeder %s: %w", feederID, err)
+	}
+	return s.store.ListEnvelopeRuns(ctx, feederID, status, page(p))
+}
+
+// Create starts a run. With the idempotency key of an existing run it starts
+// nothing and returns that run, provided the request is the same one: the
+// same key for another feeder, config or horizon is a mistake, and is refused.
+func (s *EnvelopeRuns) Create(ctx context.Context, run domain.EnvelopeRun) (domain.EnvelopeRun, error) {
+	var out domain.EnvelopeRun
+	err := s.store.Tx(ctx, func(ctx context.Context, r Repos) error {
+		config, err := r.GetEnvelopeConfig(ctx, run.EnvelopeConfigID)
+		if err != nil {
+			return fmt.Errorf("%w: envelope config %s does not exist", domain.ErrFailedPrecondition, run.EnvelopeConfigID)
+		}
+		if config.FeederID != run.FeederID {
+			return fmt.Errorf("%w: envelope config %s belongs to another feeder", domain.ErrFailedPrecondition, config.ID)
+		}
+		stored, created, err := r.CreateEnvelopeRun(ctx, run)
+		if err != nil {
+			return err
+		}
+		if !created && (stored.FeederID != run.FeederID || stored.EnvelopeConfigID != run.EnvelopeConfigID ||
+			!stored.HorizonFrom.Equal(run.HorizonFrom) || !stored.HorizonTo.Equal(run.HorizonTo)) {
+			return fmt.Errorf("%w: idempotency key %q was used for a different run", domain.ErrAlreadyExists, run.IdempotencyKey)
+		}
+		out = stored
+		return nil
+	})
+	return out, err
+}
+
+// Complete finishes a run. Completing a finished run with the same outcome
+// changes nothing and returns it; with another outcome it is refused.
+func (s *EnvelopeRuns) Complete(ctx context.Context, id uuid.UUID, result RunResult) (domain.EnvelopeRun, error) {
+	if (result.Status == domain.RunFailed) != (result.Error != nil) {
+		return domain.EnvelopeRun{}, fmt.Errorf("%w: a failed run needs an error, and only a failed run", domain.ErrInvalid)
+	}
+	var out domain.EnvelopeRun
+	err := s.store.Tx(ctx, func(ctx context.Context, r Repos) error {
+		run, err := r.GetEnvelopeRun(ctx, id)
+		if err != nil {
+			return err
+		}
+		if run.Status == result.Status {
+			out = run
+			return nil
+		}
+		out, err = r.CompleteEnvelopeRun(ctx, id, result)
+		return err
+	})
+	return out, err
+}

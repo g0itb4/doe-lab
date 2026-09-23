@@ -29,6 +29,11 @@ type Year struct {
 	Location *time.Location
 }
 
+// DefaultYearStart is the profile year the demo replays: 1 July 2010 to
+// 30 June 2011, the first year of the Ausgrid data and the one in which every
+// home has a complete set of actual readings.
+const DefaultYearStart = 2010
+
 // From is the first instant of the profile year.
 func (y Year) From() time.Time {
 	return time.Date(y.Start, time.July, 1, 0, 0, 0, 0, y.Location)

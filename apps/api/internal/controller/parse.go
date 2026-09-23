@@ -13,7 +13,9 @@ import (
 	"connectrpc.com/connect"
 	"github.com/google/uuid"
 
+	doelabv1 "doelab/api/gen/doelab/v1"
 	"doelab/api/internal/domain"
+	"doelab/api/internal/protomap"
 )
 
 // parseID parses a UUID field. Validation has already checked the format, so
@@ -54,4 +56,13 @@ func when[T any](paths []string, path string, v T) *T {
 		return nil
 	}
 	return &v
+}
+
+// optionalStatus reads an optional run-status filter.
+func optionalStatus(status *doelabv1.RunStatus) *domain.RunStatus {
+	if status == nil {
+		return nil
+	}
+	s := protomap.RunStatusFromProto(*status)
+	return &s
 }

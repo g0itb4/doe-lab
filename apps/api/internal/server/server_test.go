@@ -54,13 +54,13 @@ func TestPolicyCoversEveryProcedure(t *testing.T) {
 
 func (a *api) post(t *testing.T, path, body string, header ...string) (int, string) {
 	t.Helper()
-	r, err := http.NewRequest(http.MethodPost, a.url+path, strings.NewReader(body))
+	r, err := http.NewRequest(http.MethodPost, a.URL+path, strings.NewReader(body))
 	noErr(t, "request", err)
 	r.Header.Set("Content-Type", "application/json")
 	for i := 0; i+1 < len(header); i += 2 {
 		r.Header.Set(header[i], header[i+1])
 	}
-	res, err := a.http.Do(r)
+	res, err := a.HTTP.Do(r)
 	noErr(t, "post", err)
 	defer func() { _ = res.Body.Close() }()
 	out, err := io.ReadAll(res.Body)
@@ -88,7 +88,7 @@ func TestHealth(t *testing.T) {
 		t.Errorf("health of an unknown service = %d %s", status, body)
 	}
 
-	a.db.err = errors.New("connection refused")
+	a.DB.Err = errors.New("connection refused")
 	status, body = a.post(t, "/grpc.health.v1.Health/Check", `{"service":""}`)
 	if status != http.StatusOK || !strings.Contains(body, `"SERVING_STATUS_NOT_SERVING"`) {
 		t.Errorf("health with the database down = %d %s", status, body)
@@ -122,7 +122,7 @@ func TestReflectionInDevelopmentOnly(t *testing.T) {
 	}
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	prod := server.Handler(config.Config{Env: config.Production}, log, a.deps)
+	prod := server.Handler(config.Config{Env: config.Production}, log, a.Deps)
 	r, _ := http.NewRequest(http.MethodPost, "/grpc.reflection.v1.ServerReflection/ServerReflectionInfo", strings.NewReader("{}"))
 	w := &recorder{header: http.Header{}}
 	prod.ServeHTTP(w, r)
@@ -151,7 +151,7 @@ func TestAuthOnPublicProcedures(t *testing.T) {
 	noErr(t, "anonymous", list(""))
 	noErr(t, "operator", list(operatorToken))
 	noErr(t, "engine", list(engineToken))
-	noErr(t, "device", list(a.tokens.DeviceToken(a.fixture.SiteA.NMI)))
+	noErr(t, "device", list(a.Tokens.DeviceToken(a.fixture.SiteA.NMI)))
 	// A token that does not verify is refused even where none is needed, so
 	// a misconfigured client finds out on its first call.
 	wantCode(t, "a wrong token", list("not-a-token"), connect.CodeUnauthenticated)
@@ -168,7 +168,7 @@ func TestNewServer(t *testing.T) {
 	t.Parallel()
 	a := newAPI(t)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv := server.New(config.Config{Host: "127.0.0.1", Port: 3100, Env: config.Production}, log, a.deps)
+	srv := server.New(config.Config{Host: "127.0.0.1", Port: 3100, Env: config.Production}, log, a.Deps)
 	if srv.Addr != "127.0.0.1:3100" || srv.Handler == nil || srv.ReadHeaderTimeout == 0 {
 		t.Errorf("server = %+v", srv)
 	}
@@ -193,7 +193,7 @@ func TestPanicIsRecovered(t *testing.T) {
 	t.Parallel()
 	a := newAPI(t)
 	var out bytes.Buffer
-	deps := a.deps
+	deps := a.Deps
 	deps.Feeders = panicking{}
 	handler := server.Handler(config.Config{Env: config.Production}, slog.New(slog.NewTextHandler(&out, nil)), deps)
 

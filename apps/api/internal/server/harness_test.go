@@ -3,114 +3,57 @@ package server_test
 import (
 	"context"
 	"errors"
-	"io"
-	"log/slog"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"connectrpc.com/connect"
 
 	"doelab/api/gen/doelab/v1/doelabv1connect"
-	"doelab/api/internal/auth"
-	"doelab/api/internal/config"
-	"doelab/api/internal/controller"
-	"doelab/api/internal/interceptor"
-	"doelab/api/internal/repo/mem"
+	"doelab/api/internal/apitest"
 	"doelab/api/internal/repo/repotest"
-	"doelab/api/internal/server"
-	"doelab/api/internal/service"
 )
 
-// api is the whole server over an in-memory store, reached through real HTTP/2
-// with the generated clients: the interceptor chain, the controllers, the
-// services and protomap all run as they do in production.
+// api is the test API of package apitest, with the fixture feeder in it and
+// the generated clients to hand.
 type api struct {
-	store   *mem.Store
+	*apitest.API
 	fixture repotest.Fixture
-	tokens  *auth.Tokens
-	url     string
-	http    *http.Client
-	db      *fakeDB
-	deps    server.Deps
 }
 
-// fakeDB is the database as the health check sees it.
-type fakeDB struct{ err error }
-
-func (f *fakeDB) Ping(context.Context) error { return f.err }
-
 const (
-	engineToken   = "engine-token-for-tests"
-	operatorToken = "operator-token-for-tests"
-	deviceSecret  = "device-secret-for-tests"
+	engineToken   = apitest.EngineToken
+	operatorToken = apitest.OperatorToken
 )
-
-// sharedValidator: compiling the CEL rules takes a while, and the result is
-// immutable.
-var sharedValidator = func() interceptor.Validator {
-	v, err := interceptor.NewValidator()
-	if err != nil {
-		panic(err)
-	}
-	return v
-}()
 
 func newAPI(t *testing.T) *api {
 	t.Helper()
-	store := mem.New()
-	a := &api{
-		store:   store,
-		fixture: repotest.Seed(t, store, "LV10", 1),
-		tokens:  auth.NewTokens(engineToken, operatorToken, deviceSecret),
-		db:      &fakeDB{},
-	}
-	cfg := config.Config{Env: config.Development, Reflection: true}
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	a.deps = server.Deps{
-		Feeders:         controller.NewFeeders(service.NewFeeders(store)),
-		Sites:           controller.NewSites(service.NewSites(store)),
-		Devices:         controller.NewDevices(service.NewDevices(store)),
-		EnvelopeConfigs: controller.NewEnvelopeConfigs(service.NewEnvelopeConfigs(store)),
-		Database:        a.db,
-		Validator:       sharedValidator,
-		Tokens:          a.tokens,
-	}
-	srv := httptest.NewUnstartedServer(server.Handler(cfg, log, a.deps))
-	srv.EnableHTTP2 = true
-	srv.StartTLS()
-	t.Cleanup(srv.Close)
-	a.url, a.http = srv.URL, srv.Client()
-	return a
+	a := apitest.New(t)
+	return &api{API: a, fixture: repotest.Seed(t, a.Store, "LV10", 1)}
 }
 
-// as returns client options that send a bearer token. An empty token sends no
-// header: an anonymous caller.
-func as(token string) connect.ClientOption {
-	return connect.WithInterceptors(connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
-		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
-			if token != "" {
-				req.Header().Set("Authorization", "Bearer "+token)
-			}
-			return next(ctx, req)
-		}
-	}))
+func as(token string) connect.ClientOption { return apitest.As(token) }
+
+func (a *api) runs(token string) doelabv1connect.EnvelopeRunServiceClient {
+	return doelabv1connect.NewEnvelopeRunServiceClient(a.HTTP, a.URL, as(token))
+}
+
+func (a *api) envelopes(token string) doelabv1connect.EnvelopeServiceClient {
+	return doelabv1connect.NewEnvelopeServiceClient(a.HTTP, a.URL, as(token))
 }
 
 func (a *api) feeders(token string) doelabv1connect.FeederServiceClient {
-	return doelabv1connect.NewFeederServiceClient(a.http, a.url, as(token))
+	return doelabv1connect.NewFeederServiceClient(a.HTTP, a.URL, as(token))
 }
 
 func (a *api) sites(token string) doelabv1connect.SiteServiceClient {
-	return doelabv1connect.NewSiteServiceClient(a.http, a.url, as(token))
+	return doelabv1connect.NewSiteServiceClient(a.HTTP, a.URL, as(token))
 }
 
 func (a *api) devices(token string) doelabv1connect.DeviceServiceClient {
-	return doelabv1connect.NewDeviceServiceClient(a.http, a.url, as(token))
+	return doelabv1connect.NewDeviceServiceClient(a.HTTP, a.URL, as(token))
 }
 
 func (a *api) configs(token string) doelabv1connect.EnvelopeConfigServiceClient {
-	return doelabv1connect.NewEnvelopeConfigServiceClient(a.http, a.url, as(token))
+	return doelabv1connect.NewEnvelopeConfigServiceClient(a.HTTP, a.URL, as(token))
 }
 
 // wantCode fails unless err is a Connect error with the given code.

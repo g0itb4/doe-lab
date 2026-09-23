@@ -21,7 +21,7 @@ var allKeys = []string{
 	"DOELAB_ENV", "DATABASE_URL", "HOST", "PORT", "DOELAB_VERSION", "API_URL", "METRICS_ADDR",
 	"OTEL_EXPORTER_OTLP_ENDPOINT", "ANTHROPIC_API_KEY", "DB_MAX_CONNS", "REQUEST_TIMEOUT_MS",
 	"S3_ENDPOINT", "S3_REGION", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY", "S3_PATH_STYLE",
-	"ENGINE_TOKEN", "OPERATOR_TOKEN", "DEVICE_TOKEN_SECRET",
+	"ENGINE_TOKEN", "OPERATOR_TOKEN", "DEVICE_TOKEN_SECRET", "DEMO_CLOCK_SPEED", "DEMO_CLOCK_ANCHOR",
 }
 
 func setEnv(t *testing.T, vars ...map[string]string) {
@@ -109,6 +109,9 @@ func TestLoadErrors(t *testing.T) {
 		{name: "bad pool size", vars: map[string]string{"DOELAB_ENV": "development", "DB_MAX_CONNS": "many"}, want: "DB_MAX_CONNS: expected an integer"},
 		{name: "pool size out of range", vars: map[string]string{"DOELAB_ENV": "development", "DB_MAX_CONNS": "0"}, want: "DB_MAX_CONNS: expected 1 to 1000, got 0"},
 		{name: "bad timeout", vars: map[string]string{"DOELAB_ENV": "development", "REQUEST_TIMEOUT_MS": "1s"}, want: "REQUEST_TIMEOUT_MS: expected an integer"},
+		{name: "bad clock speed", vars: map[string]string{"DOELAB_ENV": "development", "DEMO_CLOCK_SPEED": "fast"}, want: `DEMO_CLOCK_SPEED: expected a number, got "fast"`},
+		{name: "fast clock with no anchor", vars: map[string]string{"DOELAB_ENV": "development", "DEMO_CLOCK_SPEED": "60"}, want: "DEMO_CLOCK_ANCHOR: required when DEMO_CLOCK_SPEED is not 1"},
+		{name: "bad clock anchor", vars: map[string]string{"DOELAB_ENV": "development", "DEMO_CLOCK_ANCHOR": "yesterday"}, want: `DEMO_CLOCK_ANCHOR: expected an RFC 3339 time, got "yesterday"`},
 		{name: "bad path style", vars: map[string]string{"DOELAB_ENV": "development", "S3_PATH_STYLE": "maybe"}, want: `S3_PATH_STYLE: expected true or false, got "maybe"`},
 	}
 	for _, tt := range tests {
@@ -152,4 +155,18 @@ func TestProductionRefusesWeakSecrets(t *testing.T) {
 			t.Error(err)
 		}
 	})
+}
+
+func TestLoadClock(t *testing.T) {
+	setEnv(t, map[string]string{"DOELAB_ENV": "development"})
+	c, err := Load()
+	if err != nil || c.ClockSpeed != 1 || c.ClockAnchor.IsZero() {
+		t.Errorf("default clock = speed %v, anchor %v, %v", c.ClockSpeed, c.ClockAnchor, err)
+	}
+
+	setEnv(t, map[string]string{"DOELAB_ENV": "development", "DEMO_CLOCK_SPEED": "60", "DEMO_CLOCK_ANCHOR": "2026-10-01T00:00:00+10:00"})
+	c, err = Load()
+	if err != nil || c.ClockSpeed != 60 || !c.ClockAnchor.Equal(time.Date(2026, 9, 30, 14, 0, 0, 0, time.UTC)) {
+		t.Errorf("demo clock = speed %v, anchor %v, %v", c.ClockSpeed, c.ClockAnchor, err)
+	}
 }

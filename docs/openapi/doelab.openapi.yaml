@@ -4,6 +4,44 @@ info:
   description: API documentation for API
   version: 1.0.0
 paths:
+  /doelab.v1.ClockService/GetClock:
+    post:
+      tags:
+        - doelab.v1.ClockService
+      summary: GetClock
+      operationId: doelab.v1.ClockService.GetClock
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetClockRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetClockResponse'
   /doelab.v1.DeviceService/CreateDevice:
     post:
       tags:
@@ -352,6 +390,284 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/doelab.v1.ListEnvelopeConfigsResponse'
+  /doelab.v1.EnvelopeRunService/CompleteEnvelopeRun:
+    post:
+      tags:
+        - doelab.v1.EnvelopeRunService
+      summary: CompleteEnvelopeRun
+      description: Finishes a run, as completed or as failed. Needs the engine scope.
+      operationId: doelab.v1.EnvelopeRunService.CompleteEnvelopeRun
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.CompleteEnvelopeRunRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.CompleteEnvelopeRunResponse'
+  /doelab.v1.EnvelopeRunService/CreateEnvelopeRun:
+    post:
+      tags:
+        - doelab.v1.EnvelopeRunService
+      summary: CreateEnvelopeRun
+      description: |-
+        Starts a run. Idempotent on idempotency_key: creating a run again with
+         the same key returns the first run. Needs the engine scope.
+      operationId: doelab.v1.EnvelopeRunService.CreateEnvelopeRun
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.CreateEnvelopeRunRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.CreateEnvelopeRunResponse'
+  /doelab.v1.EnvelopeRunService/GetEnvelopeRun:
+    post:
+      tags:
+        - doelab.v1.EnvelopeRunService
+      summary: GetEnvelopeRun
+      operationId: doelab.v1.EnvelopeRunService.GetEnvelopeRun
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetEnvelopeRunRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetEnvelopeRunResponse'
+  /doelab.v1.EnvelopeRunService/ListEnvelopeRuns:
+    post:
+      tags:
+        - doelab.v1.EnvelopeRunService
+      summary: ListEnvelopeRuns
+      description: The runs of a feeder, newest first.
+      operationId: doelab.v1.EnvelopeRunService.ListEnvelopeRuns
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.ListEnvelopeRunsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.ListEnvelopeRunsResponse'
+  /doelab.v1.EnvelopeService/GetCurrentEnvelope:
+    post:
+      tags:
+        - doelab.v1.EnvelopeService
+      summary: GetCurrentEnvelope
+      description: The envelope in force for a site at an instant.
+      operationId: doelab.v1.EnvelopeService.GetCurrentEnvelope
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetCurrentEnvelopeRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetCurrentEnvelopeResponse'
+  /doelab.v1.EnvelopeService/ListEnvelopes:
+    post:
+      tags:
+        - doelab.v1.EnvelopeService
+      summary: ListEnvelopes
+      description: The envelopes of a site over a range, in time order.
+      operationId: doelab.v1.EnvelopeService.ListEnvelopes
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.ListEnvelopesRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.ListEnvelopesResponse'
+  /doelab.v1.EnvelopeService/PublishEnvelopes:
+    post:
+      tags:
+        - doelab.v1.EnvelopeService
+      summary: PublishEnvelopes
+      description: |-
+        Publishes a batch of envelopes from a run. Idempotent on
+         idempotency_key: the same batch sent again writes nothing; the same key
+         with a different batch is refused. Needs the engine scope.
+      operationId: doelab.v1.EnvelopeService.PublishEnvelopes
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.PublishEnvelopesRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.PublishEnvelopesResponse'
+  /doelab.v1.EnvelopeService/SubscribeEnvelopes: {}
   /doelab.v1.FeederService/GetFeeder:
     post:
       tags:
@@ -390,6 +706,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/doelab.v1.GetFeederResponse'
+  /doelab.v1.FeederService/GetFeederForecast:
+    post:
+      tags:
+        - doelab.v1.FeederService
+      summary: GetFeederForecast
+      description: |-
+        The forecast the engine works from: the load and PV of every site of the
+         feeder for each half hour of a range. It is read from the profile year,
+         at the same local month, day and time.
+      operationId: doelab.v1.FeederService.GetFeederForecast
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetFeederForecastRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetFeederForecastResponse'
   /doelab.v1.FeederService/GetFeederLine:
     post:
       tags:
@@ -1003,6 +1361,57 @@ components:
       description: |-
         What stops an envelope from being larger. Mirrors the binding_constraint
          type.
+    doelab.v1.CompleteEnvelopeRunRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+        status:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.RunStatus'
+          title: status
+          enum:
+            - RUN_STATUS_COMPLETED
+            - RUN_STATUS_FAILED
+          description: COMPLETED or FAILED.
+        durationMs:
+          type: integer
+          title: duration_ms
+          minimum: 0
+          format: int32
+        siteCount:
+          type: integer
+          title: site_count
+          minimum: 0
+          format: int32
+        intervalCount:
+          type: integer
+          title: interval_count
+          minimum: 0
+          format: int32
+        error:
+          type:
+            - string
+            - "null"
+          title: error
+          maxLength: 2000
+          minLength: 1
+          description: Required exactly when status is FAILED.
+      title: CompleteEnvelopeRunRequest
+      additionalProperties: false
+      description: |
+        complete_envelope_run.error // error must be set exactly when status is FAILED
+    doelab.v1.CompleteEnvelopeRunResponse:
+      type: object
+      properties:
+        envelopeRun:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.EnvelopeRun'
+          title: envelope_run
+      title: CompleteEnvelopeRunResponse
+      additionalProperties: false
     doelab.v1.CreateDeviceRequest:
       type: object
       properties:
@@ -1050,6 +1459,33 @@ components:
             - $ref: '#/components/schemas/doelab.v1.EnvelopeConfig'
           title: envelope_config
       title: CreateEnvelopeConfigResponse
+      additionalProperties: false
+    doelab.v1.CreateEnvelopeRunRequest:
+      type: object
+      properties:
+        envelopeRun:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.EnvelopeRun'
+          title: envelope_run
+          description: |-
+            Set by the client: feeder_id, envelope_config_id, idempotency_key,
+             horizon_from, horizon_to, engine_version. The rest is the server's.
+      title: CreateEnvelopeRunRequest
+      required:
+        - envelopeRun
+      additionalProperties: false
+      description: |
+        create_envelope_run.horizon // horizon_to must be after horizon_from
+        create_envelope_run.required // feeder_id, envelope_config_id, idempotency_key, horizon_from, horizon_to and engine_version are required
+        create_envelope_run.server_set // id and status are set by the server
+    doelab.v1.CreateEnvelopeRunResponse:
+      type: object
+      properties:
+        envelopeRun:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.EnvelopeRun'
+          title: envelope_run
+      title: CreateEnvelopeRunResponse
       additionalProperties: false
     doelab.v1.CreateSiteRequest:
       type: object
@@ -1146,6 +1582,109 @@ components:
       description: |-
         A distributed energy resource behind a site: an inverter, a battery or an
          EV charger. Mirrors the devices table. deleted_at is not on the wire.
+    doelab.v1.Envelope:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+        siteId:
+          type: string
+          title: site_id
+          format: uuid
+        validFrom:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: valid_from
+          description: Start of the interval, inclusive, in feeder time. On a 5-minute boundary.
+        validTo:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: valid_to
+          description: End of the interval, exclusive, in feeder time.
+        opModExpLimW:
+          type: number
+          title: export_limit_w
+          maximum: 1000000
+          minimum: 0
+          format: double
+          description: |-
+            Largest net export at the connection point, in watts.
+             CSIP-AUS opModExpLimW.
+        opModImpLimW:
+          type: number
+          title: import_limit_w
+          maximum: 1000000
+          minimum: 0
+          format: double
+          description: |-
+            Largest net import at the connection point, in watts.
+             CSIP-AUS opModImpLimW.
+        source:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.EnvelopeSource'
+          title: source
+          description: |
+            Set by the server: ENGINE for a published envelope, BACKSTOP for an
+             operator's override.
+            enum.defined_only = true
+        envelopeRunId:
+          type:
+            - string
+            - "null"
+          title: envelope_run_id
+          format: uuid
+          description: The run that published the envelope. Set exactly when source is ENGINE.
+        backstopEventId:
+          type:
+            - string
+            - "null"
+          title: backstop_event_id
+          format: uuid
+          description: |-
+            The backstop that imposed the envelope. Set exactly when source is
+             BACKSTOP.
+        exportBinding:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.BindingConstraint'
+          title: export_binding
+          description: |
+            What stops the export limit from being larger, and where.
+            enum.defined_only = true
+        exportBindingElement:
+          type: string
+          title: export_binding_element
+          maxLength: 200
+        importBinding:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.BindingConstraint'
+          title: import_binding
+          description: |
+            What stops the import limit from being larger, and where.
+            enum.defined_only = true
+        importBindingElement:
+          type: string
+          title: import_binding_element
+          maxLength: 200
+        supersededAt:
+          oneOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+            - type: "null"
+          title: superseded_at
+          description: |-
+            Wall-clock time a newer envelope replaced this one. Unset while it is
+             the active envelope.
+        createdAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: created_at
+      title: Envelope
+      additionalProperties: false
+      description: |
+        The operating envelope of a site for one interval: the most it may export
+         and import at its connection point. Mirrors the envelopes table.
+        envelope.period // valid_to must be after valid_from
     doelab.v1.EnvelopeConfig:
       type: object
       properties:
@@ -1265,6 +1804,100 @@ components:
         - ENVELOPE_POLICY_EQUAL
         - ENVELOPE_POLICY_PROPORTIONAL
       description: How capacity is shared between sites. Mirrors the envelope_policy type.
+    doelab.v1.EnvelopeRun:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+        envelopeConfigId:
+          type: string
+          title: envelope_config_id
+          format: uuid
+          description: The config version the run used.
+        status:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.RunStatus'
+          title: status
+          description: |
+            enum.defined_only = true
+        idempotencyKey:
+          type: string
+          title: idempotency_key
+          pattern: ^[A-Za-z0-9._:-]{8,128}$
+          description: 'Chosen by the engine: 8 to 128 characters of A-Z a-z 0-9 . _ : -'
+        horizonFrom:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: horizon_from
+          description: Start of the first interval of the run, in feeder time.
+        horizonTo:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: horizon_to
+          description: End of the last interval of the run, in feeder time.
+        startedAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: started_at
+          description: Wall-clock time the run was created.
+        completedAt:
+          oneOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+            - type: "null"
+          title: completed_at
+          description: Wall-clock time the run finished. Unset while it is running.
+        durationMs:
+          type:
+            - integer
+            - "null"
+          title: duration_ms
+          minimum: 0
+          format: int32
+          description: How long the engine took. Unset while the run is running.
+        siteCount:
+          type: integer
+          title: site_count
+          minimum: 0
+          format: int32
+        intervalCount:
+          type: integer
+          title: interval_count
+          minimum: 0
+          format: int32
+        envelopeCount:
+          type: integer
+          title: envelope_count
+          minimum: 0
+          format: int32
+          description: Envelopes published by the run so far.
+        engineVersion:
+          type: string
+          title: engine_version
+          maxLength: 100
+        error:
+          type:
+            - string
+            - "null"
+          title: error
+          maxLength: 2000
+          description: Why the run failed. Set exactly when status is FAILED.
+        createdAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: created_at
+        updatedAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: updated_at
+      title: EnvelopeRun
+      additionalProperties: false
+      description: One run of the engine. Mirrors the envelope_runs table.
     doelab.v1.EnvelopeSource:
       type: string
       title: EnvelopeSource
@@ -1497,6 +2130,30 @@ components:
       title: FeederNode
       additionalProperties: false
       description: A bus of the feeder tree. Mirrors the feeder_nodes table.
+    doelab.v1.ForecastPoint:
+      type: object
+      properties:
+        siteId:
+          type: string
+          title: site_id
+        ts:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: ts
+          description: Start of the half hour, in feeder time.
+        loadW:
+          type: number
+          title: load_w
+          format: double
+          description: 'Average consumption: general load plus controlled load.'
+        pvW:
+          type: number
+          title: pv_w
+          format: double
+          description: Average gross PV generation, before the config's pv_scale.
+      title: ForecastPoint
+      additionalProperties: false
+      description: The forecast of one site for one half hour.
     doelab.v1.GetActiveEnvelopeConfigRequest:
       type: object
       properties:
@@ -1514,6 +2171,91 @@ components:
             - $ref: '#/components/schemas/doelab.v1.EnvelopeConfig'
           title: envelope_config
       title: GetActiveEnvelopeConfigResponse
+      additionalProperties: false
+    doelab.v1.GetClockRequest:
+      type: object
+      title: GetClockRequest
+      additionalProperties: false
+    doelab.v1.GetClockResponse:
+      type: object
+      properties:
+        now:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: now
+          description: Feeder time now.
+        anchor:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: anchor
+          description: The instant at which feeder time and wall-clock time were equal.
+        speed:
+          type: number
+          title: speed
+          format: double
+          description: Seconds of feeder time per second of wall-clock time.
+        wallNow:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: wall_now
+          description: Wall-clock time at the server when it answered.
+      title: GetClockResponse
+      additionalProperties: false
+    doelab.v1.GetCurrentEnvelopeRequest:
+      type: object
+      allOf:
+        - oneOf:
+            - required:
+                - siteId
+            - required:
+                - nmi
+      anyOf:
+        - type: object
+          properties:
+            nmi:
+              type: string
+              title: nmi
+              pattern: ^[A-Z0-9]{10}[0-9]$
+          title: nmi
+        - type: object
+          properties:
+            siteId:
+              type: string
+              title: site_id
+              format: uuid
+          title: site_id
+      unevaluatedProperties: false
+      not:
+        allOf:
+          - anyOf:
+              - required:
+                  - nmi
+              - required:
+                  - siteId
+          - not:
+              oneOf:
+                - required:
+                    - nmi
+                - required:
+                    - siteId
+      properties:
+        at:
+          oneOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+            - type: "null"
+          title: at
+          description: The instant, in feeder time. Unset means now.
+      title: GetCurrentEnvelopeRequest
+    doelab.v1.GetCurrentEnvelopeResponse:
+      type: object
+      properties:
+        envelope:
+          oneOf:
+            - $ref: '#/components/schemas/doelab.v1.Envelope'
+            - type: "null"
+          title: envelope
+          description: Unset when the site has no envelope in force at the instant.
+      title: GetCurrentEnvelopeResponse
       additionalProperties: false
     doelab.v1.GetDeviceRequest:
       type: object
@@ -1550,6 +2292,58 @@ components:
             - $ref: '#/components/schemas/doelab.v1.EnvelopeConfig'
           title: envelope_config
       title: GetEnvelopeConfigResponse
+      additionalProperties: false
+    doelab.v1.GetEnvelopeRunRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+      title: GetEnvelopeRunRequest
+      additionalProperties: false
+    doelab.v1.GetEnvelopeRunResponse:
+      type: object
+      properties:
+        envelopeRun:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.EnvelopeRun'
+          title: envelope_run
+      title: GetEnvelopeRunResponse
+      additionalProperties: false
+    doelab.v1.GetFeederForecastRequest:
+      type: object
+      properties:
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+        from:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: from
+          description: Half hours that start in [from, to), in feeder time. At most 7 days.
+        to:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: to
+      title: GetFeederForecastRequest
+      required:
+        - from
+        - to
+      additionalProperties: false
+      description: |
+        get_feeder_forecast.range // to must be after from, and at most 7 days after it
+    doelab.v1.GetFeederForecastResponse:
+      type: object
+      properties:
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.ForecastPoint'
+          title: points
+          description: In time order, and within a half hour in NMI order.
+      title: GetFeederForecastResponse
       additionalProperties: false
     doelab.v1.GetFeederLineRequest:
       type: object
@@ -1759,6 +2553,99 @@ components:
           title: next_page_token
       title: ListEnvelopeConfigsResponse
       additionalProperties: false
+    doelab.v1.ListEnvelopeRunsRequest:
+      type: object
+      properties:
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+        status:
+          oneOf:
+            - $ref: '#/components/schemas/doelab.v1.RunStatus'
+            - type: "null"
+          not:
+            enum:
+              - RUN_STATUS_UNSPECIFIED
+          title: status
+          description: |
+            Only runs in this state.
+            enum.defined_only = true
+        pageSize:
+          type: integer
+          title: page_size
+          maximum: 500
+          minimum: 0
+          format: int32
+        pageToken:
+          type: string
+          title: page_token
+          maxLength: 1024
+      title: ListEnvelopeRunsRequest
+      additionalProperties: false
+    doelab.v1.ListEnvelopeRunsResponse:
+      type: object
+      properties:
+        envelopeRuns:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.EnvelopeRun'
+          title: envelope_runs
+        nextPageToken:
+          type: string
+          title: next_page_token
+      title: ListEnvelopeRunsResponse
+      additionalProperties: false
+    doelab.v1.ListEnvelopesRequest:
+      type: object
+      properties:
+        siteId:
+          type: string
+          title: site_id
+          format: uuid
+        from:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: from
+          description: Intervals that start in [from, to), in feeder time.
+        to:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: to
+        includeSuperseded:
+          type: boolean
+          title: include_superseded
+          description: 'Also return the superseded envelopes: the audit trail.'
+        pageSize:
+          type: integer
+          title: page_size
+          maximum: 2000
+          minimum: 0
+          format: int32
+        pageToken:
+          type: string
+          title: page_token
+          maxLength: 1024
+      title: ListEnvelopesRequest
+      required:
+        - from
+        - to
+      additionalProperties: false
+      description: |
+        list_envelopes.range // to must be after from
+    doelab.v1.ListEnvelopesResponse:
+      type: object
+      properties:
+        envelopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.Envelope'
+          title: envelopes
+        nextPageToken:
+          type: string
+          title: next_page_token
+      title: ListEnvelopesResponse
+      additionalProperties: false
     doelab.v1.ListFeederLinesRequest:
       type: object
       properties:
@@ -1942,6 +2829,54 @@ components:
           title: next_page_token
       title: ListSitesResponse
       additionalProperties: false
+    doelab.v1.PublishEnvelopesRequest:
+      type: object
+      properties:
+        envelopeRunId:
+          type: string
+          title: envelope_run_id
+          format: uuid
+          description: The run the batch belongs to. It must be running.
+        idempotencyKey:
+          type: string
+          title: idempotency_key
+          pattern: ^[A-Za-z0-9._:-]{8,128}$
+          description: 'Unique per batch: 8 to 128 characters of A-Z a-z 0-9 . _ : -'
+        envelopes:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.Envelope'
+          title: envelopes
+          maxItems: 5000
+          minItems: 1
+          description: |-
+            Set by the client for each envelope: site_id, valid_from, valid_to, the
+             two limits and the two bindings. The rest is the server's.
+      title: PublishEnvelopesRequest
+      additionalProperties: false
+      description: |
+        publish_envelopes.required // every envelope needs site_id, valid_from and valid_to, and must not set id, source, envelope_run_id or backstop_event_id
+    doelab.v1.PublishEnvelopesResponse:
+      type: object
+      properties:
+        published:
+          type: integer
+          title: published
+          format: int32
+          description: Envelopes written by this call. 0 when the batch was a replay.
+        superseded:
+          type: integer
+          title: superseded
+          format: int32
+          description: Older envelopes that this call superseded.
+        replayed:
+          type: boolean
+          title: replayed
+          description: |-
+            True when the key had been used with this same batch before, and
+             nothing was written.
+      title: PublishEnvelopesResponse
+      additionalProperties: false
     doelab.v1.RunStatus:
       type: string
       title: RunStatus
@@ -2079,6 +3014,42 @@ components:
       title: SiteProfile
       additionalProperties: false
       description: One half-hour of a site's load and PV. Mirrors the site_profiles table.
+    doelab.v1.SubscribeEnvelopesRequest:
+      type: object
+      properties:
+        nmi:
+          type: string
+          title: nmi
+          pattern: ^[A-Z0-9]{10}[0-9]$
+          description: |-
+            The site whose envelope to follow. The caller's device token must be for
+             this NMI.
+      title: SubscribeEnvelopesRequest
+      additionalProperties: false
+    doelab.v1.SubscribeEnvelopesResponse:
+      type: object
+      properties:
+        envelope:
+          oneOf:
+            - $ref: '#/components/schemas/doelab.v1.Envelope'
+            - type: "null"
+          title: envelope
+          description: |-
+            The envelope in force. Unset when the site has none: the device then
+             falls back to its default limit.
+        serverTime:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: server_time
+          description: Feeder time at the server when the message was sent.
+        keepalive:
+          type: boolean
+          title: keepalive
+          description: |-
+            True for a periodic message that repeats the envelope already sent. It
+             keeps the stream alive and lets a device notice a dead connection.
+      title: SubscribeEnvelopesResponse
+      additionalProperties: false
     doelab.v1.UpdateDeviceRequest:
       type: object
       properties:
@@ -2213,14 +3184,38 @@ components:
       description: A point in time in RFC 3339 format, with up to nanosecond precision. Output uses UTC (`Z`); input may use an offset from UTC.
 security: []
 tags:
+  - name: doelab.v1.ClockService
+    description: |-
+      ClockService tells every other process what time it is on the feeder.
+
+       Feeder time is the clock of the simulation. At speed 1 it is wall-clock
+       time. A demo runs faster: at speed 60 a day on the feeder passes in 24
+       minutes. The API owns the clock; the engine, the simulated devices and the
+       web app ask for it here, so they all agree.
   - name: doelab.v1.DeviceService
     description: DeviceService manages the DER behind each site.
+  - name: doelab.v1.EnvelopeService
+    description: |-
+      EnvelopeService publishes operating envelopes and dispatches them to
+       devices.
+
+       An envelope is immutable. There is no update and no delete: publishing an
+       envelope for an interval that already has one supersedes the old row, which
+       is kept for audit.
+
+       The demo carries CSIP-AUS / IEEE 2030.5 DERControl semantics over ConnectRPC
+       streaming, in place of the 2030.5 REST and XML transport. export_limit_w is
+       opModExpLimW and import_limit_w is opModImpLimW.
   - name: doelab.v1.EnvelopeConfigService
     description: |-
       EnvelopeConfigService manages the envelope policy of a feeder.
 
        A config is immutable. There is no update and no delete: a change is a new
        version, and the highest version is the active one.
+  - name: doelab.v1.EnvelopeRunService
+    description: |-
+      EnvelopeRunService records the runs of the engine. The engine creates a run
+       before it publishes, and completes it when it is done; everyone else reads.
   - name: doelab.v1.FeederService
     description: |-
       FeederService reads the network model, and lets an operator change the two

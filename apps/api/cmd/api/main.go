@@ -14,14 +14,17 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // the feeder's zone, on a host with no zone database
 
 	"doelab/api/internal/auth"
 	"doelab/api/internal/config"
 	"doelab/api/internal/controller"
 	"doelab/api/internal/interceptor"
 	"doelab/api/internal/repo/pg"
+	"doelab/api/internal/repo/pgbus"
 	"doelab/api/internal/server"
 	"doelab/api/internal/service"
+	"doelab/api/internal/simclock"
 )
 
 func main() {
@@ -58,11 +61,24 @@ func run(log *slog.Logger) error {
 	// interfaces that service declares, and service knows nothing about pg.
 	store := pg.NewStore(pool)
 
+	clock, err := simclock.New(cfg.ClockAnchor, cfg.ClockSpeed)
+	if err != nil {
+		return err
+	}
+	// LISTEN/NOTIFY, so several API instances stay in step. It reconnects on
+	// its own; a subscription that misses a signal catches up at its next
+	// keepalive.
+	envelopeBus := pgbus.New(pool, log)
+	go func() { _ = envelopeBus.Run(ctx) }()
+
 	srv := server.New(cfg, log, server.Deps{
 		Feeders:         controller.NewFeeders(service.NewFeeders(store)),
 		Sites:           controller.NewSites(service.NewSites(store)),
 		Devices:         controller.NewDevices(service.NewDevices(store)),
 		EnvelopeConfigs: controller.NewEnvelopeConfigs(service.NewEnvelopeConfigs(store)),
+		EnvelopeRuns:    controller.NewEnvelopeRuns(service.NewEnvelopeRuns(store)),
+		Envelopes:       controller.NewEnvelopes(service.NewEnvelopes(store, envelopeBus, clock)),
+		Clock:           controller.NewClock(clock),
 		Database:        pool,
 		Validator:       validator,
 		Tokens:          auth.NewTokens(cfg.EngineToken, cfg.OperatorToken, cfg.DeviceTokenSecret),
