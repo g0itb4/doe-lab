@@ -137,11 +137,33 @@ func (s *Envelopes) Publish(ctx context.Context, runID uuid.UUID, key string, en
 			inFeeder[site.ID] = site.NMI
 		}
 
+		// A backstop outranks the engine: while one is active, its sites
+		// take no envelope from a run.
+		blocked := map[uuid.UUID]bool{}
+		backstop, err := r.GetActiveBackstopEvent(ctx, run.FeederID)
+		switch {
+		case err == nil:
+			covered, err := r.ListBackstopEventSiteIDs(ctx, backstop.ID)
+			if err != nil {
+				return err
+			}
+			for _, id := range covered {
+				blocked[id] = true
+			}
+		case !errors.Is(err, domain.ErrNotFound):
+			return err
+		}
+
 		interval := time.Duration(config.IntervalMinutes) * time.Minute
 		for i := range envelopes {
 			e := &envelopes[i]
-			if _, ok := inFeeder[e.SiteID]; !ok {
+			nmi, ok := inFeeder[e.SiteID]
+			if !ok {
 				return fmt.Errorf("%w: site %s is not a site of the run's feeder", domain.ErrFailedPrecondition, e.SiteID)
+			}
+			if blocked[e.SiteID] {
+				return fmt.Errorf("%w: site %s is under backstop %s (%s); clear the backstop before publishing envelopes for it",
+					domain.ErrFailedPrecondition, nmi, backstop.ID, backstop.Reason)
 			}
 			if e.ValidTo.Sub(e.ValidFrom) != interval || e.ValidFrom.UnixNano()%int64(interval) != 0 {
 				return fmt.Errorf("%w: envelope for %s is not a %d-minute interval on the grid",

@@ -317,3 +317,94 @@ func EnvelopeFromMessage(p *doelabv1.Envelope) domain.Envelope {
 	}
 	return e
 }
+
+// EnvelopeRunInterval converts a run interval to its message.
+func EnvelopeRunInterval(i domain.EnvelopeRunInterval) *doelabv1.EnvelopeRunInterval {
+	return &doelabv1.EnvelopeRunInterval{
+		EnvelopeRunId: i.EnvelopeRunID.String(), FeederId: i.FeederID.String(),
+		ValidFrom: timestamppb.New(i.ValidFrom), ValidTo: timestamppb.New(i.ValidTo),
+		ForecastNetLoadW: i.ForecastNetLoadW, ForecastLoadingPct: i.ForecastLoadingPct,
+		ForecastVMinPu: i.ForecastVMinPU, ForecastVMaxPu: i.ForecastVMaxPU,
+		ExportLimitTotalW: i.ExportLimitTotalW, ImportLimitTotalW: i.ImportLimitTotalW,
+		StaticLimitTotalW: i.StaticLimitTotalW, StaticVMaxPu: i.StaticVMaxPU,
+		StaticBinding: BindingConstraintToProto(i.StaticBinding), StaticBindingElement: i.StaticBindingElement,
+		CreatedAt: timestamppb.New(i.CreatedAt),
+	}
+}
+
+// EnvelopeRunIntervalFromProto converts the client-set fields of a run
+// interval message. The run and the feeder are the server's to set.
+func EnvelopeRunIntervalFromProto(p *doelabv1.EnvelopeRunInterval) domain.EnvelopeRunInterval {
+	return domain.EnvelopeRunInterval{
+		ValidFrom: p.GetValidFrom().AsTime(), ValidTo: p.GetValidTo().AsTime(),
+		ForecastNetLoadW: p.GetForecastNetLoadW(), ForecastLoadingPct: p.GetForecastLoadingPct(),
+		ForecastVMinPU: p.GetForecastVMinPu(), ForecastVMaxPU: p.GetForecastVMaxPu(),
+		ExportLimitTotalW: p.GetExportLimitTotalW(), ImportLimitTotalW: p.GetImportLimitTotalW(),
+		StaticLimitTotalW: p.GetStaticLimitTotalW(), StaticVMaxPU: p.GetStaticVMaxPu(),
+		StaticBinding: BindingConstraintFromProto(p.GetStaticBinding()), StaticBindingElement: p.GetStaticBindingElement(),
+	}
+}
+
+// Reading converts a reading to its message.
+func Reading(r domain.Reading) *doelabv1.Reading {
+	return &doelabv1.Reading{
+		DeviceId: r.DeviceID.String(), SiteId: r.SiteID.String(), Ts: timestamppb.New(r.TS),
+		PowerW: r.PowerW, NetExportW: r.NetExportW, SocPct: r.SOCPct, VoltageV: r.VoltageV,
+		ReceivedAt: timestamppb.New(r.ReceivedAt),
+	}
+}
+
+// ReadingFromProto converts the client-set fields of a reading message. The
+// site and the time it was received are the server's to set.
+func ReadingFromProto(p *doelabv1.Reading) domain.Reading {
+	return domain.Reading{
+		DeviceID: parseID(p.GetDeviceId()), TS: p.GetTs().AsTime(),
+		PowerW: p.GetPowerW(), NetExportW: p.GetNetExportW(), SOCPct: p.SocPct, VoltageV: p.VoltageV,
+	}
+}
+
+// Alert converts an alert to its message.
+func Alert(a domain.Alert) *doelabv1.Alert {
+	return &doelabv1.Alert{
+		Id: a.ID.String(), SiteId: a.SiteID.String(), FeederId: a.FeederID.String(), DeviceId: optionalID(a.DeviceID),
+		Kind: AlertKindToProto(a.Kind), Severity: AlertSeverityToProto(a.Severity),
+		OpenedAt: timestamppb.New(a.OpenedAt), ResolvedAt: optionalTime(a.ResolvedAt),
+		AcknowledgedAt: optionalTime(a.AcknowledgedAt), AcknowledgedBy: a.AcknowledgedBy,
+		LimitW: a.LimitW, PeakW: a.PeakW, Detail: a.Detail,
+		CreatedAt: timestamppb.New(a.CreatedAt), UpdatedAt: timestamppb.New(a.UpdatedAt),
+	}
+}
+
+// BackstopEvent converts a backstop to its message.
+func BackstopEvent(e domain.BackstopEvent) *doelabv1.BackstopEvent {
+	return &doelabv1.BackstopEvent{
+		Id: e.ID.String(), FeederId: e.FeederID.String(), Reason: e.Reason, ExportLimitW: e.ExportLimitW,
+		TriggeredBy: e.TriggeredBy, TriggeredAt: timestamppb.New(e.TriggeredAt),
+		ClearedBy: e.ClearedBy, ClearedAt: optionalTime(e.ClearedAt),
+		CreatedAt: timestamppb.New(e.CreatedAt), UpdatedAt: timestamppb.New(e.UpdatedAt),
+	}
+}
+
+// BackstopEventFromProto converts the client-set fields of a backstop
+// message: the feeder, the reason and the limit.
+func BackstopEventFromProto(p *doelabv1.BackstopEvent) domain.BackstopEvent {
+	return domain.BackstopEvent{FeederID: parseID(p.GetFeederId()), Reason: p.GetReason(), ExportLimitW: p.GetExportLimitW()}
+}
+
+// IDs renders a list of ids.
+func IDs(ids []uuid.UUID) []string {
+	out := make([]string, len(ids))
+	for i, id := range ids {
+		out[i] = id.String()
+	}
+	return out
+}
+
+// ParseIDs reads a list of ids that validation has accepted.
+func ParseIDs(ids []string) []uuid.UUID {
+	out := make([]uuid.UUID, len(ids))
+	for i, id := range ids {
+		out[i] = parseID(id)
+	}
+	return out
+}

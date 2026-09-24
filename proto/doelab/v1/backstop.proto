@@ -1,0 +1,119 @@
+syntax = "proto3";
+
+package doelab.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+// BackstopService is the emergency backstop: an operator overrides the
+// envelopes of a feeder's sites with a fixed export limit, at once, until it
+// is cleared. While a backstop is active the engine's envelopes for those
+// sites are refused.
+service BackstopService {
+  rpc GetBackstopEvent(GetBackstopEventRequest) returns (GetBackstopEventResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // The backstops of a feeder, newest first.
+  rpc ListBackstopEvents(ListBackstopEventsRequest) returns (ListBackstopEventsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // Triggers a backstop. A feeder has one active backstop at most. Needs the
+  // operator scope.
+  rpc CreateBackstopEvent(CreateBackstopEventRequest) returns (CreateBackstopEventResponse);
+  // Ends the backstop and restores the envelopes the engine last gave.
+  // Needs the operator scope.
+  rpc ClearBackstop(ClearBackstopRequest) returns (ClearBackstopResponse) {
+    option idempotency_level = IDEMPOTENT;
+  }
+}
+
+// An emergency backstop, from trigger to clear. Mirrors the backstop_events
+// table.
+message BackstopEvent {
+  string id = 1 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  string feeder_id = 2 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // Why the operator triggered it.
+  string reason = 3 [(buf.validate.field).string.max_len = 500];
+  // The export limit imposed on every affected site, in watts. 0 stops
+  // export.
+  double export_limit_w = 4 [(buf.validate.field).double = {
+    gte: 0
+    lte: 1000000
+  }];
+  // Set by the server: the scope that triggered it.
+  string triggered_by = 5;
+  // Feeder time the backstop took effect.
+  google.protobuf.Timestamp triggered_at = 6;
+  optional string cleared_by = 7;
+  // Feeder time the backstop ended. Unset while it is active.
+  optional google.protobuf.Timestamp cleared_at = 8;
+  google.protobuf.Timestamp created_at = 9;
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+message GetBackstopEventRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message GetBackstopEventResponse {
+  BackstopEvent backstop_event = 1;
+  // The sites the backstop covers.
+  repeated string site_ids = 2;
+}
+
+message ListBackstopEventsRequest {
+  string feeder_id = 1 [(buf.validate.field).string.uuid = true];
+  int32 page_size = 2 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 500
+  }];
+  string page_token = 3 [(buf.validate.field).string.max_len = 1024];
+}
+
+message ListBackstopEventsResponse {
+  repeated BackstopEvent backstop_events = 1;
+  string next_page_token = 2;
+}
+
+message CreateBackstopEventRequest {
+  // Set by the client: feeder_id, reason, export_limit_w.
+  BackstopEvent backstop_event = 1 [(buf.validate.field).required = true];
+  // The sites to cover. Empty means every enrolled site of the feeder.
+  repeated string site_ids = 2 [(buf.validate.field).repeated = {
+    max_items: 5000
+    unique: true
+    items: {
+      string: {uuid: true}
+    }
+  }];
+
+  option (buf.validate.message).cel = {
+    id: "create_backstop_event.required"
+    message: "feeder_id and reason are required"
+    expression: "this.backstop_event.feeder_id != '' && this.backstop_event.reason != ''"
+  };
+  option (buf.validate.message).cel = {
+    id: "create_backstop_event.server_set"
+    message: "id, triggered_by and cleared_by are set by the server"
+    expression: "this.backstop_event.id == '' && this.backstop_event.triggered_by == '' && !has(this.backstop_event.cleared_by)"
+  };
+}
+
+message CreateBackstopEventResponse {
+  BackstopEvent backstop_event = 1;
+  repeated string site_ids = 2;
+}
+
+message ClearBackstopRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message ClearBackstopResponse {
+  BackstopEvent backstop_event = 1;
+}

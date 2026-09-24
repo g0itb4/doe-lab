@@ -1,0 +1,88 @@
+syntax = "proto3";
+
+package doelab.v1;
+
+import "buf/validate/validate.proto";
+import "doelab/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// AlertService shows the alerts of a feeder. Only the compliance service
+// opens and resolves an alert, so there is no create, update or delete here:
+// an operator can acknowledge one.
+service AlertService {
+  rpc GetAlert(GetAlertRequest) returns (GetAlertResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // The alerts of a feeder, newest first.
+  rpc ListAlerts(ListAlertsRequest) returns (ListAlertsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // Records that an operator has seen the alert. Needs the operator scope.
+  rpc AcknowledgeAlert(AcknowledgeAlertRequest) returns (AcknowledgeAlertResponse) {
+    option idempotency_level = IDEMPOTENT;
+  }
+}
+
+// A compliance or health alert on a site. Mirrors the alerts table.
+message Alert {
+  string id = 1;
+  string site_id = 2;
+  // The feeder of the site.
+  string feeder_id = 3;
+  // The device, for an offline alert.
+  optional string device_id = 4;
+  AlertKind kind = 5;
+  AlertSeverity severity = 6;
+  // Feeder time the condition began.
+  google.protobuf.Timestamp opened_at = 7;
+  // Feeder time the condition cleared. Unset while the alert is open.
+  optional google.protobuf.Timestamp resolved_at = 8;
+  optional google.protobuf.Timestamp acknowledged_at = 9;
+  optional string acknowledged_by = 10;
+  // For a breach: the export limit in force, in watts.
+  optional double limit_w = 11;
+  // For a breach: the largest net export seen while it lasted, in watts.
+  optional double peak_w = 12;
+  string detail = 13;
+  google.protobuf.Timestamp created_at = 14;
+  google.protobuf.Timestamp updated_at = 15;
+}
+
+message GetAlertRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message GetAlertResponse {
+  Alert alert = 1;
+}
+
+message ListAlertsRequest {
+  string feeder_id = 1 [(buf.validate.field).string.uuid = true];
+  // Only alerts of this site.
+  optional string site_id = 2 [(buf.validate.field).string.uuid = true];
+  // Only alerts of this kind. A breach list is kind CONSTRAINT_BREACH.
+  optional AlertKind kind = 3 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: [0]
+  }];
+  // Only alerts that have not been resolved.
+  bool open_only = 4;
+  int32 page_size = 5 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 500
+  }];
+  string page_token = 6 [(buf.validate.field).string.max_len = 1024];
+}
+
+message ListAlertsResponse {
+  repeated Alert alerts = 1;
+  string next_page_token = 2;
+}
+
+message AcknowledgeAlertRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message AcknowledgeAlertResponse {
+  Alert alert = 1;
+}

@@ -48,7 +48,12 @@ type API struct {
 	SimClock *simclock.Clock
 	// Envelopes is the envelope service, for a test that tunes its keepalive.
 	Envelopes *service.Envelopes
-	Tokens    *auth.Tokens
+	// Compliance and Backstops are the services the API's timer drives; a
+	// test calls their sweeps itself.
+	Compliance *service.Compliance
+	Backstops  *service.Backstops
+	Telemetry  *service.Telemetry
+	Tokens     *auth.Tokens
 	// DB is the database as the health check sees it.
 	DB   *FakeDB
 	Deps server.Deps
@@ -122,6 +127,11 @@ func New(t testing.TB) *API {
 	// sees the effect at once.
 	a.Envelopes.Keepalive = 20 * time.Millisecond
 
+	a.Compliance = service.NewCompliance(store, clock)
+	a.Backstops = service.NewBackstops(store, a.Bus, clock)
+	a.Telemetry = service.NewTelemetry(store, clock, a.Compliance)
+	a.Telemetry.WatchEvery = 20 * time.Millisecond
+
 	a.Deps = server.Deps{
 		Feeders:         controller.NewFeeders(service.NewFeeders(store)),
 		Sites:           controller.NewSites(service.NewSites(store)),
@@ -130,6 +140,9 @@ func New(t testing.TB) *API {
 		EnvelopeRuns:    controller.NewEnvelopeRuns(service.NewEnvelopeRuns(store)),
 		Envelopes:       controller.NewEnvelopes(a.Envelopes),
 		Clock:           controller.NewClock(clock),
+		Telemetry:       controller.NewTelemetry(a.Telemetry),
+		Alerts:          controller.NewAlerts(service.NewAlerts(store)),
+		Backstops:       controller.NewBackstops(a.Backstops),
 		Database:        a.DB,
 		Validator:       validator(),
 		Tokens:          a.Tokens,

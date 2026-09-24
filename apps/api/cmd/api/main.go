@@ -71,6 +71,14 @@ func run(log *slog.Logger) error {
 	envelopeBus := pgbus.New(pool, log)
 	go func() { _ = envelopeBus.Run(ctx) }()
 
+	compliance := service.NewCompliance(store, clock)
+	backstops := service.NewBackstops(store, envelopeBus, clock)
+	telemetry := service.NewTelemetry(store, clock, compliance)
+	// The fleet summary moves once a minute of feeder time, and at least
+	// four times a second of wall time.
+	telemetry.WatchEvery = min(time.Second, max(250*time.Millisecond, clock.Real(time.Minute)))
+	go sweep(ctx, log, clock, compliance, backstops)
+
 	srv := server.New(cfg, log, server.Deps{
 		Feeders:         controller.NewFeeders(service.NewFeeders(store)),
 		Sites:           controller.NewSites(service.NewSites(store)),
@@ -79,6 +87,9 @@ func run(log *slog.Logger) error {
 		EnvelopeRuns:    controller.NewEnvelopeRuns(service.NewEnvelopeRuns(store)),
 		Envelopes:       controller.NewEnvelopes(service.NewEnvelopes(store, envelopeBus, clock)),
 		Clock:           controller.NewClock(clock),
+		Telemetry:       controller.NewTelemetry(telemetry),
+		Alerts:          controller.NewAlerts(service.NewAlerts(store)),
+		Backstops:       controller.NewBackstops(backstops),
 		Database:        pool,
 		Validator:       validator,
 		Tokens:          auth.NewTokens(cfg.EngineToken, cfg.OperatorToken, cfg.DeviceTokenSecret),
@@ -104,4 +115,28 @@ func run(log *slog.Logger) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
+}
+
+// sweep runs the periodic work until ctx ends: it looks for devices that have
+// gone silent, and keeps an active backstop covering its feeder's horizon. A
+// minute of feeder time between sweeps, and never less than a second.
+func sweep(ctx context.Context, log *slog.Logger, clock *simclock.Clock, compliance *service.Compliance, backstops *service.Backstops) {
+	every := max(time.Second, clock.Real(time.Minute))
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		if opened, err := compliance.Sweep(ctx); err != nil {
+			log.WarnContext(ctx, "compliance sweep failed", "err", err)
+		} else if opened > 0 {
+			log.InfoContext(ctx, "devices offline", "alerts_opened", opened)
+		}
+		if _, err := backstops.Extend(ctx); err != nil {
+			log.WarnContext(ctx, "backstop extension failed", "err", err)
+		}
+	}
 }

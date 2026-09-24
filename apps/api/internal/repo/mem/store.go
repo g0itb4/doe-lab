@@ -37,6 +37,14 @@ type state struct {
 	// envelopes holds every envelope, active and superseded, by id.
 	envelopes map[uuid.UUID]domain.Envelope
 	keys      map[[2]string]domain.IdempotencyKey
+
+	intervals []domain.EnvelopeRunInterval
+	// readings holds each device's readings by time.
+	readings      map[uuid.UUID]map[int64]domain.Reading
+	status        map[uuid.UUID]domain.DeviceStatus
+	alerts        map[uuid.UUID]domain.Alert
+	backstops     map[uuid.UUID]domain.BackstopEvent
+	backstopSites map[uuid.UUID][]uuid.UUID
 }
 
 func newState() *state {
@@ -52,6 +60,12 @@ func newState() *state {
 
 		envelopes: map[uuid.UUID]domain.Envelope{},
 		keys:      map[[2]string]domain.IdempotencyKey{},
+
+		readings:      map[uuid.UUID]map[int64]domain.Reading{},
+		status:        map[uuid.UUID]domain.DeviceStatus{},
+		alerts:        map[uuid.UUID]domain.Alert{},
+		backstops:     map[uuid.UUID]domain.BackstopEvent{},
+		backstopSites: map[uuid.UUID][]uuid.UUID{},
 	}
 }
 
@@ -70,7 +84,24 @@ func (s *state) clone() *state {
 
 		envelopes: maps.Clone(s.envelopes),
 		keys:      maps.Clone(s.keys),
+
+		intervals:     slices.Clone(s.intervals),
+		readings:      cloneReadings(s.readings),
+		status:        maps.Clone(s.status),
+		alerts:        maps.Clone(s.alerts),
+		backstops:     maps.Clone(s.backstops),
+		backstopSites: maps.Clone(s.backstopSites),
 	}
+}
+
+// cloneReadings copies the readings two levels deep: a device's readings are
+// a map that a write changes in place.
+func cloneReadings(in map[uuid.UUID]map[int64]domain.Reading) map[uuid.UUID]map[int64]domain.Reading {
+	out := make(map[uuid.UUID]map[int64]domain.Reading, len(in))
+	for device, readings := range in {
+		out[device] = maps.Clone(readings)
+	}
+	return out
 }
 
 // Store is the in-memory store. The zero value is not usable; call New.

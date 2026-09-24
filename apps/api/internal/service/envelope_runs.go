@@ -81,3 +81,37 @@ func (s *EnvelopeRuns) Complete(ctx context.Context, id uuid.UUID, result RunRes
 	})
 	return out, err
 }
+
+// CreateIntervals records the forecast state of the feeder for intervals of a
+// running run. The feeder of each row is the run's, whatever the row says.
+func (s *EnvelopeRuns) CreateIntervals(ctx context.Context, runID uuid.UUID, rows []domain.EnvelopeRunInterval) (int, error) {
+	err := s.store.Tx(ctx, func(ctx context.Context, r Repos) error {
+		run, err := r.GetEnvelopeRun(ctx, runID)
+		if err != nil {
+			return fmt.Errorf("%w: envelope run %s does not exist", domain.ErrFailedPrecondition, runID)
+		}
+		if run.Status != domain.RunRunning {
+			return fmt.Errorf("%w: envelope run %s is %s, not running", domain.ErrFailedPrecondition, runID, run.Status)
+		}
+		for i := range rows {
+			if rows[i].ValidFrom.Before(run.HorizonFrom) || rows[i].ValidTo.After(run.HorizonTo) {
+				return fmt.Errorf("%w: interval %s is outside the run's horizon",
+					domain.ErrInvalid, rows[i].ValidFrom.UTC().Format("2006-01-02T15:04:05Z"))
+			}
+			rows[i].EnvelopeRunID, rows[i].FeederID = runID, run.FeederID
+		}
+		return r.CreateEnvelopeRunIntervals(ctx, rows)
+	})
+	if err != nil {
+		return 0, err
+	}
+	return len(rows), nil
+}
+
+// ListIntervals returns the intervals of a run, in time order.
+func (s *EnvelopeRuns) ListIntervals(ctx context.Context, runID uuid.UUID) ([]domain.EnvelopeRunInterval, error) {
+	if _, err := s.store.GetEnvelopeRun(ctx, runID); err != nil {
+		return nil, err
+	}
+	return s.store.ListEnvelopeRunIntervals(ctx, runID)
+}

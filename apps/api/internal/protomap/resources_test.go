@@ -167,3 +167,89 @@ func TestSlice(t *testing.T) {
 		t.Errorf("Slice of nil = %v", got)
 	}
 }
+
+// The resources that only the server writes go one way, a field at a time.
+func TestOperationsResources(t *testing.T) {
+	t.Parallel()
+	site, device, run, feeder := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+
+	reading := domain.Reading{
+		DeviceID: device, SiteID: site, TS: created, PowerW: 3000, NetExportW: 2500,
+		SOCPct: ptr(55.0), VoltageV: ptr(241.5), ReceivedAt: updated,
+	}
+	r := Reading(reading)
+	if r.GetDeviceId() != device.String() || r.GetSiteId() != site.String() || !r.GetTs().AsTime().Equal(created) || r.GetPowerW() != 3000 ||
+		r.GetNetExportW() != 2500 || r.GetSocPct() != 55 || r.GetVoltageV() != 241.5 || !r.GetReceivedAt().AsTime().Equal(updated) {
+		t.Errorf("reading = %v", r)
+	}
+	// On the way in, the site and the time of receipt are the server's.
+	in := ReadingFromProto(r)
+	want := reading
+	want.SiteID, want.ReceivedAt = uuid.Nil, time.Time{}
+	if !reflect.DeepEqual(in, want) {
+		t.Errorf("reading from proto:\n got %+v\nwant %+v", in, want)
+	}
+
+	open := domain.Alert{
+		ID: uuid.New(), SiteID: site, FeederID: feeder, Kind: domain.AlertConstraintBreach, Severity: domain.SeverityCritical,
+		OpenedAt: created, LimitW: ptr(1000.0), PeakW: ptr(2500.0), Detail: "over", CreatedAt: created, UpdatedAt: updated,
+	}
+	a := Alert(open)
+	if a.GetId() != open.ID.String() || a.GetSiteId() != site.String() || a.GetFeederId() != feeder.String() || a.DeviceId != nil ||
+		a.GetKind() != doelabv1.AlertKind_ALERT_KIND_CONSTRAINT_BREACH || a.GetSeverity() != doelabv1.AlertSeverity_ALERT_SEVERITY_CRITICAL ||
+		!a.GetOpenedAt().AsTime().Equal(created) || a.ResolvedAt != nil || a.AcknowledgedAt != nil || a.AcknowledgedBy != nil ||
+		a.GetLimitW() != 1000 || a.GetPeakW() != 2500 || a.GetDetail() != "over" ||
+		!a.GetCreatedAt().AsTime().Equal(created) || !a.GetUpdatedAt().AsTime().Equal(updated) {
+		t.Errorf("open alert = %v", a)
+	}
+	closed := domain.Alert{
+		ID: uuid.New(), SiteID: site, DeviceID: &device, Kind: domain.AlertDeviceOffline, Severity: domain.SeverityInfo,
+		OpenedAt: created, ResolvedAt: &updated, AcknowledgedAt: &updated, AcknowledgedBy: ptr("operator"),
+	}
+	a = Alert(closed)
+	if a.GetDeviceId() != device.String() || !a.GetResolvedAt().AsTime().Equal(updated) || !a.GetAcknowledgedAt().AsTime().Equal(updated) ||
+		a.GetAcknowledgedBy() != "operator" || a.LimitW != nil || a.PeakW != nil {
+		t.Errorf("closed alert = %v", a)
+	}
+
+	event := domain.BackstopEvent{
+		ID: uuid.New(), FeederID: feeder, Reason: "fault", ExportLimitW: 500, TriggeredBy: "operator", TriggeredAt: created,
+		ClearedBy: ptr("operator"), ClearedAt: &updated, CreatedAt: created, UpdatedAt: updated,
+	}
+	e := BackstopEvent(event)
+	if e.GetId() != event.ID.String() || e.GetFeederId() != feeder.String() || e.GetReason() != "fault" || e.GetExportLimitW() != 500 ||
+		e.GetTriggeredBy() != "operator" || !e.GetTriggeredAt().AsTime().Equal(created) || e.GetClearedBy() != "operator" ||
+		!e.GetClearedAt().AsTime().Equal(updated) || !e.GetCreatedAt().AsTime().Equal(created) || !e.GetUpdatedAt().AsTime().Equal(updated) {
+		t.Errorf("backstop = %v", e)
+	}
+	// On the way in, a client sets the feeder, the reason and the limit.
+	if got := BackstopEventFromProto(e); got != (domain.BackstopEvent{FeederID: feeder, Reason: "fault", ExportLimitW: 500}) {
+		t.Errorf("backstop from proto = %+v", got)
+	}
+
+	interval := domain.EnvelopeRunInterval{
+		EnvelopeRunID: run, FeederID: feeder, ValidFrom: created, ValidTo: updated,
+		ForecastNetLoadW: -12000, ForecastLoadingPct: 12.5, ForecastVMinPU: 1.02, ForecastVMaxPU: 1.06,
+		ExportLimitTotalW: 150000, ImportLimitTotalW: 300000, StaticLimitTotalW: 280000, StaticVMaxPU: 1.13,
+		StaticBinding: domain.BindingVoltageHigh, StaticBindingElement: "XDLAB000014", CreatedAt: created,
+	}
+	i := EnvelopeRunInterval(interval)
+	if i.GetEnvelopeRunId() != run.String() || i.GetFeederId() != feeder.String() || !i.GetCreatedAt().AsTime().Equal(created) {
+		t.Errorf("interval = %v", i)
+	}
+	// On the way in, the run, the feeder and the time of creation are the
+	// server's; the rest survives the round trip.
+	wantInterval := interval
+	wantInterval.EnvelopeRunID, wantInterval.FeederID, wantInterval.CreatedAt = uuid.Nil, uuid.Nil, time.Time{}
+	if got := EnvelopeRunIntervalFromProto(i); got != wantInterval {
+		t.Errorf("interval from proto:\n got %+v\nwant %+v", got, wantInterval)
+	}
+
+	ids := []uuid.UUID{site, device}
+	if got := ParseIDs(IDs(ids)); !reflect.DeepEqual(got, ids) {
+		t.Errorf("ids = %v, want %v", got, ids)
+	}
+	if got := IDs(nil); len(got) != 0 {
+		t.Errorf("no ids = %v", got)
+	}
+}

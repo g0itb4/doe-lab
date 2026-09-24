@@ -3,7 +3,9 @@ package service_test
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,84 +24,281 @@ import (
 // middle of a request: the service must pass the error on, and leave nothing
 // half done.
 type faulty struct {
-	*mem.Store
-	fail string
+	faultyRepos
+	Store *mem.Store
+}
+
+func newFaulty() *faulty {
+	store := mem.New()
+	return &faulty{faultyRepos: faultyRepos{Repos: store, plan: &plan{}}, Store: store}
 }
 
 var errDown = errors.New("the database is gone")
 
 func (f *faulty) Tx(ctx context.Context, fn func(context.Context, service.Repos) error) error {
 	return f.Store.Tx(ctx, func(ctx context.Context, r service.Repos) error {
-		return fn(ctx, faultyRepos{Repos: r, fail: f.fail})
+		return fn(ctx, faultyRepos{Repos: r, plan: f.plan})
 	})
 }
 
-func (f *faulty) GetCurrentEnvelope(ctx context.Context, siteID uuid.UUID, at time.Time) (domain.Envelope, error) {
-	if f.fail == "GetCurrentEnvelope" {
-		return domain.Envelope{}, errDown
-	}
-	return f.Store.GetCurrentEnvelope(ctx, siteID, at)
+// failAt names the call that fails from now on: "Method" for every call of
+// it, "Method#2" for its second call only, "" for none.
+func (f *faulty) failAt(step string) {
+	f.plan.mu.Lock()
+	defer f.plan.mu.Unlock()
+	f.plan.fail, f.plan.calls = step, 0
 }
 
-func (f *faulty) ListAllSites(ctx context.Context, feederID uuid.UUID) ([]domain.Site, error) {
-	if f.fail == "ListAllSites" {
-		return nil, errDown
-	}
-	return f.Store.ListAllSites(ctx, feederID)
+// plan is which call fails. A transaction's repositories and the store's own
+// share one.
+type plan struct {
+	mu    sync.Mutex
+	fail  string
+	calls int
 }
 
-func (f *faulty) ListFeederProfiles(ctx context.Context, feederID uuid.UUID, from, to time.Time) ([]domain.SiteProfile, error) {
-	if f.fail == "ListFeederProfiles" {
-		return nil, errDown
+// down returns the failure for a call of method, if the plan has one.
+func (p *plan) down(method string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	name, nth, counted := strings.Cut(p.fail, "#")
+	if method != name {
+		return nil
 	}
-	return f.Store.ListFeederProfiles(ctx, feederID, from, to)
+	p.calls++
+	if counted && strconv.Itoa(p.calls) != nth {
+		return nil
+	}
+	return errDown
 }
 
 type faultyRepos struct {
 	service.Repos
-	fail string
+	plan *plan
+}
+
+func (r faultyRepos) GetCurrentEnvelope(ctx context.Context, siteID uuid.UUID, at time.Time) (domain.Envelope, error) {
+	if err := r.plan.down("GetCurrentEnvelope"); err != nil {
+		return domain.Envelope{}, err
+	}
+	return r.Repos.GetCurrentEnvelope(ctx, siteID, at)
+}
+
+func (r faultyRepos) GetFeeder(ctx context.Context, id uuid.UUID) (domain.Feeder, error) {
+	if err := r.plan.down("GetFeeder"); err != nil {
+		return domain.Feeder{}, err
+	}
+	return r.Repos.GetFeeder(ctx, id)
+}
+
+func (r faultyRepos) ListFeeders(ctx context.Context, page domain.Page) ([]domain.Feeder, string, error) {
+	if err := r.plan.down("ListFeeders"); err != nil {
+		return nil, "", err
+	}
+	return r.Repos.ListFeeders(ctx, page)
+}
+
+func (r faultyRepos) ListAllSites(ctx context.Context, feederID uuid.UUID) ([]domain.Site, error) {
+	if err := r.plan.down("ListAllSites"); err != nil {
+		return nil, err
+	}
+	return r.Repos.ListAllSites(ctx, feederID)
+}
+
+func (r faultyRepos) ListFeederProfiles(ctx context.Context, feederID uuid.UUID, from, to time.Time) ([]domain.SiteProfile, error) {
+	if err := r.plan.down("ListFeederProfiles"); err != nil {
+		return nil, err
+	}
+	return r.Repos.ListFeederProfiles(ctx, feederID, from, to)
+}
+
+func (r faultyRepos) ListSiteProfiles(ctx context.Context, siteID uuid.UUID, from, to time.Time, page domain.Page) ([]domain.SiteProfile, string, error) {
+	if err := r.plan.down("ListSiteProfiles"); err != nil {
+		return nil, "", err
+	}
+	return r.Repos.ListSiteProfiles(ctx, siteID, from, to, page)
+}
+
+func (r faultyRepos) ListDevices(ctx context.Context, filter service.DeviceFilter, page domain.Page) ([]domain.Device, string, error) {
+	if err := r.plan.down("ListDevices"); err != nil {
+		return nil, "", err
+	}
+	return r.Repos.ListDevices(ctx, filter, page)
 }
 
 func (r faultyRepos) CreateEnvelopeRun(ctx context.Context, run domain.EnvelopeRun) (domain.EnvelopeRun, bool, error) {
-	if r.fail == "CreateEnvelopeRun" {
-		return domain.EnvelopeRun{}, false, errDown
+	if err := r.plan.down("CreateEnvelopeRun"); err != nil {
+		return domain.EnvelopeRun{}, false, err
 	}
 	return r.Repos.CreateEnvelopeRun(ctx, run)
 }
 
+func (r faultyRepos) ListEnvelopeRuns(ctx context.Context, feederID uuid.UUID, status *domain.RunStatus, page domain.Page) ([]domain.EnvelopeRun, string, error) {
+	if err := r.plan.down("ListEnvelopeRuns"); err != nil {
+		return nil, "", err
+	}
+	return r.Repos.ListEnvelopeRuns(ctx, feederID, status, page)
+}
+
 func (r faultyRepos) ClaimIdempotencyKey(ctx context.Context, key domain.IdempotencyKey) (domain.IdempotencyKey, bool, error) {
-	if r.fail == "ClaimIdempotencyKey" {
-		return domain.IdempotencyKey{}, false, errDown
+	if err := r.plan.down("ClaimIdempotencyKey"); err != nil {
+		return domain.IdempotencyKey{}, false, err
 	}
 	return r.Repos.ClaimIdempotencyKey(ctx, key)
 }
 
 func (r faultyRepos) GetEnvelopeConfig(ctx context.Context, id uuid.UUID) (domain.EnvelopeConfig, error) {
-	if r.fail == "GetEnvelopeConfig" {
-		return domain.EnvelopeConfig{}, errDown
+	if err := r.plan.down("GetEnvelopeConfig"); err != nil {
+		return domain.EnvelopeConfig{}, err
 	}
 	return r.Repos.GetEnvelopeConfig(ctx, id)
 }
 
-func (r faultyRepos) ListAllSites(ctx context.Context, feederID uuid.UUID) ([]domain.Site, error) {
-	if r.fail == "ListAllSites" {
-		return nil, errDown
+func (r faultyRepos) GetActiveEnvelopeConfig(ctx context.Context, feederID uuid.UUID) (domain.EnvelopeConfig, error) {
+	if err := r.plan.down("GetActiveEnvelopeConfig"); err != nil {
+		return domain.EnvelopeConfig{}, err
 	}
-	return r.Repos.ListAllSites(ctx, feederID)
+	return r.Repos.GetActiveEnvelopeConfig(ctx, feederID)
 }
 
 func (r faultyRepos) ReplaceEnvelopes(ctx context.Context, envelopes []domain.Envelope) ([]domain.Envelope, int, error) {
-	if r.fail == "ReplaceEnvelopes" {
-		return nil, 0, errDown
+	if err := r.plan.down("ReplaceEnvelopes"); err != nil {
+		return nil, 0, err
 	}
 	return r.Repos.ReplaceEnvelopes(ctx, envelopes)
 }
 
+func (r faultyRepos) ListFeederEnvelopes(ctx context.Context, feederID uuid.UUID, from, to time.Time) ([]domain.Envelope, error) {
+	if err := r.plan.down("ListFeederEnvelopes"); err != nil {
+		return nil, err
+	}
+	return r.Repos.ListFeederEnvelopes(ctx, feederID, from, to)
+}
+
 func (r faultyRepos) AddEnvelopeRunCount(ctx context.Context, id uuid.UUID, added int32) error {
-	if r.fail == "AddEnvelopeRunCount" {
-		return errDown
+	if err := r.plan.down("AddEnvelopeRunCount"); err != nil {
+		return err
 	}
 	return r.Repos.AddEnvelopeRunCount(ctx, id, added)
+}
+
+func (r faultyRepos) ListFeederIntervals(ctx context.Context, feederID uuid.UUID, from, to time.Time) ([]domain.EnvelopeRunInterval, error) {
+	if err := r.plan.down("ListFeederIntervals"); err != nil {
+		return nil, err
+	}
+	return r.Repos.ListFeederIntervals(ctx, feederID, from, to)
+}
+
+func (r faultyRepos) InsertReadings(ctx context.Context, readings []domain.Reading) (int, error) {
+	if err := r.plan.down("InsertReadings"); err != nil {
+		return 0, err
+	}
+	return r.Repos.InsertReadings(ctx, readings)
+}
+
+func (r faultyRepos) ListSitePower(ctx context.Context, siteID uuid.UUID, from, to time.Time) ([]domain.SitePower, error) {
+	if err := r.plan.down("ListSitePower"); err != nil {
+		return nil, err
+	}
+	return r.Repos.ListSitePower(ctx, siteID, from, to)
+}
+
+func (r faultyRepos) ListFleetSeries(ctx context.Context, feederID uuid.UUID, from, to time.Time) ([]domain.FleetMinute, error) {
+	if err := r.plan.down("ListFleetSeries"); err != nil {
+		return nil, err
+	}
+	return r.Repos.ListFleetSeries(ctx, feederID, from, to)
+}
+
+func (r faultyRepos) ListDeviceStates(ctx context.Context, feederID uuid.UUID) ([]domain.DeviceState, error) {
+	if err := r.plan.down("ListDeviceStates"); err != nil {
+		return nil, err
+	}
+	return r.Repos.ListDeviceStates(ctx, feederID)
+}
+
+func (r faultyRepos) ListAlerts(ctx context.Context, feederID uuid.UUID, filter service.AlertFilter, page domain.Page) ([]domain.Alert, string, error) {
+	if err := r.plan.down("ListAlerts"); err != nil {
+		return nil, "", err
+	}
+	return r.Repos.ListAlerts(ctx, feederID, filter, page)
+}
+
+func (r faultyRepos) OpenAlert(ctx context.Context, alert domain.Alert) (domain.Alert, bool, error) {
+	if err := r.plan.down("OpenAlert"); err != nil {
+		return domain.Alert{}, false, err
+	}
+	return r.Repos.OpenAlert(ctx, alert)
+}
+
+func (r faultyRepos) ResolveAlert(ctx context.Context, siteID uuid.UUID, kind domain.AlertKind, at time.Time) (bool, error) {
+	if err := r.plan.down("ResolveAlert"); err != nil {
+		return false, err
+	}
+	return r.Repos.ResolveAlert(ctx, siteID, kind, at)
+}
+
+func (r faultyRepos) CountOpenAlerts(ctx context.Context, feederID uuid.UUID) (int, error) {
+	if err := r.plan.down("CountOpenAlerts"); err != nil {
+		return 0, err
+	}
+	return r.Repos.CountOpenAlerts(ctx, feederID)
+}
+
+func (r faultyRepos) GetActiveBackstopEvent(ctx context.Context, feederID uuid.UUID) (domain.BackstopEvent, error) {
+	if err := r.plan.down("GetActiveBackstopEvent"); err != nil {
+		return domain.BackstopEvent{}, err
+	}
+	return r.Repos.GetActiveBackstopEvent(ctx, feederID)
+}
+
+func (r faultyRepos) ListBackstopEvents(ctx context.Context, feederID uuid.UUID, page domain.Page) ([]domain.BackstopEvent, string, error) {
+	if err := r.plan.down("ListBackstopEvents"); err != nil {
+		return nil, "", err
+	}
+	return r.Repos.ListBackstopEvents(ctx, feederID, page)
+}
+
+func (r faultyRepos) CreateBackstopEvent(ctx context.Context, event domain.BackstopEvent, siteIDs []uuid.UUID) (domain.BackstopEvent, error) {
+	if err := r.plan.down("CreateBackstopEvent"); err != nil {
+		return domain.BackstopEvent{}, err
+	}
+	return r.Repos.CreateBackstopEvent(ctx, event, siteIDs)
+}
+
+func (r faultyRepos) ListBackstopEventSiteIDs(ctx context.Context, id uuid.UUID) ([]uuid.UUID, error) {
+	if err := r.plan.down("ListBackstopEventSiteIDs"); err != nil {
+		return nil, err
+	}
+	return r.Repos.ListBackstopEventSiteIDs(ctx, id)
+}
+
+func (r faultyRepos) ClearBackstopEvent(ctx context.Context, id uuid.UUID, by string, at time.Time) (domain.BackstopEvent, error) {
+	if err := r.plan.down("ClearBackstopEvent"); err != nil {
+		return domain.BackstopEvent{}, err
+	}
+	return r.Repos.ClearBackstopEvent(ctx, id, by, at)
+}
+
+func (r faultyRepos) ListActiveEnvelopes(ctx context.Context, siteIDs []uuid.UUID, from time.Time) ([]domain.Envelope, error) {
+	if err := r.plan.down("ListActiveEnvelopes"); err != nil {
+		return nil, err
+	}
+	return r.Repos.ListActiveEnvelopes(ctx, siteIDs, from)
+}
+
+func (r faultyRepos) SupersedeBackstopEnvelopes(ctx context.Context, eventID uuid.UUID, from time.Time) (int, error) {
+	if err := r.plan.down("SupersedeBackstopEnvelopes"); err != nil {
+		return 0, err
+	}
+	return r.Repos.SupersedeBackstopEnvelopes(ctx, eventID, from)
+}
+
+func (r faultyRepos) ListLatestEngineEnvelopes(ctx context.Context, siteIDs []uuid.UUID, from time.Time) ([]domain.Envelope, error) {
+	if err := r.plan.down("ListLatestEngineEnvelopes"); err != nil {
+		return nil, err
+	}
+	return r.Repos.ListLatestEngineEnvelopes(ctx, siteIDs, from)
 }
 
 // fixedClock is feeder time standing still.
@@ -107,6 +306,26 @@ type fixedClock struct{ now time.Time }
 
 func (c fixedClock) Now() time.Time                { return c.now }
 func (c fixedClock) Until(time.Time) time.Duration { return time.Hour }
+
+// movedClock is feeder time that moves when a test says so.
+type movedClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func (c *movedClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *movedClock) Until(time.Time) time.Duration { return time.Hour }
+
+func (c *movedClock) set(now time.Time) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.now = now
+}
 
 // scene is a store with a feeder, a config and a running run.
 type scene struct {
@@ -119,7 +338,7 @@ type scene struct {
 
 func newScene(t *testing.T) *scene {
 	t.Helper()
-	store := &faulty{Store: mem.New()}
+	store := newFaulty()
 	f := repotest.Seed(t, store.Store, "LV10", 1)
 	ctx := repotest.Ctx()
 	config, err := store.CreateEnvelopeConfig(ctx, repotest.Config(f.Feeder.ID))
@@ -147,11 +366,11 @@ func TestPublishFailuresLeaveNothingBehind(t *testing.T) {
 			defer cancel()
 			batch := []domain.Envelope{repotest.Envelope(s.f.SiteA.ID, s.run.ID, 0, 1000)}
 
-			s.store.fail = step
+			s.store.failAt(step)
 			if _, err := s.svc.Publish(ctx, s.run.ID, "batch-0001", batch); !errors.Is(err, errDown) {
 				t.Fatalf("error = %v, want the store's", err)
 			}
-			s.store.fail = ""
+			s.store.failAt("")
 
 			if e, err := s.svc.Current(ctx, s.f.SiteA.ID, repotest.Day); err != nil || e != nil {
 				t.Errorf("an envelope was left behind: %+v, %v", e, err)
@@ -183,7 +402,7 @@ func TestEnvelopeServiceStoreFailures(t *testing.T) {
 	ctx := repotest.Ctx()
 
 	s := newScene(t)
-	s.store.fail = "GetCurrentEnvelope"
+	s.store.failAt("GetCurrentEnvelope")
 	if _, err := s.svc.Current(ctx, s.f.SiteA.ID, repotest.Day); !errors.Is(err, errDown) {
 		t.Errorf("Current: %v", err)
 	}
@@ -193,7 +412,7 @@ func TestEnvelopeServiceStoreFailures(t *testing.T) {
 	if !errors.Is(err, errDown) {
 		t.Errorf("Follow with a failing read: %v", err)
 	}
-	s.store.fail = ""
+	s.store.failAt("")
 	// A subscription whose send fails ends with that error: the client has gone.
 	gone := errors.New("broken pipe")
 	err = s.svc.Follow(device, s.f.SiteA.NMI, func(*domain.Envelope, time.Time, bool) error { return gone })
@@ -205,11 +424,11 @@ func TestEnvelopeServiceStoreFailures(t *testing.T) {
 	}
 
 	runs := service.NewEnvelopeRuns(s.store)
-	s.store.fail = "CreateEnvelopeRun"
+	s.store.failAt("CreateEnvelopeRun")
 	if _, err := runs.Create(ctx, repotest.NewRun(s.f.Feeder.ID, s.run.EnvelopeConfigID, "run-0002")); !errors.Is(err, errDown) {
 		t.Errorf("Create: %v", err)
 	}
-	s.store.fail = ""
+	s.store.failAt("")
 
 	// The two halves of a result must agree, whoever calls.
 	reason := "x"
@@ -235,12 +454,12 @@ func TestForecastFailures(t *testing.T) {
 		t.Errorf("eight days: %v", err)
 	}
 	for _, step := range []string{"ListAllSites", "ListFeederProfiles"} {
-		s.store.fail = step
+		s.store.failAt(step)
 		if _, err := feeders.Forecast(ctx, s.f.Feeder.ID, day, day.Add(time.Hour)); !errors.Is(err, errDown) {
 			t.Errorf("with %s failing: %v", step, err)
 		}
 	}
-	s.store.fail = ""
+	s.store.failAt("")
 
 	// A feeder whose zone is not a zone.
 	odd := repotest.NewFeeder("ODD")

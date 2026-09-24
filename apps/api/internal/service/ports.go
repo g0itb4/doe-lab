@@ -36,6 +36,10 @@ type Repos interface {
 	EnvelopeRunRepo
 	EnvelopeRepo
 	IdempotencyRepo
+	RunIntervalRepo
+	TelemetryRepo
+	AlertRepo
+	BackstopRepo
 }
 
 // FeederRepo stores the network model.
@@ -175,6 +179,92 @@ type IdempotencyRepo interface {
 	// already taken it stores nothing and returns the row that holds it,
 	// with claimed false.
 	ClaimIdempotencyKey(ctx context.Context, key domain.IdempotencyKey) (held domain.IdempotencyKey, claimed bool, err error)
+}
+
+// RunIntervalRepo stores the forecast state of a feeder per interval of a run.
+type RunIntervalRepo interface {
+	// CreateEnvelopeRunIntervals stores the intervals of a run. An interval
+	// the run already has is domain.ErrAlreadyExists.
+	CreateEnvelopeRunIntervals(ctx context.Context, rows []domain.EnvelopeRunInterval) error
+	// ListEnvelopeRunIntervals returns the intervals of a run, in time order.
+	ListEnvelopeRunIntervals(ctx context.Context, runID uuid.UUID) ([]domain.EnvelopeRunInterval, error)
+	// ListFeederIntervals returns, for each interval of a feeder that starts
+	// in [from, to), the row of the latest run that covered it.
+	ListFeederIntervals(ctx context.Context, feederID uuid.UUID, from, to time.Time) ([]domain.EnvelopeRunInterval, error)
+}
+
+// TelemetryRepo stores readings and the rollups over them.
+type TelemetryRepo interface {
+	// InsertReadings stores a batch and moves the status of each device to
+	// its latest reading. A reading that is already stored, or whose device
+	// does not exist, is skipped; the count of rows stored comes back. The
+	// site of each reading is its device's, whatever the reading says.
+	InsertReadings(ctx context.Context, readings []domain.Reading) (stored int, err error)
+	// ListReadings returns the readings of a device with from <= ts < to, in
+	// time order.
+	ListReadings(ctx context.Context, deviceID uuid.UUID, from, to time.Time, page domain.Page) ([]domain.Reading, string, error)
+	// ListSitePower returns a site's telemetry by the minute, for the minutes
+	// that start in [from, to).
+	ListSitePower(ctx context.Context, siteID uuid.UUID, from, to time.Time) ([]domain.SitePower, error)
+	// ListFleetSeries returns a feeder's fleet by the minute.
+	ListFleetSeries(ctx context.Context, feederID uuid.UUID, from, to time.Time) ([]domain.FleetMinute, error)
+	// ListDeviceStates returns every device of a feeder with its latest
+	// reading, in NMI order.
+	ListDeviceStates(ctx context.Context, feederID uuid.UUID) ([]domain.DeviceState, error)
+}
+
+// AlertFilter narrows ListAlerts. A nil field does not filter.
+type AlertFilter struct {
+	SiteID   *uuid.UUID
+	Kind     *domain.AlertKind
+	OpenOnly bool
+}
+
+// AlertRepo stores alerts.
+type AlertRepo interface {
+	GetAlert(ctx context.Context, id uuid.UUID) (domain.Alert, error)
+	// ListAlerts returns the alerts of a feeder, newest first.
+	ListAlerts(ctx context.Context, feederID uuid.UUID, filter AlertFilter, page domain.Page) ([]domain.Alert, string, error)
+	// OpenAlert opens an alert. When the site already has an open alert of
+	// the kind, it raises that alert's peak and severity instead and returns
+	// it, with opened false.
+	OpenAlert(ctx context.Context, alert domain.Alert) (stored domain.Alert, opened bool, err error)
+	// ResolveAlert resolves the open alert of a site and kind, and reports
+	// whether there was one.
+	ResolveAlert(ctx context.Context, siteID uuid.UUID, kind domain.AlertKind, at time.Time) (resolved bool, err error)
+	// AcknowledgeAlert records who saw an alert. An alert that is already
+	// acknowledged is returned as it is.
+	AcknowledgeAlert(ctx context.Context, id uuid.UUID, by string) (domain.Alert, error)
+	CountOpenAlerts(ctx context.Context, feederID uuid.UUID) (int, error)
+}
+
+// BackstopRepo stores backstop events, and reads the envelopes a backstop
+// takes over and gives back.
+type BackstopRepo interface {
+	GetBackstopEvent(ctx context.Context, id uuid.UUID) (domain.BackstopEvent, error)
+	// GetActiveBackstopEvent returns the backstop in force for a feeder, or
+	// domain.ErrNotFound.
+	GetActiveBackstopEvent(ctx context.Context, feederID uuid.UUID) (domain.BackstopEvent, error)
+	// ListBackstopEvents returns the backstops of a feeder, newest first.
+	ListBackstopEvents(ctx context.Context, feederID uuid.UUID, page domain.Page) ([]domain.BackstopEvent, string, error)
+	// CreateBackstopEvent stores an active backstop over the sites. A feeder
+	// that already has one is domain.ErrAlreadyExists.
+	CreateBackstopEvent(ctx context.Context, event domain.BackstopEvent, siteIDs []uuid.UUID) (domain.BackstopEvent, error)
+	// ListBackstopEventSiteIDs returns the sites a backstop covers.
+	ListBackstopEventSiteIDs(ctx context.Context, id uuid.UUID) ([]uuid.UUID, error)
+	// ClearBackstopEvent ends an active backstop. One that is already
+	// cleared is domain.ErrFailedPrecondition.
+	ClearBackstopEvent(ctx context.Context, id uuid.UUID, by string, at time.Time) (domain.BackstopEvent, error)
+	// ListActiveEnvelopes returns the active envelopes of the sites whose
+	// interval ends after from.
+	ListActiveEnvelopes(ctx context.Context, siteIDs []uuid.UUID, from time.Time) ([]domain.Envelope, error)
+	// SupersedeBackstopEnvelopes ends the active envelopes of a backstop
+	// whose interval ends after from, and returns how many that was.
+	SupersedeBackstopEnvelopes(ctx context.Context, eventID uuid.UUID, from time.Time) (int, error)
+	// ListLatestEngineEnvelopes returns, for each of the sites and each
+	// interval that ends after from, the envelope the engine gave last,
+	// active or superseded.
+	ListLatestEngineEnvelopes(ctx context.Context, siteIDs []uuid.UUID, from time.Time) ([]domain.Envelope, error)
 }
 
 // EnvelopeBus tells the open subscriptions that the envelope of a site may

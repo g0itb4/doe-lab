@@ -62,5 +62,25 @@ func Policy() interceptor.Policy {
 		doelabv1connect.EnvelopeServiceSubscribeEnvelopesProcedure: device,
 
 		doelabv1connect.ClockServiceGetClockProcedure: public,
+
+		doelabv1connect.EnvelopeRunServiceCreateEnvelopeRunIntervalsProcedure: engine,
+		doelabv1connect.EnvelopeRunServiceListEnvelopeRunIntervalsProcedure:   public,
+
+		doelabv1connect.TelemetryServiceListReadingsProcedure:    public,
+		doelabv1connect.TelemetryServiceIngestReadingsProcedure:  device,
+		doelabv1connect.TelemetryServiceGetFleetSummaryProcedure: public,
+		doelabv1connect.TelemetryServiceWatchFleetProcedure:      public,
+		doelabv1connect.TelemetryServiceGetFeederSeriesProcedure: public,
+		doelabv1connect.TelemetryServiceGetSiteSeriesProcedure:   public,
+		doelabv1connect.TelemetryServiceGetDailyReportProcedure:  public,
+
+		doelabv1connect.AlertServiceGetAlertProcedure:         public,
+		doelabv1connect.AlertServiceListAlertsProcedure:       public,
+		doelabv1connect.AlertServiceAcknowledgeAlertProcedure: operator,
+
+		doelabv1connect.BackstopServiceGetBackstopEventProcedure:    public,
+		doelabv1connect.BackstopServiceListBackstopEventsProcedure:  public,
+		doelabv1connect.BackstopServiceCreateBackstopEventProcedure: operator,
+		doelabv1connect.BackstopServiceClearBackstopProcedure:       operator,
 	}
 }

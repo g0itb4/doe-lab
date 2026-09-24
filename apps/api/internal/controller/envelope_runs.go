@@ -76,3 +76,32 @@ func (c *EnvelopeRuns) CompleteEnvelopeRun(ctx context.Context, req *connect.Req
 	}
 	return connect.NewResponse(&doelabv1.CompleteEnvelopeRunResponse{EnvelopeRun: protomap.EnvelopeRun(run)}), nil
 }
+
+// CreateEnvelopeRunIntervals records the feeder's forecast state for
+// intervals of a run.
+func (c *EnvelopeRuns) CreateEnvelopeRunIntervals(ctx context.Context, req *connect.Request[doelabv1.CreateEnvelopeRunIntervalsRequest]) (*connect.Response[doelabv1.CreateEnvelopeRunIntervalsResponse], error) {
+	runID, err := parseID("envelope_run_id", req.Msg.GetEnvelopeRunId())
+	if err != nil {
+		return nil, err
+	}
+	created, err := c.svc.CreateIntervals(ctx, runID, protomap.Slice(req.Msg.GetIntervals(), protomap.EnvelopeRunIntervalFromProto))
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&doelabv1.CreateEnvelopeRunIntervalsResponse{Created: int32(created)}), nil //nolint:gosec // G115: at most 288
+}
+
+// ListEnvelopeRunIntervals returns the intervals of a run.
+func (c *EnvelopeRuns) ListEnvelopeRunIntervals(ctx context.Context, req *connect.Request[doelabv1.ListEnvelopeRunIntervalsRequest]) (*connect.Response[doelabv1.ListEnvelopeRunIntervalsResponse], error) {
+	runID, err := parseID("envelope_run_id", req.Msg.GetEnvelopeRunId())
+	if err != nil {
+		return nil, err
+	}
+	intervals, err := c.svc.ListIntervals(ctx, runID)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&doelabv1.ListEnvelopeRunIntervalsResponse{
+		Intervals: protomap.Slice(intervals, protomap.EnvelopeRunInterval),
+	}), nil
+}

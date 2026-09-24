@@ -4,6 +4,281 @@ info:
   description: API documentation for API
   version: 1.0.0
 paths:
+  /doelab.v1.AlertService/AcknowledgeAlert:
+    post:
+      tags:
+        - doelab.v1.AlertService
+      summary: AcknowledgeAlert
+      description: Records that an operator has seen the alert. Needs the operator scope.
+      operationId: doelab.v1.AlertService.AcknowledgeAlert
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.AcknowledgeAlertRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.AcknowledgeAlertResponse'
+  /doelab.v1.AlertService/GetAlert:
+    post:
+      tags:
+        - doelab.v1.AlertService
+      summary: GetAlert
+      operationId: doelab.v1.AlertService.GetAlert
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetAlertRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetAlertResponse'
+  /doelab.v1.AlertService/ListAlerts:
+    post:
+      tags:
+        - doelab.v1.AlertService
+      summary: ListAlerts
+      description: The alerts of a feeder, newest first.
+      operationId: doelab.v1.AlertService.ListAlerts
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.ListAlertsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.ListAlertsResponse'
+  /doelab.v1.BackstopService/ClearBackstop:
+    post:
+      tags:
+        - doelab.v1.BackstopService
+      summary: ClearBackstop
+      description: |-
+        Ends the backstop and restores the envelopes the engine last gave.
+         Needs the operator scope.
+      operationId: doelab.v1.BackstopService.ClearBackstop
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.ClearBackstopRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.ClearBackstopResponse'
+  /doelab.v1.BackstopService/CreateBackstopEvent:
+    post:
+      tags:
+        - doelab.v1.BackstopService
+      summary: CreateBackstopEvent
+      description: |-
+        Triggers a backstop. A feeder has one active backstop at most. Needs the
+         operator scope.
+      operationId: doelab.v1.BackstopService.CreateBackstopEvent
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.CreateBackstopEventRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.CreateBackstopEventResponse'
+  /doelab.v1.BackstopService/GetBackstopEvent:
+    post:
+      tags:
+        - doelab.v1.BackstopService
+      summary: GetBackstopEvent
+      operationId: doelab.v1.BackstopService.GetBackstopEvent
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetBackstopEventRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetBackstopEventResponse'
+  /doelab.v1.BackstopService/ListBackstopEvents:
+    post:
+      tags:
+        - doelab.v1.BackstopService
+      summary: ListBackstopEvents
+      description: The backstops of a feeder, newest first.
+      operationId: doelab.v1.BackstopService.ListBackstopEvents
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.ListBackstopEventsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.ListBackstopEventsResponse'
   /doelab.v1.ClockService/GetClock:
     post:
       tags:
@@ -470,6 +745,48 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/doelab.v1.CreateEnvelopeRunResponse'
+  /doelab.v1.EnvelopeRunService/CreateEnvelopeRunIntervals:
+    post:
+      tags:
+        - doelab.v1.EnvelopeRunService
+      summary: CreateEnvelopeRunIntervals
+      description: |-
+        Records the forecast state of the feeder for each interval of a run: what
+         the envelopes were computed against. Once per run. Needs the engine
+         scope.
+      operationId: doelab.v1.EnvelopeRunService.CreateEnvelopeRunIntervals
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.CreateEnvelopeRunIntervalsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.CreateEnvelopeRunIntervalsResponse'
   /doelab.v1.EnvelopeRunService/GetEnvelopeRun:
     post:
       tags:
@@ -508,6 +825,45 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/doelab.v1.GetEnvelopeRunResponse'
+  /doelab.v1.EnvelopeRunService/ListEnvelopeRunIntervals:
+    post:
+      tags:
+        - doelab.v1.EnvelopeRunService
+      summary: ListEnvelopeRunIntervals
+      description: The intervals of a run, in time order.
+      operationId: doelab.v1.EnvelopeRunService.ListEnvelopeRunIntervals
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.ListEnvelopeRunIntervalsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.ListEnvelopeRunIntervalsResponse'
   /doelab.v1.EnvelopeRunService/ListEnvelopeRuns:
     post:
       tags:
@@ -1254,6 +1610,207 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/doelab.v1.UpdateSiteResponse'
+  /doelab.v1.TelemetryService/GetDailyReport:
+    post:
+      tags:
+        - doelab.v1.TelemetryService
+      summary: GetDailyReport
+      description: |-
+        A day of the feeder in numbers: the energy the envelopes let out against
+         what a fixed limit would have, and how well the fleet complied.
+      operationId: doelab.v1.TelemetryService.GetDailyReport
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetDailyReportRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetDailyReportResponse'
+  /doelab.v1.TelemetryService/GetFeederSeries:
+    post:
+      tags:
+        - doelab.v1.TelemetryService
+      summary: GetFeederSeries
+      description: |-
+        The feeder through time: what the engine forecast for each interval, what
+         it allowed, and what the fleet did.
+      operationId: doelab.v1.TelemetryService.GetFeederSeries
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetFeederSeriesRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetFeederSeriesResponse'
+  /doelab.v1.TelemetryService/GetFleetSummary:
+    post:
+      tags:
+        - doelab.v1.TelemetryService
+      summary: GetFleetSummary
+      description: 'The fleet now: who is reporting, what is being exported, what is open.'
+      operationId: doelab.v1.TelemetryService.GetFleetSummary
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetFleetSummaryRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetFleetSummaryResponse'
+  /doelab.v1.TelemetryService/GetSiteSeries:
+    post:
+      tags:
+        - doelab.v1.TelemetryService
+      summary: GetSiteSeries
+      description: 'One site through time: its envelope, its forecast and its telemetry.'
+      operationId: doelab.v1.TelemetryService.GetSiteSeries
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetSiteSeriesRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetSiteSeriesResponse'
+  /doelab.v1.TelemetryService/IngestReadings: {}
+  /doelab.v1.TelemetryService/ListReadings:
+    post:
+      tags:
+        - doelab.v1.TelemetryService
+      summary: ListReadings
+      description: The readings of a device over a range, in time order.
+      operationId: doelab.v1.TelemetryService.ListReadings
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.ListReadingsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.ListReadingsResponse'
+  /doelab.v1.TelemetryService/WatchFleet: {}
 components:
   schemas:
     connect-protocol-version:
@@ -1322,6 +1879,100 @@ components:
           description: Deserialized error detail payload. The 'type' field indicates the schema. This field is for easier debugging and should not be relied upon for application logic.
       additionalProperties: true
       description: Contains an arbitrary serialized message along with a @type that describes the type of the serialized message, with an additional debug field for ConnectRPC error details.
+    doelab.v1.AcknowledgeAlertRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+      title: AcknowledgeAlertRequest
+      additionalProperties: false
+    doelab.v1.AcknowledgeAlertResponse:
+      type: object
+      properties:
+        alert:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.Alert'
+          title: alert
+      title: AcknowledgeAlertResponse
+      additionalProperties: false
+    doelab.v1.Alert:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+        siteId:
+          type: string
+          title: site_id
+        feederId:
+          type: string
+          title: feeder_id
+          description: The feeder of the site.
+        deviceId:
+          type:
+            - string
+            - "null"
+          title: device_id
+          description: The device, for an offline alert.
+        kind:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.AlertKind'
+          title: kind
+        severity:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.AlertSeverity'
+          title: severity
+        openedAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: opened_at
+          description: Feeder time the condition began.
+        resolvedAt:
+          oneOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+            - type: "null"
+          title: resolved_at
+          description: Feeder time the condition cleared. Unset while the alert is open.
+        acknowledgedAt:
+          oneOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+            - type: "null"
+          title: acknowledged_at
+        acknowledgedBy:
+          type:
+            - string
+            - "null"
+          title: acknowledged_by
+        limitW:
+          type:
+            - number
+            - "null"
+          title: limit_w
+          format: double
+          description: 'For a breach: the export limit in force, in watts.'
+        peakW:
+          type:
+            - number
+            - "null"
+          title: peak_w
+          format: double
+          description: 'For a breach: the largest net export seen while it lasted, in watts.'
+        detail:
+          type: string
+          title: detail
+        createdAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: created_at
+        updatedAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: updated_at
+      title: Alert
+      additionalProperties: false
+      description: A compliance or health alert on a site. Mirrors the alerts table.
     doelab.v1.AlertKind:
       type: string
       title: AlertKind
@@ -1347,6 +1998,64 @@ components:
         - AMPACITY_SOURCE_ASSUMED
         - AMPACITY_SOURCE_OPERATOR
       description: Where a line's current rating came from. Mirrors the ampacity_source type.
+    doelab.v1.BackstopEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+        reason:
+          type: string
+          title: reason
+          maxLength: 500
+          description: Why the operator triggered it.
+        exportLimitW:
+          type: number
+          title: export_limit_w
+          maximum: 1000000
+          minimum: 0
+          format: double
+          description: |-
+            The export limit imposed on every affected site, in watts. 0 stops
+             export.
+        triggeredBy:
+          type: string
+          title: triggered_by
+          description: 'Set by the server: the scope that triggered it.'
+        triggeredAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: triggered_at
+          description: Feeder time the backstop took effect.
+        clearedBy:
+          type:
+            - string
+            - "null"
+          title: cleared_by
+        clearedAt:
+          oneOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+            - type: "null"
+          title: cleared_at
+          description: Feeder time the backstop ended. Unset while it is active.
+        createdAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: created_at
+        updatedAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: updated_at
+      title: BackstopEvent
+      additionalProperties: false
+      description: |-
+        An emergency backstop, from trigger to clear. Mirrors the backstop_events
+         table.
     doelab.v1.BindingConstraint:
       type: string
       title: BindingConstraint
@@ -1361,6 +2070,24 @@ components:
       description: |-
         What stops an envelope from being larger. Mirrors the binding_constraint
          type.
+    doelab.v1.ClearBackstopRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+      title: ClearBackstopRequest
+      additionalProperties: false
+    doelab.v1.ClearBackstopResponse:
+      type: object
+      properties:
+        backstopEvent:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.BackstopEvent'
+          title: backstop_event
+      title: ClearBackstopResponse
+      additionalProperties: false
     doelab.v1.CompleteEnvelopeRunRequest:
       type: object
       properties:
@@ -1412,6 +2139,44 @@ components:
           title: envelope_run
       title: CompleteEnvelopeRunResponse
       additionalProperties: false
+    doelab.v1.CreateBackstopEventRequest:
+      type: object
+      properties:
+        backstopEvent:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.BackstopEvent'
+          title: backstop_event
+          description: 'Set by the client: feeder_id, reason, export_limit_w.'
+        siteIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+          title: site_ids
+          maxItems: 5000
+          uniqueItems: true
+          description: The sites to cover. Empty means every enrolled site of the feeder.
+      title: CreateBackstopEventRequest
+      required:
+        - backstopEvent
+      additionalProperties: false
+      description: |
+        create_backstop_event.required // feeder_id and reason are required
+        create_backstop_event.server_set // id, triggered_by and cleared_by are set by the server
+    doelab.v1.CreateBackstopEventResponse:
+      type: object
+      properties:
+        backstopEvent:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.BackstopEvent'
+          title: backstop_event
+        siteIds:
+          type: array
+          items:
+            type: string
+          title: site_ids
+      title: CreateBackstopEventResponse
+      additionalProperties: false
     doelab.v1.CreateDeviceRequest:
       type: object
       properties:
@@ -1459,6 +2224,31 @@ components:
             - $ref: '#/components/schemas/doelab.v1.EnvelopeConfig'
           title: envelope_config
       title: CreateEnvelopeConfigResponse
+      additionalProperties: false
+    doelab.v1.CreateEnvelopeRunIntervalsRequest:
+      type: object
+      properties:
+        envelopeRunId:
+          type: string
+          title: envelope_run_id
+          format: uuid
+        intervals:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.EnvelopeRunInterval'
+          title: intervals
+          maxItems: 288
+          minItems: 1
+      title: CreateEnvelopeRunIntervalsRequest
+      additionalProperties: false
+    doelab.v1.CreateEnvelopeRunIntervalsResponse:
+      type: object
+      properties:
+        created:
+          type: integer
+          title: created
+          format: int32
+      title: CreateEnvelopeRunIntervalsResponse
       additionalProperties: false
     doelab.v1.CreateEnvelopeRunRequest:
       type: object
@@ -1898,6 +2688,102 @@ components:
       title: EnvelopeRun
       additionalProperties: false
       description: One run of the engine. Mirrors the envelope_runs table.
+    doelab.v1.EnvelopeRunInterval:
+      type: object
+      properties:
+        envelopeRunId:
+          type: string
+          title: envelope_run_id
+          format: uuid
+          description: Set by the server, from the request.
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+          description: Set by the server, from the run.
+        validFrom:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: valid_from
+        validTo:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: valid_to
+        forecastNetLoadW:
+          type: number
+          title: forecast_net_load_w
+          format: double
+          description: |-
+            Forecast power through the transformer with every site at its forecast:
+             positive is supply to the feeder, negative is reverse flow.
+        forecastLoadingPct:
+          type: number
+          title: forecast_loading_pct
+          minimum: 0
+          format: double
+          description: Forecast transformer loading, as a percentage of its rating.
+        forecastVMinPu:
+          exclusiveMinimum: 0
+          type: number
+          title: forecast_v_min_pu
+          format: double
+          description: Lowest and highest customer voltage with every site at its forecast.
+        forecastVMaxPu:
+          exclusiveMinimum: 0
+          type: number
+          title: forecast_v_max_pu
+          format: double
+        exportLimitTotalW:
+          type: number
+          title: export_limit_total_w
+          minimum: 0
+          format: double
+          description: Sum of the limits the run gave for the interval.
+        importLimitTotalW:
+          type: number
+          title: import_limit_total_w
+          minimum: 0
+          format: double
+        staticLimitTotalW:
+          type: number
+          title: static_limit_total_w
+          minimum: 0
+          format: double
+          description: |-
+            What the enrolled sites could export under the config's fixed limit, the
+             highest voltage that would cause, and the limit it would break.
+        staticVMaxPu:
+          exclusiveMinimum: 0
+          type: number
+          title: static_v_max_pu
+          format: double
+        staticBinding:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.BindingConstraint'
+          not:
+            enum:
+              - BINDING_CONSTRAINT_UNSPECIFIED
+          title: static_binding
+          description: |
+            enum.defined_only = true
+        staticBindingElement:
+          type: string
+          title: static_binding_element
+          maxLength: 200
+        createdAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: created_at
+      title: EnvelopeRunInterval
+      required:
+        - validFrom
+        - validTo
+      additionalProperties: false
+      description: |
+        The forecast state of the whole feeder for one interval of a run. Mirrors
+         the envelope_run_intervals table.
+        envelope_run_interval.period // valid_to must be after valid_from
+        envelope_run_interval.voltage // forecast_v_min_pu must not be above forecast_v_max_pu
     doelab.v1.EnvelopeSource:
       type: string
       title: EnvelopeSource
@@ -2130,6 +3016,160 @@ components:
       title: FeederNode
       additionalProperties: false
       description: A bus of the feeder tree. Mirrors the feeder_nodes table.
+    doelab.v1.FeederPoint:
+      type: object
+      properties:
+        validFrom:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: valid_from
+        validTo:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: valid_to
+        forecastNetLoadW:
+          type: number
+          title: forecast_net_load_w
+          format: double
+          description: |-
+            Forecast power through the transformer: positive is supply to the
+             feeder, negative is reverse flow.
+        forecastLoadingPct:
+          type: number
+          title: forecast_loading_pct
+          format: double
+        forecastVMinPu:
+          type: number
+          title: forecast_v_min_pu
+          format: double
+          description: Lowest and highest customer voltage in the forecast, per unit.
+        forecastVMaxPu:
+          type: number
+          title: forecast_v_max_pu
+          format: double
+        exportLimitTotalW:
+          type: number
+          title: export_limit_total_w
+          format: double
+          description: Sum of the export and import limits given for the interval.
+        importLimitTotalW:
+          type: number
+          title: import_limit_total_w
+          format: double
+        staticLimitTotalW:
+          type: number
+          title: static_limit_total_w
+          format: double
+          description: |-
+            What a fixed export limit would have allowed, the highest voltage it
+             would have caused, and the network limit it would have broken.
+        staticVMaxPu:
+          type: number
+          title: static_v_max_pu
+          format: double
+        staticBinding:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.BindingConstraint'
+          title: static_binding
+        staticBindingElement:
+          type: string
+          title: static_binding_element
+        measuredExportW:
+          type:
+            - number
+            - "null"
+          title: measured_export_w
+          format: double
+          description: |-
+            What the reporting sites did, averaged over the interval. Unset for an
+             interval with no telemetry yet.
+        measuredImportW:
+          type:
+            - number
+            - "null"
+          title: measured_import_w
+          format: double
+      title: FeederPoint
+      additionalProperties: false
+      description: 'One interval of the feeder: forecast, allowed and measured.'
+    doelab.v1.FleetSummary:
+      type: object
+      properties:
+        feederId:
+          type: string
+          title: feeder_id
+        at:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: at
+          description: Feeder time of the summary.
+        enrolledSites:
+          type: integer
+          title: enrolled_sites
+          format: int32
+          description: |-
+            Sites that take part in envelopes, and how many of them have a device
+             that reported within the offline period.
+        reportingSites:
+          type: integer
+          title: reporting_sites
+          format: int32
+        devices:
+          type: integer
+          title: devices
+          format: int32
+        devicesOnline:
+          type: integer
+          title: devices_online
+          format: int32
+        exportW:
+          type: number
+          title: export_w
+          format: double
+          description: Net flow of the reporting sites, split by direction, in watts.
+        importW:
+          type: number
+          title: import_w
+          format: double
+        exportLimitW:
+          type: number
+          title: export_limit_w
+          format: double
+          description: Sum of the export limits in force for the enrolled sites.
+        sitesOverLimit:
+          type: integer
+          title: sites_over_limit
+          format: int32
+          description: Sites whose latest reading is above their export limit.
+        openAlerts:
+          type: integer
+          title: open_alerts
+          format: int32
+        backstopEventId:
+          type:
+            - string
+            - "null"
+          title: backstop_event_id
+          description: The backstop in force, if any.
+        latestRunId:
+          type:
+            - string
+            - "null"
+          title: latest_run_id
+          description: The latest run of the engine, if any.
+        latestRunAt:
+          oneOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+            - type: "null"
+          title: latest_run_at
+        latestRunStatus:
+          oneOf:
+            - $ref: '#/components/schemas/doelab.v1.RunStatus'
+            - type: "null"
+          title: latest_run_status
+      title: FleetSummary
+      additionalProperties: false
+      description: The fleet of a feeder at one instant.
     doelab.v1.ForecastPoint:
       type: object
       properties:
@@ -2171,6 +3211,48 @@ components:
             - $ref: '#/components/schemas/doelab.v1.EnvelopeConfig'
           title: envelope_config
       title: GetActiveEnvelopeConfigResponse
+      additionalProperties: false
+    doelab.v1.GetAlertRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+      title: GetAlertRequest
+      additionalProperties: false
+    doelab.v1.GetAlertResponse:
+      type: object
+      properties:
+        alert:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.Alert'
+          title: alert
+      title: GetAlertResponse
+      additionalProperties: false
+    doelab.v1.GetBackstopEventRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+      title: GetBackstopEventRequest
+      additionalProperties: false
+    doelab.v1.GetBackstopEventResponse:
+      type: object
+      properties:
+        backstopEvent:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.BackstopEvent'
+          title: backstop_event
+        siteIds:
+          type: array
+          items:
+            type: string
+          title: site_ids
+          description: The sites the backstop covers.
+      title: GetBackstopEventResponse
       additionalProperties: false
     doelab.v1.GetClockRequest:
       type: object
@@ -2256,6 +3338,96 @@ components:
           title: envelope
           description: Unset when the site has no envelope in force at the instant.
       title: GetCurrentEnvelopeResponse
+      additionalProperties: false
+    doelab.v1.GetDailyReportRequest:
+      type: object
+      properties:
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+        day:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: day
+          description: |-
+            Any instant of the day wanted, in feeder time. The report covers the
+             local calendar day of the feeder that holds it.
+      title: GetDailyReportRequest
+      required:
+        - day
+      additionalProperties: false
+    doelab.v1.GetDailyReportResponse:
+      type: object
+      properties:
+        from:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: from
+          description: The local day the report covers, as feeder time.
+        to:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: to
+        enrolledSites:
+          type: integer
+          title: enrolled_sites
+          format: int32
+        intervals:
+          type: integer
+          title: intervals
+          format: int32
+          description: Intervals of the day that have envelopes.
+        potentialExportKwh:
+          type: number
+          title: potential_export_kwh
+          format: double
+          description: |-
+            What the enrolled sites' PV could have exported with no limit at all:
+             generation above their own load, by the forecast.
+        envelopeExportKwh:
+          type: number
+          title: envelope_export_kwh
+          format: double
+          description: What the envelopes let out, and what they held back.
+        envelopeCurtailedKwh:
+          type: number
+          title: envelope_curtailed_kwh
+          format: double
+        staticExportKwh:
+          type: number
+          title: static_export_kwh
+          format: double
+          description: What a fixed limit would have let out, and held back.
+        staticCurtailedKwh:
+          type: number
+          title: static_curtailed_kwh
+          format: double
+        staticViolationIntervals:
+          type: integer
+          title: static_violation_intervals
+          format: int32
+          description: Intervals in which the fixed limit would have broken a network limit.
+        staticLimitW:
+          type: number
+          title: static_limit_w
+          format: double
+          description: The fixed limit the comparison uses, in watts.
+        constraintBreaches:
+          type: integer
+          title: constraint_breaches
+          format: int32
+          description: Alerts that opened in the day, by kind.
+        deviceOfflineAlerts:
+          type: integer
+          title: device_offline_alerts
+          format: int32
+        backstopEvents:
+          type: integer
+          title: backstop_events
+          format: int32
+          description: Backstops triggered in the day.
+      title: GetDailyReportResponse
       additionalProperties: false
     doelab.v1.GetDeviceRequest:
       type: object
@@ -2428,6 +3600,74 @@ components:
           title: feeder
       title: GetFeederResponse
       additionalProperties: false
+    doelab.v1.GetFeederSeriesRequest:
+      type: object
+      properties:
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+        from:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: from
+          description: Intervals that start in [from, to), in feeder time. At most 7 days.
+        to:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: to
+      title: GetFeederSeriesRequest
+      required:
+        - from
+        - to
+      additionalProperties: false
+      description: |
+        get_feeder_series.range // to must be after from, and at most 7 days after it
+    doelab.v1.GetFeederSeriesResponse:
+      type: object
+      properties:
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.FeederPoint'
+          title: points
+        vMinPu:
+          type: number
+          title: v_min_pu
+          format: double
+          description: The limits the forecast is judged against, from the active config.
+        vMaxPu:
+          type: number
+          title: v_max_pu
+          format: double
+        transformerKva:
+          type: number
+          title: transformer_kva
+          format: double
+        staticLimitW:
+          type: number
+          title: static_limit_w
+          format: double
+      title: GetFeederSeriesResponse
+      additionalProperties: false
+    doelab.v1.GetFleetSummaryRequest:
+      type: object
+      properties:
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+      title: GetFleetSummaryRequest
+      additionalProperties: false
+    doelab.v1.GetFleetSummaryResponse:
+      type: object
+      properties:
+        summary:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.FleetSummary'
+          title: summary
+      title: GetFleetSummaryResponse
+      additionalProperties: false
     doelab.v1.GetSiteRequest:
       type: object
       allOf:
@@ -2474,6 +3714,166 @@ components:
             - $ref: '#/components/schemas/doelab.v1.Site'
           title: site
       title: GetSiteResponse
+      additionalProperties: false
+    doelab.v1.GetSiteSeriesRequest:
+      type: object
+      properties:
+        siteId:
+          type: string
+          title: site_id
+          format: uuid
+        from:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: from
+          description: Feeder time. At most 7 days.
+        to:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: to
+      title: GetSiteSeriesRequest
+      required:
+        - from
+        - to
+      additionalProperties: false
+      description: |
+        get_site_series.range // to must be after from, and at most 7 days after it
+    doelab.v1.GetSiteSeriesResponse:
+      type: object
+      properties:
+        power:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.SitePowerPoint'
+          title: power
+          description: The telemetry of the site by the minute.
+        forecast:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.SiteForecastPoint'
+          title: forecast
+          description: The forecast of the site by the half hour.
+      title: GetSiteSeriesResponse
+      additionalProperties: false
+    doelab.v1.IngestReadingsRequest:
+      type: object
+      properties:
+        nmi:
+          type: string
+          title: nmi
+          pattern: ^[A-Z0-9]{10}[0-9]$
+          description: |-
+            The site the stream is for. Required in the first message, and the same
+             in every later one.
+        readings:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.Reading'
+          title: readings
+          maxItems: 1000
+          minItems: 1
+      title: IngestReadingsRequest
+      additionalProperties: false
+    doelab.v1.IngestReadingsResponse:
+      type: object
+      properties:
+        accepted:
+          type: integer
+          title: accepted
+          format: int32
+          description: Readings stored.
+        duplicates:
+          type: integer
+          title: duplicates
+          format: int32
+          description: Readings that were already stored, and were skipped.
+      title: IngestReadingsResponse
+      additionalProperties: false
+    doelab.v1.ListAlertsRequest:
+      type: object
+      properties:
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+        siteId:
+          type:
+            - string
+            - "null"
+          title: site_id
+          format: uuid
+          description: Only alerts of this site.
+        kind:
+          oneOf:
+            - $ref: '#/components/schemas/doelab.v1.AlertKind'
+            - type: "null"
+          not:
+            enum:
+              - ALERT_KIND_UNSPECIFIED
+          title: kind
+          description: |
+            Only alerts of this kind. A breach list is kind CONSTRAINT_BREACH.
+            enum.defined_only = true
+        openOnly:
+          type: boolean
+          title: open_only
+          description: Only alerts that have not been resolved.
+        pageSize:
+          type: integer
+          title: page_size
+          maximum: 500
+          minimum: 0
+          format: int32
+        pageToken:
+          type: string
+          title: page_token
+          maxLength: 1024
+      title: ListAlertsRequest
+      additionalProperties: false
+    doelab.v1.ListAlertsResponse:
+      type: object
+      properties:
+        alerts:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.Alert'
+          title: alerts
+        nextPageToken:
+          type: string
+          title: next_page_token
+      title: ListAlertsResponse
+      additionalProperties: false
+    doelab.v1.ListBackstopEventsRequest:
+      type: object
+      properties:
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+        pageSize:
+          type: integer
+          title: page_size
+          maximum: 500
+          minimum: 0
+          format: int32
+        pageToken:
+          type: string
+          title: page_token
+          maxLength: 1024
+      title: ListBackstopEventsRequest
+      additionalProperties: false
+    doelab.v1.ListBackstopEventsResponse:
+      type: object
+      properties:
+        backstopEvents:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.BackstopEvent'
+          title: backstop_events
+        nextPageToken:
+          type: string
+          title: next_page_token
+      title: ListBackstopEventsResponse
       additionalProperties: false
     doelab.v1.ListDevicesRequest:
       type: object
@@ -2552,6 +3952,25 @@ components:
           type: string
           title: next_page_token
       title: ListEnvelopeConfigsResponse
+      additionalProperties: false
+    doelab.v1.ListEnvelopeRunIntervalsRequest:
+      type: object
+      properties:
+        envelopeRunId:
+          type: string
+          title: envelope_run_id
+          format: uuid
+      title: ListEnvelopeRunIntervalsRequest
+      additionalProperties: false
+    doelab.v1.ListEnvelopeRunIntervalsResponse:
+      type: object
+      properties:
+        intervals:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.EnvelopeRunInterval'
+          title: intervals
+      title: ListEnvelopeRunIntervalsResponse
       additionalProperties: false
     doelab.v1.ListEnvelopeRunsRequest:
       type: object
@@ -2741,6 +4160,52 @@ components:
           description: Empty when there are no more pages.
       title: ListFeedersResponse
       additionalProperties: false
+    doelab.v1.ListReadingsRequest:
+      type: object
+      properties:
+        deviceId:
+          type: string
+          title: device_id
+          format: uuid
+        from:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: from
+          description: Readings with from <= ts < to, in feeder time.
+        to:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: to
+        pageSize:
+          type: integer
+          title: page_size
+          maximum: 2000
+          minimum: 0
+          format: int32
+        pageToken:
+          type: string
+          title: page_token
+          maxLength: 1024
+      title: ListReadingsRequest
+      required:
+        - from
+        - to
+      additionalProperties: false
+      description: |
+        list_readings.range // to must be after from
+    doelab.v1.ListReadingsResponse:
+      type: object
+      properties:
+        readings:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.Reading'
+          title: readings
+        nextPageToken:
+          type: string
+          title: next_page_token
+      title: ListReadingsResponse
+      additionalProperties: false
     doelab.v1.ListSiteProfilesRequest:
       type: object
       properties:
@@ -2877,6 +4342,68 @@ components:
              nothing was written.
       title: PublishEnvelopesResponse
       additionalProperties: false
+    doelab.v1.Reading:
+      type: object
+      properties:
+        deviceId:
+          type: string
+          title: device_id
+          format: uuid
+        siteId:
+          type: string
+          title: site_id
+          format: uuid
+          description: Set by the server, from the device.
+        ts:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: ts
+          description: Feeder time of the measurement.
+        powerW:
+          type: number
+          title: power_w
+          maximum: 1000000
+          minimum: -1000000
+          format: double
+          description: |-
+            The device's own power, in watts. Positive is towards the grid: PV
+             generating, a battery discharging. An EV charging is negative.
+        netExportW:
+          type: number
+          title: net_export_w
+          maximum: 1000000
+          minimum: -1000000
+          format: double
+          description: |-
+            Net power at the site's connection point, in watts. Positive is export.
+             This is what an export limit applies to.
+        socPct:
+          type:
+            - number
+            - "null"
+          title: soc_pct
+          maximum: 100
+          minimum: 0
+          format: double
+          description: State of charge, for a battery or an EV.
+        voltageV:
+          exclusiveMinimum: 0
+          type:
+            - number
+            - "null"
+          title: voltage_v
+          format: double
+          description: Phase-to-neutral voltage at the device.
+        receivedAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: received_at
+          description: 'Set by the server: wall-clock time the reading was stored.'
+      title: Reading
+      required:
+        - ts
+      additionalProperties: false
+      description: One measurement from a device. Mirrors the readings table.
     doelab.v1.RunStatus:
       type: string
       title: RunStatus
@@ -2985,6 +4512,56 @@ components:
          neutral of a bus. Mirrors the sites table. deleted_at is not on the wire: a
          deleted site is not returned.
         site.battery_sized // battery_kwh must be set exactly when has_battery is true
+    doelab.v1.SiteForecastPoint:
+      type: object
+      properties:
+        ts:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: ts
+        loadW:
+          type: number
+          title: load_w
+          format: double
+        pvW:
+          type: number
+          title: pv_w
+          format: double
+      title: SiteForecastPoint
+      additionalProperties: false
+      description: |-
+        The forecast of a site for one half hour, with the config's PV scale
+         applied.
+    doelab.v1.SitePowerPoint:
+      type: object
+      properties:
+        bucket:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: bucket
+        avgNetExportW:
+          type: number
+          title: avg_net_export_w
+          format: double
+        maxNetExportW:
+          type: number
+          title: max_net_export_w
+          format: double
+        avgSocPct:
+          type:
+            - number
+            - "null"
+          title: avg_soc_pct
+          format: double
+        avgVoltageV:
+          type:
+            - number
+            - "null"
+          title: avg_voltage_v
+          format: double
+      title: SitePowerPoint
+      additionalProperties: false
+      description: One minute of a site's telemetry.
     doelab.v1.SiteProfile:
       type: object
       properties:
@@ -3172,6 +4749,24 @@ components:
           title: site
       title: UpdateSiteResponse
       additionalProperties: false
+    doelab.v1.WatchFleetRequest:
+      type: object
+      properties:
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+      title: WatchFleetRequest
+      additionalProperties: false
+    doelab.v1.WatchFleetResponse:
+      type: object
+      properties:
+        summary:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.FleetSummary'
+          title: summary
+      title: WatchFleetResponse
+      additionalProperties: false
     google.protobuf.FieldMask:
       type: string
       description: Comma-separated field paths in lowerCamelCase (for example, `user.displayName,photo`).
@@ -3184,6 +4779,17 @@ components:
       description: A point in time in RFC 3339 format, with up to nanosecond precision. Output uses UTC (`Z`); input may use an offset from UTC.
 security: []
 tags:
+  - name: doelab.v1.AlertService
+    description: |-
+      AlertService shows the alerts of a feeder. Only the compliance service
+       opens and resolves an alert, so there is no create, update or delete here:
+       an operator can acknowledge one.
+  - name: doelab.v1.BackstopService
+    description: |-
+      BackstopService is the emergency backstop: an operator overrides the
+       envelopes of a feeder's sites with a fixed export limit, at once, until it
+       is cleared. While a backstop is active the engine's envelopes for those
+       sites are refused.
   - name: doelab.v1.ClockService
     description: |-
       ClockService tells every other process what time it is on the feeder.
@@ -3223,3 +4829,7 @@ tags:
        line's rating. The model itself is created by the import.
   - name: doelab.v1.SiteService
     description: SiteService manages customer connection points and reads their profiles.
+  - name: doelab.v1.TelemetryService
+    description: |-
+      TelemetryService takes readings from devices, and shows what the fleet and
+       the feeder are doing.

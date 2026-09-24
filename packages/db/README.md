@@ -180,6 +180,7 @@ erDiagram
     text detail
     timestamptz created_at
     timestamptz updated_at
+    uuid feeder_id FK
   }
   backstop_event_sites {
     uuid backstop_event_id PK,FK
@@ -229,6 +230,23 @@ erDiagram
     int4 offline_after_seconds
     text note
     text created_by
+    timestamptz created_at
+  }
+  envelope_run_intervals {
+    uuid envelope_run_id PK,FK
+    uuid feeder_id FK
+    timestamptz valid_from PK
+    timestamptz valid_to
+    float8 forecast_net_load_w
+    float8 forecast_loading_pct
+    float8 forecast_v_min_pu
+    float8 forecast_v_max_pu
+    float8 export_limit_total_w
+    float8 import_limit_total_w
+    float8 static_limit_total_w
+    float8 static_v_max_pu
+    binding_constraint static_binding
+    text static_binding_element
     timestamptz created_at
   }
   envelope_runs {
@@ -360,6 +378,7 @@ erDiagram
   devices ||--o{ device_status : "device_status_device_fkey"
   devices ||--o{ readings : "readings_device_fkey"
   envelope_configs ||--o{ envelope_runs : "envelope_runs_config_fkey"
+  envelope_runs ||--o{ envelope_run_intervals : "envelope_run_intervals_run_fkey"
   envelope_runs ||--o{ envelopes : "envelopes_run_fkey"
   envelope_runs ||--o{ idempotency_keys : "idempotency_keys_run_fkey"
   feeder_nodes ||--o{ feeder_lines : "feeder_lines_joins_parent_fkey, feeder_lines_to_node_fkey"
@@ -367,6 +386,7 @@ erDiagram
   feeder_nodes ||--o{ sites : "sites_node_fkey"
   feeders ||--o{ backstop_events : "backstop_events_feeder_fkey"
   feeders ||--o{ envelope_configs : "envelope_configs_feeder_fkey"
+  feeders ||--o{ envelope_run_intervals : "envelope_run_intervals_feeder_fkey"
   feeders ||--o{ envelope_runs : "envelope_runs_feeder_fkey"
   feeders ||--o{ feeder_lines : "feeder_lines_feeder_fkey"
   feeders ||--o{ feeder_nodes : "feeder_nodes_feeder_fkey"

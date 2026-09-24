@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -70,7 +71,8 @@ func TestListQueriesUseAnIndex(t *testing.T) {
 
 	store := pg.NewStore(pool)
 	f := repotest.Seed(t, store, "LV10", 1)
-	if _, err := store.CreateDevice(repotest.Ctx(), domain.Device{SiteID: f.SiteA.ID, DERType: domain.DERSolar, RatedW: 5000}); err != nil {
+	device, err := store.CreateDevice(repotest.Ctx(), domain.Device{SiteID: f.SiteA.ID, DERType: domain.DERSolar, RatedW: 5000})
+	if err != nil {
 		t.Fatal(err)
 	}
 	config, err := store.CreateEnvelopeConfig(repotest.Ctx(), repotest.Config(f.Feeder.ID))
@@ -87,6 +89,25 @@ func TestListQueriesUseAnIndex(t *testing.T) {
 	if _, _, err := store.ReplaceEnvelopes(repotest.Ctx(), []domain.Envelope{
 		repotest.Envelope(f.SiteA.ID, run.ID, 0, 1000), repotest.Envelope(f.SiteA.ID, run.ID, 1, 1100),
 	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.CreateEnvelopeRunIntervals(repotest.Ctx(), []domain.EnvelopeRunInterval{
+		repotest.Interval(run.ID, f.Feeder.ID, 0, 10000), repotest.Interval(run.ID, f.Feeder.ID, 1, 11000),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.InsertReadings(repotest.Ctx(), []domain.Reading{repotest.Reading(device.ID, 0, 100), repotest.Reading(device.ID, 5, 200)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := store.OpenAlert(repotest.Ctx(), domain.Alert{
+		SiteID: f.SiteA.ID, FeederID: f.Feeder.ID, Kind: domain.AlertConstraintBreach, Severity: domain.SeverityWarning,
+		OpenedAt: repotest.Day, LimitW: repotest.Ptr(1000.0), PeakW: repotest.Ptr(2000.0),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateBackstopEvent(repotest.Ctx(), domain.BackstopEvent{
+		FeederID: f.Feeder.ID, Reason: "test", TriggeredBy: "operator", TriggeredAt: repotest.Day,
+	}, []uuid.UUID{f.SiteA.ID}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := pool.Exec(ctx, `SET enable_seqscan = off; SET enable_bitmapscan = off`); err != nil {
@@ -138,6 +159,42 @@ func TestListQueriesUseAnIndex(t *testing.T) {
 		}},
 		{"ListSiteProfiles", "site_profiles", func() error {
 			_, _, err := store.ListSiteProfiles(ctx, f.SiteA.ID, repotest.Day, repotest.Day.Add(24*time.Hour), page)
+			return err
+		}},
+		{"ListEnvelopeRunIntervals", "envelope_run_intervals", func() error {
+			_, err := store.ListEnvelopeRunIntervals(ctx, run.ID)
+			return err
+		}},
+		{"ListFeederIntervals", "envelope_run_intervals", func() error {
+			_, err := store.ListFeederIntervals(ctx, f.Feeder.ID, repotest.Day, repotest.Day.Add(24*time.Hour))
+			return err
+		}},
+		{"ListReadings", "readings", func() error {
+			_, _, err := store.ListReadings(ctx, device.ID, repotest.Day, repotest.Day.Add(time.Hour), page)
+			return err
+		}},
+		{"ListAlerts", "alerts", func() error {
+			_, _, err := store.ListAlerts(ctx, f.Feeder.ID, service.AlertFilter{}, page)
+			return err
+		}},
+		{"ListAlerts that are open", "alerts", func() error {
+			_, _, err := store.ListAlerts(ctx, f.Feeder.ID, service.AlertFilter{OpenOnly: true}, page)
+			return err
+		}},
+		{"ListAlerts of a site", "alerts", func() error {
+			_, _, err := store.ListAlerts(ctx, f.Feeder.ID, service.AlertFilter{SiteID: &f.SiteA.ID}, page)
+			return err
+		}},
+		{"ListBackstopEvents", "backstop_events", func() error {
+			_, _, err := store.ListBackstopEvents(ctx, f.Feeder.ID, page)
+			return err
+		}},
+		{"GetActiveBackstopEvent", "backstop_events", func() error {
+			_, err := store.GetActiveBackstopEvent(ctx, f.Feeder.ID)
+			return err
+		}},
+		{"ListActiveEnvelopes", "envelopes", func() error {
+			_, err := store.ListActiveEnvelopes(ctx, []uuid.UUID{f.SiteA.ID}, repotest.Day)
 			return err
 		}},
 	}

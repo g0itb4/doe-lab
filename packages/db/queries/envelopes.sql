@@ -68,3 +68,14 @@ INSERT INTO envelopes (
   envelope_run_id, backstop_event_id, export_binding, export_binding_element,
   import_binding, import_binding_element
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13);
+
+-- Ends the active envelopes of a backstop from an instant on, when the
+-- backstop is cleared. The intervals are then free for the engine's envelopes
+-- to be restored into.
+--
+-- name: SupersedeBackstopEnvelopes :execrows
+UPDATE envelopes
+   SET superseded_at = now()
+ WHERE backstop_event_id = sqlc.arg(backstop_event_id)
+   AND superseded_at IS NULL
+   AND valid_to > sqlc.arg(from_ts);

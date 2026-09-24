@@ -29,7 +29,73 @@ func TestHandlersRefuseMalformedIDs(t *testing.T) {
 	runs := NewEnvelopeRuns(service.NewEnvelopeRuns(store))
 	envelopes := NewEnvelopes(service.NewEnvelopes(store, bus.NewLocal(), nil))
 
+	compliance := service.NewCompliance(store, nil)
+	telemetry := NewTelemetry(service.NewTelemetry(store, nil, compliance))
+	alerts := NewAlerts(service.NewAlerts(store))
+	backstops := NewBackstops(service.NewBackstops(store, bus.NewLocal(), nil))
+	const good = "0199a0a0-0000-7000-8000-000000000001"
+
 	calls := map[string]func() error{
+		"CreateEnvelopeRunIntervals": func() error {
+			_, err := runs.CreateEnvelopeRunIntervals(ctx, connect.NewRequest(&doelabv1.CreateEnvelopeRunIntervalsRequest{EnvelopeRunId: bad}))
+			return err
+		},
+		"ListEnvelopeRunIntervals": func() error {
+			_, err := runs.ListEnvelopeRunIntervals(ctx, connect.NewRequest(&doelabv1.ListEnvelopeRunIntervalsRequest{EnvelopeRunId: bad}))
+			return err
+		},
+		"ListReadings": func() error {
+			_, err := telemetry.ListReadings(ctx, connect.NewRequest(&doelabv1.ListReadingsRequest{DeviceId: bad}))
+			return err
+		},
+		"GetFleetSummary": func() error {
+			_, err := telemetry.GetFleetSummary(ctx, connect.NewRequest(&doelabv1.GetFleetSummaryRequest{FeederId: bad}))
+			return err
+		},
+		"WatchFleet": func() error {
+			return telemetry.WatchFleet(ctx, connect.NewRequest(&doelabv1.WatchFleetRequest{FeederId: bad}), nil)
+		},
+		"GetFeederSeries": func() error {
+			_, err := telemetry.GetFeederSeries(ctx, connect.NewRequest(&doelabv1.GetFeederSeriesRequest{FeederId: bad}))
+			return err
+		},
+		"GetSiteSeries": func() error {
+			_, err := telemetry.GetSiteSeries(ctx, connect.NewRequest(&doelabv1.GetSiteSeriesRequest{SiteId: bad}))
+			return err
+		},
+		"GetDailyReport": func() error {
+			_, err := telemetry.GetDailyReport(ctx, connect.NewRequest(&doelabv1.GetDailyReportRequest{FeederId: bad}))
+			return err
+		},
+		"GetAlert": func() error {
+			_, err := alerts.GetAlert(ctx, connect.NewRequest(&doelabv1.GetAlertRequest{Id: bad}))
+			return err
+		},
+		"ListAlerts": func() error {
+			_, err := alerts.ListAlerts(ctx, connect.NewRequest(&doelabv1.ListAlertsRequest{FeederId: bad}))
+			return err
+		},
+		"ListAlerts of a site": func() error {
+			id := bad
+			_, err := alerts.ListAlerts(ctx, connect.NewRequest(&doelabv1.ListAlertsRequest{FeederId: good, SiteId: &id}))
+			return err
+		},
+		"AcknowledgeAlert": func() error {
+			_, err := alerts.AcknowledgeAlert(ctx, connect.NewRequest(&doelabv1.AcknowledgeAlertRequest{Id: bad}))
+			return err
+		},
+		"GetBackstopEvent": func() error {
+			_, err := backstops.GetBackstopEvent(ctx, connect.NewRequest(&doelabv1.GetBackstopEventRequest{Id: bad}))
+			return err
+		},
+		"ListBackstopEvents": func() error {
+			_, err := backstops.ListBackstopEvents(ctx, connect.NewRequest(&doelabv1.ListBackstopEventsRequest{FeederId: bad}))
+			return err
+		},
+		"ClearBackstop": func() error {
+			_, err := backstops.ClearBackstop(ctx, connect.NewRequest(&doelabv1.ClearBackstopRequest{Id: bad}))
+			return err
+		},
 		"GetFeederForecast": func() error {
 			_, err := feeders.GetFeederForecast(ctx, connect.NewRequest(&doelabv1.GetFeederForecastRequest{FeederId: bad}))
 			return err

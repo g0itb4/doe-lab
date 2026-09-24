@@ -337,22 +337,24 @@ func TestSchemaOperations(t *testing.T) {
 
 	device := uuid.New()
 	w.exec(t, `INSERT INTO devices (id, site_id, der_type, rated_w) VALUES ($1, $2, 'solar', 5000)`, device, site)
-	alert := `INSERT INTO alerts (site_id, device_id, kind, severity, opened_at, limit_w, peak_w) VALUES ($1, $2, $3, 'warning', $4, $5, $6)`
-	w.exec(t, alert, site, nil, "constraint_breach", t0, 1500.0, 2100.0)
+	alert := `INSERT INTO alerts (site_id, device_id, kind, severity, opened_at, limit_w, peak_w, feeder_id) VALUES ($1, $2, $3, 'warning', $4, $5, $6, $7)`
+	w.exec(t, alert, site, nil, "constraint_breach", t0, 1500.0, 2100.0, feeder)
 	// A continuing breach updates its alert; it does not open another.
-	w.refuse(t, "a second open alert of a kind", unique, "alerts_one_open_key", alert, site, nil, "constraint_breach", t0, 1500.0, 2200.0)
-	w.refuse(t, "a breach with no measurement", check, "alerts_breach_measured", alert, w.f.SiteB.ID, nil, "constraint_breach", t0, nil, nil)
-	w.refuse(t, "a breach below its limit", check, "alerts_breach_measured", alert, w.f.SiteB.ID, nil, "constraint_breach", t0, 1500.0, 1000.0)
-	w.refuse(t, "an offline alert with no device", check, "alerts_offline_names_device", alert, site, nil, "device_offline", t0, nil, nil)
+	w.refuse(t, "a second open alert of a kind", unique, "alerts_one_open_key", alert, site, nil, "constraint_breach", t0, 1500.0, 2200.0, feeder)
+	w.refuse(t, "a breach with no measurement", check, "alerts_breach_measured", alert, w.f.SiteB.ID, nil, "constraint_breach", t0, nil, nil, feeder)
+	w.refuse(t, "a breach below its limit", check, "alerts_breach_measured", alert, w.f.SiteB.ID, nil, "constraint_breach", t0, 1500.0, 1000.0, feeder)
+	w.refuse(t, "an offline alert with no device", check, "alerts_offline_names_device", alert, site, nil, "device_offline", t0, nil, nil, feeder)
 	// The device of another site.
-	w.refuse(t, "an alert naming another site's device", foreign, "alerts_device_fkey", alert, w.f.SiteB.ID, device, "device_offline", t0, nil, nil)
+	w.refuse(t, "an alert naming another site's device", foreign, "alerts_device_fkey", alert, w.f.SiteB.ID, device, "device_offline", t0, nil, nil, feeder)
+	// The feeder on the row is the site's, and no other.
+	w.refuse(t, "an alert whose feeder is not its site's", foreign, "alerts_site_fkey", alert, w.f.SiteB.ID, nil, "constraint_breach", t0, 1500.0, 2100.0, uuid.New())
 	w.refuse(t, "acknowledged by nobody", check, "alerts_acknowledged_complete",
 		`UPDATE alerts SET acknowledged_at = now() WHERE site_id = $1`, site)
 	w.refuse(t, "resolved before it opened", check, "alerts_resolved_after_opened",
 		`UPDATE alerts SET resolved_at = $2 WHERE site_id = $1`, site, t0.Add(-time.Minute))
 	// Resolved, the site can have a new alert of the kind.
 	w.exec(t, `UPDATE alerts SET resolved_at = $2 WHERE site_id = $1`, site, t0.Add(time.Minute))
-	w.exec(t, alert, site, nil, "constraint_breach", t0.Add(time.Hour), 1500.0, 1900.0)
+	w.exec(t, alert, site, nil, "constraint_breach", t0.Add(time.Hour), 1500.0, 1900.0, feeder)
 }
 
 func TestSchemaReadings(t *testing.T) {

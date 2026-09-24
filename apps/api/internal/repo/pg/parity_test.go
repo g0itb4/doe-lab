@@ -40,10 +40,11 @@ var resources = []resource{
 	{table: "envelope_runs", domain: domain.EnvelopeRun{}, proto: (&doelabv1.EnvelopeRun{}).ProtoReflect().Descriptor()},
 	{table: "idempotency_keys", domain: domain.IdempotencyKey{}},
 	{table: "envelopes", domain: domain.Envelope{}, proto: (&doelabv1.Envelope{}).ProtoReflect().Descriptor()},
-	{table: "backstop_events", domain: domain.BackstopEvent{}},
+	{table: "envelope_run_intervals", domain: domain.EnvelopeRunInterval{}, proto: (&doelabv1.EnvelopeRunInterval{}).ProtoReflect().Descriptor()},
+	{table: "backstop_events", domain: domain.BackstopEvent{}, proto: (&doelabv1.BackstopEvent{}).ProtoReflect().Descriptor()},
 	{table: "backstop_event_sites", domain: domain.BackstopEventSite{}},
-	{table: "alerts", domain: domain.Alert{}},
-	{table: "readings", domain: domain.Reading{}},
+	{table: "alerts", domain: domain.Alert{}, proto: (&doelabv1.Alert{}).ProtoReflect().Descriptor()},
+	{table: "readings", domain: domain.Reading{}, proto: (&doelabv1.Reading{}).ProtoReflect().Descriptor()},
 }
 
 type column struct {

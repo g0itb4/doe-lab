@@ -25,6 +25,14 @@ service EnvelopeRunService {
   rpc CompleteEnvelopeRun(CompleteEnvelopeRunRequest) returns (CompleteEnvelopeRunResponse) {
     option idempotency_level = IDEMPOTENT;
   }
+  // Records the forecast state of the feeder for each interval of a run: what
+  // the envelopes were computed against. Once per run. Needs the engine
+  // scope.
+  rpc CreateEnvelopeRunIntervals(CreateEnvelopeRunIntervalsRequest) returns (CreateEnvelopeRunIntervalsResponse);
+  // The intervals of a run, in time order.
+  rpc ListEnvelopeRunIntervals(ListEnvelopeRunIntervalsRequest) returns (ListEnvelopeRunIntervalsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
 }
 
 // One run of the engine. Mirrors the envelope_runs table.
@@ -149,4 +157,73 @@ message CompleteEnvelopeRunRequest {
 
 message CompleteEnvelopeRunResponse {
   EnvelopeRun envelope_run = 1;
+}
+
+// The forecast state of the whole feeder for one interval of a run. Mirrors
+// the envelope_run_intervals table.
+message EnvelopeRunInterval {
+  // Set by the server, from the request.
+  string envelope_run_id = 1 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // Set by the server, from the run.
+  string feeder_id = 2 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  google.protobuf.Timestamp valid_from = 3 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp valid_to = 4 [(buf.validate.field).required = true];
+  // Forecast power through the transformer with every site at its forecast:
+  // positive is supply to the feeder, negative is reverse flow.
+  double forecast_net_load_w = 5;
+  // Forecast transformer loading, as a percentage of its rating.
+  double forecast_loading_pct = 6 [(buf.validate.field).double.gte = 0];
+  // Lowest and highest customer voltage with every site at its forecast.
+  double forecast_v_min_pu = 7 [(buf.validate.field).double.gt = 0];
+  double forecast_v_max_pu = 8 [(buf.validate.field).double.gt = 0];
+  // Sum of the limits the run gave for the interval.
+  double export_limit_total_w = 9 [(buf.validate.field).double.gte = 0];
+  double import_limit_total_w = 10 [(buf.validate.field).double.gte = 0];
+  // What the enrolled sites could export under the config's fixed limit, the
+  // highest voltage that would cause, and the limit it would break.
+  double static_limit_total_w = 11 [(buf.validate.field).double.gte = 0];
+  double static_v_max_pu = 12 [(buf.validate.field).double.gt = 0];
+  BindingConstraint static_binding = 13 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: [0]
+  }];
+  string static_binding_element = 14 [(buf.validate.field).string.max_len = 200];
+  google.protobuf.Timestamp created_at = 15;
+
+  option (buf.validate.message).cel = {
+    id: "envelope_run_interval.period"
+    message: "valid_to must be after valid_from"
+    expression: "this.valid_to > this.valid_from"
+  };
+  option (buf.validate.message).cel = {
+    id: "envelope_run_interval.voltage"
+    message: "forecast_v_min_pu must not be above forecast_v_max_pu"
+    expression: "this.forecast_v_min_pu <= this.forecast_v_max_pu"
+  };
+}
+
+message CreateEnvelopeRunIntervalsRequest {
+  string envelope_run_id = 1 [(buf.validate.field).string.uuid = true];
+  repeated EnvelopeRunInterval intervals = 2 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 288
+  }];
+}
+
+message CreateEnvelopeRunIntervalsResponse {
+  int32 created = 1;
+}
+
+message ListEnvelopeRunIntervalsRequest {
+  string envelope_run_id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message ListEnvelopeRunIntervalsResponse {
+  repeated EnvelopeRunInterval intervals = 1;
 }

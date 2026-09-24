@@ -203,6 +203,7 @@ type BackstopEventSite struct {
 type Alert struct {
 	ID             uuid.UUID     `db:"id"`
 	SiteID         uuid.UUID     `db:"site_id"`
+	FeederID       uuid.UUID     `db:"feeder_id"`
 	DeviceID       *uuid.UUID    `db:"device_id"`
 	Kind           AlertKind     `db:"kind"`
 	Severity       AlertSeverity `db:"severity"`
@@ -235,4 +236,60 @@ type Reading struct {
 type Page struct {
 	Size  int32
 	Token string
+}
+
+// EnvelopeRunInterval mirrors the envelope_run_intervals table: the forecast
+// state of the whole feeder for one interval of a run.
+type EnvelopeRunInterval struct {
+	EnvelopeRunID        uuid.UUID         `db:"envelope_run_id"`
+	FeederID             uuid.UUID         `db:"feeder_id"`
+	ValidFrom            time.Time         `db:"valid_from"`
+	ValidTo              time.Time         `db:"valid_to"`
+	ForecastNetLoadW     float64           `db:"forecast_net_load_w"`
+	ForecastLoadingPct   float64           `db:"forecast_loading_pct"`
+	ForecastVMinPU       float64           `db:"forecast_v_min_pu"`
+	ForecastVMaxPU       float64           `db:"forecast_v_max_pu"`
+	ExportLimitTotalW    float64           `db:"export_limit_total_w"`
+	ImportLimitTotalW    float64           `db:"import_limit_total_w"`
+	StaticLimitTotalW    float64           `db:"static_limit_total_w"`
+	StaticVMaxPU         float64           `db:"static_v_max_pu"`
+	StaticBinding        BindingConstraint `db:"static_binding"`
+	StaticBindingElement string            `db:"static_binding_element"`
+	CreatedAt            time.Time         `db:"created_at"`
+}
+
+// SitePower mirrors the site_power_1m continuous aggregate: one minute of a
+// site's telemetry.
+type SitePower struct {
+	SiteID        uuid.UUID `db:"site_id"`
+	Bucket        time.Time `db:"bucket"`
+	AvgNetExportW float64   `db:"avg_net_export_w"`
+	MaxNetExportW float64   `db:"max_net_export_w"`
+	AvgSOCPct     *float64  `db:"avg_soc_pct"`
+	AvgVoltageV   *float64  `db:"avg_voltage_v"`
+	ReadingCount  int64     `db:"reading_count"`
+}
+
+// FleetMinute mirrors the fleet_1m view: one minute of a feeder's fleet.
+type FleetMinute struct {
+	FeederID       uuid.UUID `db:"feeder_id"`
+	Bucket         time.Time `db:"bucket"`
+	ExportW        float64   `db:"export_w"`
+	ImportW        float64   `db:"import_w"`
+	AvgSOCPct      *float64  `db:"avg_soc_pct"`
+	ReportingSites int64     `db:"reporting_sites"`
+	ReadingCount   int64     `db:"reading_count"`
+}
+
+// DeviceState is a device with its latest reading, when it has sent one: a
+// row of devices joined to device_status.
+type DeviceState struct {
+	DeviceID uuid.UUID
+	SiteID   uuid.UUID
+	DERType  DERType
+	NMI      string
+	// LastSeenAt is nil for a device that has never reported.
+	LastSeenAt *time.Time
+	PowerW     float64
+	NetExportW float64
 }

@@ -132,7 +132,13 @@ const MaxForecast = 7 * 24 * time.Hour
 // A forecast for a date is read from the profile year, at the same local
 // month, day and time. from is rounded down to a half hour.
 func (s *Feeders) Forecast(ctx context.Context, feederID uuid.UUID, from, to time.Time) ([]ForecastPoint, error) {
-	feeder, err := s.store.GetFeeder(ctx, feederID)
+	return forecast(ctx, s.store, feederID, from, to)
+}
+
+// forecast is Feeders.Forecast, for the services that need a forecast of
+// their own.
+func forecast(ctx context.Context, store Repos, feederID uuid.UUID, from, to time.Time) ([]ForecastPoint, error) {
+	feeder, err := store.GetFeeder(ctx, feederID)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +150,7 @@ func (s *Feeders) Forecast(ctx context.Context, feederID uuid.UUID, from, to tim
 		return nil, fmt.Errorf("feeder %s: time zone %q: %w", feeder.Code, feeder.Timezone, err)
 	}
 	year := profile.Year{Start: profile.DefaultYearStart, Location: zone}
-	sites, err := s.store.ListAllSites(ctx, feederID)
+	sites, err := store.ListAllSites(ctx, feederID)
 	if err != nil {
 		return nil, err
 	}
@@ -167,7 +173,7 @@ func (s *Feeders) Forecast(ctx context.Context, feederID uuid.UUID, from, to tim
 
 	// One read covers every source half hour. A range that crosses 1 July
 	// reads the whole profile year, which is the simple answer to a wrap.
-	rows, err := s.store.ListFeederProfiles(ctx, feederID, earliest, latest.Add(halfHour))
+	rows, err := store.ListFeederProfiles(ctx, feederID, earliest, latest.Add(halfHour))
 	if err != nil {
 		return nil, err
 	}

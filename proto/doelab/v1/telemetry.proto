@@ -1,0 +1,278 @@
+syntax = "proto3";
+
+package doelab.v1;
+
+import "buf/validate/validate.proto";
+import "doelab/v1/common.proto";
+import "google/protobuf/timestamp.proto";
+
+// TelemetryService takes readings from devices, and shows what the fleet and
+// the feeder are doing.
+service TelemetryService {
+  // The readings of a device over a range, in time order.
+  rpc ListReadings(ListReadingsRequest) returns (ListReadingsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // Takes a stream of readings from the devices of one site. A reading that
+  // was already stored (the same device and time) is skipped, so a device may
+  // send again after a broken stream. Needs the device token of the site.
+  rpc IngestReadings(stream IngestReadingsRequest) returns (IngestReadingsResponse);
+
+  // The fleet now: who is reporting, what is being exported, what is open.
+  rpc GetFleetSummary(GetFleetSummaryRequest) returns (GetFleetSummaryResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // GetFleetSummary, sent again whenever a moment of feeder time has passed.
+  rpc WatchFleet(WatchFleetRequest) returns (stream WatchFleetResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // The feeder through time: what the engine forecast for each interval, what
+  // it allowed, and what the fleet did.
+  rpc GetFeederSeries(GetFeederSeriesRequest) returns (GetFeederSeriesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // One site through time: its envelope, its forecast and its telemetry.
+  rpc GetSiteSeries(GetSiteSeriesRequest) returns (GetSiteSeriesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // A day of the feeder in numbers: the energy the envelopes let out against
+  // what a fixed limit would have, and how well the fleet complied.
+  rpc GetDailyReport(GetDailyReportRequest) returns (GetDailyReportResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+}
+
+// One measurement from a device. Mirrors the readings table.
+message Reading {
+  string device_id = 1 [(buf.validate.field).string.uuid = true];
+  // Set by the server, from the device.
+  string site_id = 2 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // Feeder time of the measurement.
+  google.protobuf.Timestamp ts = 3 [(buf.validate.field).required = true];
+  // The device's own power, in watts. Positive is towards the grid: PV
+  // generating, a battery discharging. An EV charging is negative.
+  double power_w = 4 [(buf.validate.field).double = {
+    gte: -1000000
+    lte: 1000000
+  }];
+  // Net power at the site's connection point, in watts. Positive is export.
+  // This is what an export limit applies to.
+  double net_export_w = 5 [(buf.validate.field).double = {
+    gte: -1000000
+    lte: 1000000
+  }];
+  // State of charge, for a battery or an EV.
+  optional double soc_pct = 6 [(buf.validate.field).double = {
+    gte: 0
+    lte: 100
+  }];
+  // Phase-to-neutral voltage at the device.
+  optional double voltage_v = 7 [(buf.validate.field).double.gt = 0];
+  // Set by the server: wall-clock time the reading was stored.
+  google.protobuf.Timestamp received_at = 8;
+}
+
+message ListReadingsRequest {
+  string device_id = 1 [(buf.validate.field).string.uuid = true];
+  // Readings with from <= ts < to, in feeder time.
+  google.protobuf.Timestamp from = 2 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp to = 3 [(buf.validate.field).required = true];
+  int32 page_size = 4 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 2000
+  }];
+  string page_token = 5 [(buf.validate.field).string.max_len = 1024];
+
+  option (buf.validate.message).cel = {
+    id: "list_readings.range"
+    message: "to must be after from"
+    expression: "this.to > this.from"
+  };
+}
+
+message ListReadingsResponse {
+  repeated Reading readings = 1;
+  string next_page_token = 2;
+}
+
+message IngestReadingsRequest {
+  // The site the stream is for. Required in the first message, and the same
+  // in every later one.
+  string nmi = 1 [(buf.validate.field).string.pattern = "^[A-Z0-9]{10}[0-9]$"];
+  repeated Reading readings = 2 [(buf.validate.field).repeated = {
+    min_items: 1
+    max_items: 1000
+  }];
+}
+
+message IngestReadingsResponse {
+  // Readings stored.
+  int32 accepted = 1;
+  // Readings that were already stored, and were skipped.
+  int32 duplicates = 2;
+}
+
+// The fleet of a feeder at one instant.
+message FleetSummary {
+  string feeder_id = 1;
+  // Feeder time of the summary.
+  google.protobuf.Timestamp at = 2;
+  // Sites that take part in envelopes, and how many of them have a device
+  // that reported within the offline period.
+  int32 enrolled_sites = 3;
+  int32 reporting_sites = 4;
+  int32 devices = 5;
+  int32 devices_online = 6;
+  // Net flow of the reporting sites, split by direction, in watts.
+  double export_w = 7;
+  double import_w = 8;
+  // Sum of the export limits in force for the enrolled sites.
+  double export_limit_w = 9;
+  // Sites whose latest reading is above their export limit.
+  int32 sites_over_limit = 10;
+  int32 open_alerts = 11;
+  // The backstop in force, if any.
+  optional string backstop_event_id = 12;
+  // The latest run of the engine, if any.
+  optional string latest_run_id = 13;
+  optional google.protobuf.Timestamp latest_run_at = 14;
+  optional RunStatus latest_run_status = 15;
+}
+
+message GetFleetSummaryRequest {
+  string feeder_id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message GetFleetSummaryResponse {
+  FleetSummary summary = 1;
+}
+
+message WatchFleetRequest {
+  string feeder_id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message WatchFleetResponse {
+  FleetSummary summary = 1;
+}
+
+// One interval of the feeder: forecast, allowed and measured.
+message FeederPoint {
+  google.protobuf.Timestamp valid_from = 1;
+  google.protobuf.Timestamp valid_to = 2;
+  // Forecast power through the transformer: positive is supply to the
+  // feeder, negative is reverse flow.
+  double forecast_net_load_w = 3;
+  double forecast_loading_pct = 4;
+  // Lowest and highest customer voltage in the forecast, per unit.
+  double forecast_v_min_pu = 5;
+  double forecast_v_max_pu = 6;
+  // Sum of the export and import limits given for the interval.
+  double export_limit_total_w = 7;
+  double import_limit_total_w = 8;
+  // What a fixed export limit would have allowed, the highest voltage it
+  // would have caused, and the network limit it would have broken.
+  double static_limit_total_w = 9;
+  double static_v_max_pu = 10;
+  BindingConstraint static_binding = 11;
+  string static_binding_element = 12;
+  // What the reporting sites did, averaged over the interval. Unset for an
+  // interval with no telemetry yet.
+  optional double measured_export_w = 13;
+  optional double measured_import_w = 14;
+}
+
+message GetFeederSeriesRequest {
+  string feeder_id = 1 [(buf.validate.field).string.uuid = true];
+  // Intervals that start in [from, to), in feeder time. At most 7 days.
+  google.protobuf.Timestamp from = 2 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp to = 3 [(buf.validate.field).required = true];
+
+  option (buf.validate.message).cel = {
+    id: "get_feeder_series.range"
+    message: "to must be after from, and at most 7 days after it"
+    expression: "this.to > this.from && this.to - this.from <= duration('168h')"
+  };
+}
+
+message GetFeederSeriesResponse {
+  repeated FeederPoint points = 1;
+  // The limits the forecast is judged against, from the active config.
+  double v_min_pu = 2;
+  double v_max_pu = 3;
+  double transformer_kva = 4;
+  double static_limit_w = 5;
+}
+
+// One minute of a site's telemetry.
+message SitePowerPoint {
+  google.protobuf.Timestamp bucket = 1;
+  double avg_net_export_w = 2;
+  double max_net_export_w = 3;
+  optional double avg_soc_pct = 4;
+  optional double avg_voltage_v = 5;
+}
+
+message GetSiteSeriesRequest {
+  string site_id = 1 [(buf.validate.field).string.uuid = true];
+  // Feeder time. At most 7 days.
+  google.protobuf.Timestamp from = 2 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp to = 3 [(buf.validate.field).required = true];
+
+  option (buf.validate.message).cel = {
+    id: "get_site_series.range"
+    message: "to must be after from, and at most 7 days after it"
+    expression: "this.to > this.from && this.to - this.from <= duration('168h')"
+  };
+}
+
+message GetSiteSeriesResponse {
+  // The telemetry of the site by the minute.
+  repeated SitePowerPoint power = 1;
+  // The forecast of the site by the half hour.
+  repeated SiteForecastPoint forecast = 2;
+}
+
+// The forecast of a site for one half hour, with the config's PV scale
+// applied.
+message SiteForecastPoint {
+  google.protobuf.Timestamp ts = 1;
+  double load_w = 2;
+  double pv_w = 3;
+}
+
+message GetDailyReportRequest {
+  string feeder_id = 1 [(buf.validate.field).string.uuid = true];
+  // Any instant of the day wanted, in feeder time. The report covers the
+  // local calendar day of the feeder that holds it.
+  google.protobuf.Timestamp day = 2 [(buf.validate.field).required = true];
+}
+
+message GetDailyReportResponse {
+  // The local day the report covers, as feeder time.
+  google.protobuf.Timestamp from = 1;
+  google.protobuf.Timestamp to = 2;
+  int32 enrolled_sites = 3;
+  // Intervals of the day that have envelopes.
+  int32 intervals = 4;
+  // What the enrolled sites' PV could have exported with no limit at all:
+  // generation above their own load, by the forecast.
+  double potential_export_kwh = 5;
+  // What the envelopes let out, and what they held back.
+  double envelope_export_kwh = 6;
+  double envelope_curtailed_kwh = 7;
+  // What a fixed limit would have let out, and held back.
+  double static_export_kwh = 8;
+  double static_curtailed_kwh = 9;
+  // Intervals in which the fixed limit would have broken a network limit.
+  int32 static_violation_intervals = 10;
+  // The fixed limit the comparison uses, in watts.
+  double static_limit_w = 11;
+  // Alerts that opened in the day, by kind.
+  int32 constraint_breaches = 12;
+  int32 device_offline_alerts = 13;
+  // Backstops triggered in the day.
+  int32 backstop_events = 14;
+}

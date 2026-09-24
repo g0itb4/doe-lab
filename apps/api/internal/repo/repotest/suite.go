@@ -3,6 +3,7 @@ package repotest
 import (
 	"context"
 	"errors"
+	"math"
 	"slices"
 	"testing"
 	"time"
@@ -28,6 +29,10 @@ func Run(t *testing.T, newStore func(t *testing.T) service.Store) {
 		"EnvelopeRuns":    testEnvelopeRuns,
 		"Envelopes":       testEnvelopes,
 		"IdempotencyKeys": testIdempotencyKeys,
+		"RunIntervals":    testRunIntervals,
+		"Readings":        testReadings,
+		"Alerts":          testAlerts,
+		"Backstops":       testBackstops,
 		"Transactions":    testTransactions,
 		"PageTokens":      testPageTokens,
 	}
@@ -571,6 +576,13 @@ func testPageTokens(t *testing.T, s service.Store) {
 	_, _, err = s.ListRunEnvelopes(ctx, uuid.New(), bad)
 	wantErr(t, "run envelopes", err, domain.ErrInvalid)
 
+	_, _, err = s.ListReadings(ctx, uuid.New(), Day, Day.Add(time.Hour), bad)
+	wantErr(t, "readings", err, domain.ErrInvalid)
+	_, _, err = s.ListAlerts(ctx, f.Feeder.ID, service.AlertFilter{}, bad)
+	wantErr(t, "alerts", err, domain.ErrInvalid)
+	_, _, err = s.ListBackstopEvents(ctx, f.Feeder.ID, bad)
+	wantErr(t, "backstops", err, domain.ErrInvalid)
+
 	// Well-formed tokens that hold the wrong kind of key: made for one list,
 	// sent to another.
 	foreign := domain.Page{Size: 10, Token: pagetoken.Encode("abc")}
@@ -585,6 +597,12 @@ func testPageTokens(t *testing.T, s service.Store) {
 	wantErr(t, "an envelope token that is not a time", err, domain.ErrInvalid)
 	_, _, err = s.ListRunEnvelopes(ctx, uuid.New(), pair)
 	wantErr(t, "a run-envelope token that is not a time", err, domain.ErrInvalid)
+	_, _, err = s.ListReadings(ctx, uuid.New(), Day, Day.Add(time.Hour), foreign)
+	wantErr(t, "a reading token that is not a time", err, domain.ErrInvalid)
+	_, _, err = s.ListAlerts(ctx, f.Feeder.ID, service.AlertFilter{}, pair)
+	wantErr(t, "an alert token that is not a time", err, domain.ErrInvalid)
+	_, _, err = s.ListBackstopEvents(ctx, f.Feeder.ID, pair)
+	wantErr(t, "a backstop token that is not a time", err, domain.ErrInvalid)
 }
 
 // NewRun returns a run ready to create, covering the profile day.
@@ -865,4 +883,445 @@ func testIdempotencyKeys(t *testing.T, s service.Store) {
 	orphan.Key, orphan.EnvelopeRunID = "batch-0003", Ptr(uuid.New())
 	_, _, err = s.ClaimIdempotencyKey(ctx, orphan)
 	wantErr(t, "a key for an unknown run", err, domain.ErrFailedPrecondition)
+}
+
+// Interval returns a run interval ready to store: the half hour that starts
+// slot half hours into Day.
+func Interval(runID, feederID uuid.UUID, slot int, netLoadW float64) domain.EnvelopeRunInterval {
+	from := Day.Add(time.Duration(slot) * 30 * time.Minute)
+	return domain.EnvelopeRunInterval{
+		EnvelopeRunID: runID, FeederID: feederID, ValidFrom: from, ValidTo: from.Add(30 * time.Minute),
+		ForecastNetLoadW: netLoadW, ForecastLoadingPct: 12.5, ForecastVMinPU: 1.02, ForecastVMaxPU: 1.06,
+		ExportLimitTotalW: 150000, ImportLimitTotalW: 300000, StaticLimitTotalW: 280000,
+		StaticVMaxPU: 1.13, StaticBinding: domain.BindingVoltageHigh, StaticBindingElement: "XDLAB000014",
+	}
+}
+
+func testRunIntervals(t *testing.T, s service.Store) {
+	ctx := Ctx()
+	f := Seed(t, s, "LV10", 1)
+	config, err := s.CreateEnvelopeConfig(ctx, Config(f.Feeder.ID))
+	noErr(t, "config", err)
+	first, _, err := s.CreateEnvelopeRun(ctx, NewRun(f.Feeder.ID, config.ID, "run-0001"))
+	noErr(t, "run", err)
+	second, _, err := s.CreateEnvelopeRun(ctx, NewRun(f.Feeder.ID, config.ID, "run-0002"))
+	noErr(t, "second run", err)
+
+	noErr(t, "store", s.CreateEnvelopeRunIntervals(ctx, []domain.EnvelopeRunInterval{
+		Interval(first.ID, f.Feeder.ID, 0, 10000), Interval(first.ID, f.Feeder.ID, 1, 11000), Interval(first.ID, f.Feeder.ID, 2, 12000),
+	}))
+	rows, err := s.ListEnvelopeRunIntervals(ctx, first.ID)
+	noErr(t, "list", err)
+	if len(rows) != 3 || rows[1].ForecastNetLoadW != 11000 || rows[0].StaticBinding != domain.BindingVoltageHigh ||
+		rows[0].StaticBindingElement != "XDLAB000014" || rows[0].ForecastVMaxPU != 1.06 || rows[0].CreatedAt.IsZero() ||
+		rows[0].FeederID != f.Feeder.ID || !rows[2].ValidFrom.Equal(Day.Add(time.Hour)) {
+		t.Fatalf("intervals = %+v", rows)
+	}
+
+	// A later run covers two of the intervals again: the feeder's series
+	// takes its row for those, and the first run's for the rest.
+	noErr(t, "store the second run", s.CreateEnvelopeRunIntervals(ctx, []domain.EnvelopeRunInterval{
+		Interval(second.ID, f.Feeder.ID, 1, 21000), Interval(second.ID, f.Feeder.ID, 2, 22000), Interval(second.ID, f.Feeder.ID, 3, 23000),
+	}))
+	series, err := s.ListFeederIntervals(ctx, f.Feeder.ID, Day, Day.Add(24*time.Hour))
+	noErr(t, "series", err)
+	var loads []float64
+	for _, row := range series {
+		loads = append(loads, row.ForecastNetLoadW)
+	}
+	if len(loads) != 4 || loads[0] != 10000 || loads[1] != 21000 || loads[2] != 22000 || loads[3] != 23000 {
+		t.Errorf("the feeder's series = %v, want 10000 21000 22000 23000", loads)
+	}
+	ranged, err := s.ListFeederIntervals(ctx, f.Feeder.ID, Day.Add(30*time.Minute), Day.Add(90*time.Minute))
+	noErr(t, "series over a range", err)
+	if len(ranged) != 2 || !ranged[0].ValidFrom.Equal(Day.Add(30*time.Minute)) {
+		t.Errorf("range [00:30, 01:30) = %d intervals", len(ranged))
+	}
+	none, err := s.ListEnvelopeRunIntervals(ctx, uuid.New())
+	noErr(t, "list an unknown run", err)
+	if len(none) != 0 {
+		t.Errorf("an unknown run has %d intervals", len(none))
+	}
+
+	wantErr(t, "an interval twice", s.CreateEnvelopeRunIntervals(ctx, []domain.EnvelopeRunInterval{Interval(first.ID, f.Feeder.ID, 0, 1)}), domain.ErrAlreadyExists)
+	wantErr(t, "an unknown run", s.CreateEnvelopeRunIntervals(ctx, []domain.EnvelopeRunInterval{Interval(uuid.New(), f.Feeder.ID, 9, 1)}), domain.ErrFailedPrecondition)
+	inverted := Interval(first.ID, f.Feeder.ID, 9, 1)
+	inverted.ForecastVMinPU, inverted.ForecastVMaxPU = 1.1, 0.9
+	wantErr(t, "a minimum voltage above the maximum", s.CreateEnvelopeRunIntervals(ctx, []domain.EnvelopeRunInterval{inverted}), domain.ErrInvalid)
+}
+
+// Reading returns a reading of a device, minutes into Day.
+func Reading(deviceID uuid.UUID, seconds int, netExportW float64) domain.Reading {
+	return domain.Reading{
+		DeviceID: deviceID, TS: Day.Add(time.Duration(seconds) * time.Second),
+		PowerW: netExportW + 500, NetExportW: netExportW, VoltageV: Ptr(241.5),
+	}
+}
+
+func testReadings(t *testing.T, s service.Store) {
+	ctx := Ctx()
+	f := Seed(t, s, "LV10", 1)
+	solar, err := s.CreateDevice(ctx, domain.Device{SiteID: f.SiteA.ID, DERType: domain.DERSolar, RatedW: 5000})
+	noErr(t, "solar", err)
+	battery, err := s.CreateDevice(ctx, domain.Device{SiteID: f.SiteA.ID, DERType: domain.DERBattery, RatedW: 5000})
+	noErr(t, "battery", err)
+	ev, err := s.CreateDevice(ctx, domain.Device{SiteID: f.SiteB.ID, DERType: domain.DEREV, RatedW: 7000})
+	noErr(t, "ev", err)
+
+	// Before any reading: every device is known, none has been seen.
+	states, err := s.ListDeviceStates(ctx, f.Feeder.ID)
+	noErr(t, "states", err)
+	if len(states) != 3 || states[0].NMI != f.SiteA.NMI || states[2].DeviceID != ev.ID || states[0].LastSeenAt != nil {
+		t.Fatalf("states before any reading = %+v", states)
+	}
+
+	withSOC := Reading(battery.ID, 30, 1200)
+	withSOC.SOCPct, withSOC.VoltageV = Ptr(55.0), nil
+	// The site named in a reading is ignored: it comes from the device.
+	wrongSite := Reading(solar.ID, 90, 1400)
+	wrongSite.SiteID = f.SiteB.ID
+	stored, err := s.InsertReadings(ctx, []domain.Reading{
+		Reading(solar.ID, 0, 1000), Reading(solar.ID, 30, 1200), withSOC, wrongSite, Reading(ev.ID, 30, -3000),
+	})
+	noErr(t, "insert", err)
+	if stored != 5 {
+		t.Errorf("stored %d readings, want 5", stored)
+	}
+
+	// The same readings again are skipped, and so is one of an unknown device.
+	stored, err = s.InsertReadings(ctx, []domain.Reading{Reading(solar.ID, 0, 9999), Reading(solar.ID, 120, 1500), Reading(uuid.New(), 0, 1)})
+	noErr(t, "insert again", err)
+	if stored != 1 {
+		t.Errorf("stored %d readings the second time, want 1: the new one", stored)
+	}
+
+	rows, next, err := s.ListReadings(ctx, solar.ID, Day, Day.Add(time.Hour), domain.Page{Size: 3})
+	noErr(t, "list page 1", err)
+	rest, end, err := s.ListReadings(ctx, solar.ID, Day, Day.Add(time.Hour), domain.Page{Size: 3, Token: next})
+	noErr(t, "list page 2", err)
+	if len(rows) != 3 || len(rest) != 1 || end != "" || rows[0].NetExportW != 1000 || rows[0].SiteID != f.SiteA.ID ||
+		rows[2].SiteID != f.SiteA.ID || *rows[0].VoltageV != 241.5 || rows[0].SOCPct != nil || rows[0].ReceivedAt.IsZero() {
+		t.Fatalf("readings = %+v then %+v", rows, rest)
+	}
+	// The first value of a reading wins: a duplicate does not overwrite it.
+	if rows[0].NetExportW != 1000 || rows[0].PowerW != 1500 {
+		t.Errorf("the duplicate overwrote the reading: %+v", rows[0])
+	}
+	batteryRows, _, err := s.ListReadings(ctx, battery.ID, Day, Day.Add(time.Hour), domain.Page{Size: 10})
+	noErr(t, "list the battery", err)
+	if len(batteryRows) != 1 || *batteryRows[0].SOCPct != 55 || batteryRows[0].VoltageV != nil {
+		t.Errorf("battery readings = %+v", batteryRows)
+	}
+	ranged, _, err := s.ListReadings(ctx, solar.ID, Day.Add(30*time.Second), Day.Add(120*time.Second), domain.Page{Size: 10})
+	noErr(t, "list a range", err)
+	if len(ranged) != 2 {
+		t.Errorf("range [00:00:30, 00:02:00) = %d readings, want 2", len(ranged))
+	}
+
+	// The status of a device is its latest reading; a late one does not move
+	// it back.
+	_, err = s.InsertReadings(ctx, []domain.Reading{Reading(solar.ID, 60, 777)})
+	noErr(t, "a late reading", err)
+	states, err = s.ListDeviceStates(ctx, f.Feeder.ID)
+	noErr(t, "states", err)
+	for _, state := range states {
+		switch state.DeviceID {
+		case solar.ID:
+			if state.LastSeenAt == nil || !state.LastSeenAt.Equal(Day.Add(120*time.Second)) || state.NetExportW != 1500 || state.DERType != domain.DERSolar {
+				t.Errorf("solar state = %+v", state)
+			}
+		case ev.ID:
+			if state.NetExportW != -3000 || state.SiteID != f.SiteB.ID {
+				t.Errorf("ev state = %+v", state)
+			}
+		}
+	}
+
+	// By the minute: site A's first minute has solar at 0 s and 30 s and the
+	// battery at 30 s: 1000, 1200, 1200.
+	power, err := s.ListSitePower(ctx, f.SiteA.ID, Day, Day.Add(time.Hour))
+	noErr(t, "site power", err)
+	if len(power) != 3 || !power[0].Bucket.Equal(Day) || power[0].ReadingCount != 3 || power[0].MaxNetExportW != 1200 ||
+		math.Abs(power[0].AvgNetExportW-3400.0/3) > 1e-9 || *power[0].AvgSOCPct != 55 || *power[0].AvgVoltageV != 241.5 {
+		t.Errorf("site power = %+v", power)
+	}
+	// The second minute has the late reading and the one at 90 s.
+	if power[1].ReadingCount != 2 || power[1].AvgSOCPct != nil {
+		t.Errorf("second minute = %+v", power[1])
+	}
+
+	// The fleet's first minute: site A exports 1133 W, site B imports 3000 W.
+	fleet, err := s.ListFleetSeries(ctx, f.Feeder.ID, Day, Day.Add(time.Hour))
+	noErr(t, "fleet", err)
+	if len(fleet) != 3 || fleet[0].ReportingSites != 2 || fleet[0].ReadingCount != 4 || fleet[0].ImportW != 3000 ||
+		math.Abs(fleet[0].ExportW-3400.0/3) > 1e-9 || fleet[0].FeederID != f.Feeder.ID {
+		t.Errorf("fleet = %+v", fleet)
+	}
+
+	soc := Reading(solar.ID, 300, 1)
+	soc.SOCPct = Ptr(101.0)
+	_, err = s.InsertReadings(ctx, []domain.Reading{soc})
+	wantErr(t, "a state of charge of 101 %", err, domain.ErrInvalid)
+	volts := Reading(solar.ID, 300, 1)
+	volts.VoltageV = Ptr(0.0)
+	_, err = s.InsertReadings(ctx, []domain.Reading{volts})
+	wantErr(t, "a voltage of zero", err, domain.ErrInvalid)
+}
+
+func testAlerts(t *testing.T, s service.Store) {
+	ctx := Ctx()
+	f := Seed(t, s, "LV10", 1)
+	other := Seed(t, s, "LV20", 11)
+	device, err := s.CreateDevice(ctx, domain.Device{SiteID: f.SiteA.ID, DERType: domain.DERSolar, RatedW: 5000})
+	noErr(t, "device", err)
+
+	breach := domain.Alert{
+		SiteID: f.SiteA.ID, FeederID: f.Feeder.ID, Kind: domain.AlertConstraintBreach, Severity: domain.SeverityWarning,
+		OpenedAt: Day.Add(time.Hour), LimitW: Ptr(1500.0), PeakW: Ptr(2100.0), Detail: "export above the limit",
+	}
+	first, opened, err := s.OpenAlert(ctx, breach)
+	noErr(t, "open", err)
+	if !opened || first.ID == uuid.Nil || first.FeederID != f.Feeder.ID || first.ResolvedAt != nil || first.AcknowledgedAt != nil || *first.PeakW != 2100 || first.Detail == "" {
+		t.Errorf("first = %+v, opened %v", first, opened)
+	}
+
+	// A breach that continues is the same alert, with a higher peak; a lower
+	// reading does not bring the peak down.
+	breach.PeakW = Ptr(2600.0)
+	again, opened, err := s.OpenAlert(ctx, breach)
+	noErr(t, "open again", err)
+	if opened || again.ID != first.ID || *again.PeakW != 2600 {
+		t.Errorf("a continuing breach = %+v, opened %v", again, opened)
+	}
+	breach.PeakW = Ptr(1800.0)
+	again, _, err = s.OpenAlert(ctx, breach)
+	noErr(t, "open with a lower peak", err)
+	if *again.PeakW != 2600 {
+		t.Errorf("peak fell to %v", *again.PeakW)
+	}
+	// A breach that turns serious is the same alert, with a higher severity;
+	// it does not come down again while the alert is open.
+	breach.Severity = domain.SeverityCritical
+	again, opened, err = s.OpenAlert(ctx, breach)
+	noErr(t, "open as critical", err)
+	if opened || again.ID != first.ID || again.Severity != domain.SeverityCritical {
+		t.Errorf("an escalated breach = %+v, opened %v", again, opened)
+	}
+	breach.Severity = domain.SeverityWarning
+	again, _, err = s.OpenAlert(ctx, breach)
+	noErr(t, "open as a warning again", err)
+	if again.Severity != domain.SeverityCritical {
+		t.Errorf("severity fell to %v", again.Severity)
+	}
+
+	// Another kind on the same site is another alert.
+	offline, opened, err := s.OpenAlert(ctx, domain.Alert{
+		SiteID: f.SiteA.ID, FeederID: f.Feeder.ID, DeviceID: &device.ID, Kind: domain.AlertDeviceOffline, Severity: domain.SeverityInfo, OpenedAt: Day.Add(2 * time.Hour),
+	})
+	noErr(t, "open offline", err)
+	if !opened || offline.ID == first.ID || *offline.DeviceID != device.ID {
+		t.Errorf("offline = %+v", offline)
+	}
+	_, _, err = s.OpenAlert(ctx, domain.Alert{
+		SiteID: other.SiteA.ID, FeederID: other.Feeder.ID, Kind: domain.AlertConstraintBreach, Severity: domain.SeverityWarning,
+		OpenedAt: Day.Add(3 * time.Hour), LimitW: Ptr(0.0), PeakW: Ptr(50.0),
+	})
+	noErr(t, "open on the other feeder", err)
+
+	n, err := s.CountOpenAlerts(ctx, f.Feeder.ID)
+	noErr(t, "count", err)
+	if n != 2 {
+		t.Errorf("%d open alerts, want 2", n)
+	}
+
+	got, err := s.GetAlert(ctx, first.ID)
+	noErr(t, "get", err)
+	if got.ID != first.ID || *got.LimitW != 1500 || got.Kind != domain.AlertConstraintBreach || got.Severity != domain.SeverityCritical {
+		t.Errorf("get = %+v", got)
+	}
+	_, err = s.GetAlert(ctx, uuid.New())
+	wantErr(t, "get an unknown alert", err, domain.ErrNotFound)
+
+	// Acknowledge: once; a second time changes nothing.
+	acked, err := s.AcknowledgeAlert(ctx, first.ID, "operator")
+	noErr(t, "acknowledge", err)
+	if acked.AcknowledgedAt == nil || *acked.AcknowledgedBy != "operator" {
+		t.Errorf("acknowledged = %+v", acked)
+	}
+	twice, err := s.AcknowledgeAlert(ctx, first.ID, "someone-else")
+	noErr(t, "acknowledge again", err)
+	if *twice.AcknowledgedBy != "operator" || !twice.AcknowledgedAt.Equal(*acked.AcknowledgedAt) {
+		t.Errorf("a second acknowledgement changed the alert: %+v", twice)
+	}
+	_, err = s.AcknowledgeAlert(ctx, uuid.New(), "operator")
+	wantErr(t, "acknowledge an unknown alert", err, domain.ErrNotFound)
+
+	// Resolve: the open alert of the site and kind, once.
+	resolved, err := s.ResolveAlert(ctx, f.SiteA.ID, domain.AlertConstraintBreach, Day.Add(90*time.Minute))
+	noErr(t, "resolve", err)
+	if !resolved {
+		t.Error("the open breach was not resolved")
+	}
+	resolved, err = s.ResolveAlert(ctx, f.SiteA.ID, domain.AlertConstraintBreach, Day.Add(95*time.Minute))
+	noErr(t, "resolve again", err)
+	if resolved {
+		t.Error("a breach was resolved twice")
+	}
+	got, _ = s.GetAlert(ctx, first.ID)
+	if got.ResolvedAt == nil || !got.ResolvedAt.Equal(Day.Add(90*time.Minute)) {
+		t.Errorf("resolved at %v", got.ResolvedAt)
+	}
+	// A resolution dated before the alert opened is clamped to its opening.
+	_, err = s.ResolveAlert(ctx, f.SiteA.ID, domain.AlertDeviceOffline, Day)
+	noErr(t, "resolve before opening", err)
+	got, _ = s.GetAlert(ctx, offline.ID)
+	if got.ResolvedAt == nil || !got.ResolvedAt.Equal(offline.OpenedAt) {
+		t.Errorf("the offline alert resolved at %v, want its opening %v", got.ResolvedAt, offline.OpenedAt)
+	}
+	// Once resolved, the site can breach again: a new alert.
+	breach.OpenedAt, breach.PeakW = Day.Add(4*time.Hour), Ptr(1900.0)
+	second, opened, err := s.OpenAlert(ctx, breach)
+	noErr(t, "open after resolve", err)
+	if !opened || second.ID == first.ID {
+		t.Errorf("after resolve: %+v, opened %v", second, opened)
+	}
+
+	// Newest first, in pages; then each filter.
+	page1, next, err := s.ListAlerts(ctx, f.Feeder.ID, service.AlertFilter{}, domain.Page{Size: 2})
+	noErr(t, "list page 1", err)
+	page2, end, err := s.ListAlerts(ctx, f.Feeder.ID, service.AlertFilter{}, domain.Page{Size: 2, Token: next})
+	noErr(t, "list page 2", err)
+	if len(page1) != 2 || page1[0].ID != second.ID || page1[1].ID != offline.ID || len(page2) != 1 || page2[0].ID != first.ID || end != "" {
+		t.Errorf("pages of %d and %d alerts, end %q", len(page1), len(page2), end)
+	}
+	breaches, _, err := s.ListAlerts(ctx, f.Feeder.ID, service.AlertFilter{Kind: Ptr(domain.AlertConstraintBreach)}, domain.Page{Size: 10})
+	noErr(t, "list breaches", err)
+	open, _, err := s.ListAlerts(ctx, f.Feeder.ID, service.AlertFilter{OpenOnly: true}, domain.Page{Size: 10})
+	noErr(t, "list open", err)
+	onB, _, err := s.ListAlerts(ctx, f.Feeder.ID, service.AlertFilter{SiteID: &f.SiteB.ID}, domain.Page{Size: 10})
+	noErr(t, "list site B", err)
+	if len(breaches) != 2 || len(open) != 1 || open[0].ID != second.ID || len(onB) != 0 {
+		t.Errorf("filters: %d breaches, %d open, %d on site B", len(breaches), len(open), len(onB))
+	}
+
+	// What the schema refuses.
+	_, _, err = s.OpenAlert(ctx, domain.Alert{SiteID: f.SiteB.ID, FeederID: f.Feeder.ID, Kind: domain.AlertConstraintBreach, Severity: domain.SeverityWarning, OpenedAt: Day})
+	wantErr(t, "a breach with no measurement", err, domain.ErrInvalid)
+	_, _, err = s.OpenAlert(ctx, domain.Alert{SiteID: f.SiteB.ID, FeederID: f.Feeder.ID, Kind: domain.AlertDeviceOffline, Severity: domain.SeverityInfo, OpenedAt: Day})
+	wantErr(t, "an offline alert with no device", err, domain.ErrInvalid)
+	_, _, err = s.OpenAlert(ctx, domain.Alert{SiteID: f.SiteB.ID, FeederID: f.Feeder.ID, DeviceID: &device.ID, Kind: domain.AlertDeviceOffline, Severity: domain.SeverityInfo, OpenedAt: Day})
+	wantErr(t, "an alert naming another site's device", err, domain.ErrFailedPrecondition)
+	_, _, err = s.OpenAlert(ctx, domain.Alert{SiteID: f.SiteB.ID, FeederID: other.Feeder.ID, Kind: domain.AlertConstraintBreach, Severity: domain.SeverityWarning, OpenedAt: Day, LimitW: Ptr(1.0), PeakW: Ptr(2.0)})
+	wantErr(t, "an alert whose feeder is not its site's", err, domain.ErrFailedPrecondition)
+	_, _, err = s.OpenAlert(ctx, domain.Alert{SiteID: uuid.New(), FeederID: f.Feeder.ID, Kind: domain.AlertConstraintBreach, Severity: domain.SeverityWarning, OpenedAt: Day, LimitW: Ptr(1.0), PeakW: Ptr(2.0)})
+	wantErr(t, "an alert on an unknown site", err, domain.ErrFailedPrecondition)
+}
+
+func testBackstops(t *testing.T, s service.Store) {
+	ctx := Ctx()
+	f := Seed(t, s, "LV10", 1)
+	config, err := s.CreateEnvelopeConfig(ctx, Config(f.Feeder.ID))
+	noErr(t, "config", err)
+	run, _, err := s.CreateEnvelopeRun(ctx, NewRun(f.Feeder.ID, config.ID, "run-0001"))
+	noErr(t, "run", err)
+	a, b := f.SiteA.ID, f.SiteB.ID
+
+	_, err = s.GetActiveBackstopEvent(ctx, f.Feeder.ID)
+	wantErr(t, "the active backstop of a feeder with none", err, domain.ErrNotFound)
+
+	event := domain.BackstopEvent{FeederID: f.Feeder.ID, Reason: "storm", ExportLimitW: 0, TriggeredBy: "operator", TriggeredAt: Day.Add(time.Hour)}
+	first, err := s.CreateBackstopEvent(ctx, event, []uuid.UUID{a, b})
+	noErr(t, "create", err)
+	if first.ID == uuid.Nil || first.ClearedAt != nil || first.ClearedBy != nil || first.Reason != "storm" || !first.TriggeredAt.Equal(Day.Add(time.Hour)) {
+		t.Errorf("first = %+v", first)
+	}
+	sites, err := s.ListBackstopEventSiteIDs(ctx, first.ID)
+	noErr(t, "sites", err)
+	if len(sites) != 2 {
+		t.Errorf("the backstop covers %d sites, want 2", len(sites))
+	}
+	active, err := s.GetActiveBackstopEvent(ctx, f.Feeder.ID)
+	noErr(t, "active", err)
+	if active.ID != first.ID {
+		t.Errorf("active = %s", active.ID)
+	}
+
+	// One active backstop per feeder.
+	_, err = s.CreateBackstopEvent(ctx, event, []uuid.UUID{a})
+	wantErr(t, "a second active backstop", err, domain.ErrAlreadyExists)
+	_, err = s.CreateBackstopEvent(ctx, domain.BackstopEvent{FeederID: uuid.New(), Reason: "x", TriggeredBy: "operator", TriggeredAt: Day}, nil)
+	wantErr(t, "a backstop on an unknown feeder", err, domain.ErrFailedPrecondition)
+
+	cleared, err := s.ClearBackstopEvent(ctx, first.ID, "operator", Day.Add(2*time.Hour))
+	noErr(t, "clear", err)
+	if cleared.ClearedAt == nil || !cleared.ClearedAt.Equal(Day.Add(2*time.Hour)) || *cleared.ClearedBy != "operator" {
+		t.Errorf("cleared = %+v", cleared)
+	}
+	_, err = s.ClearBackstopEvent(ctx, first.ID, "operator", Day.Add(3*time.Hour))
+	wantErr(t, "clear twice", err, domain.ErrFailedPrecondition)
+	_, err = s.ClearBackstopEvent(ctx, uuid.New(), "operator", Day)
+	wantErr(t, "clear an unknown backstop", err, domain.ErrNotFound)
+	_, err = s.GetActiveBackstopEvent(ctx, f.Feeder.ID)
+	wantErr(t, "the active backstop after a clear", err, domain.ErrNotFound)
+
+	// Cleared, the feeder can have another. One that is cleared "before" it
+	// began ends just after instead.
+	second, err := s.CreateBackstopEvent(ctx, domain.BackstopEvent{FeederID: f.Feeder.ID, Reason: "again", ExportLimitW: 1500, TriggeredBy: "operator", TriggeredAt: Day.Add(5 * time.Hour)}, []uuid.UUID{a})
+	noErr(t, "create a second", err)
+	early, err := s.ClearBackstopEvent(ctx, second.ID, "operator", Day)
+	noErr(t, "clear early", err)
+	if !early.ClearedAt.After(early.TriggeredAt) {
+		t.Errorf("cleared at %v, triggered at %v", early.ClearedAt, early.TriggeredAt)
+	}
+
+	got, err := s.GetBackstopEvent(ctx, second.ID)
+	noErr(t, "get", err)
+	if got.ExportLimitW != 1500 || got.Reason != "again" {
+		t.Errorf("get = %+v", got)
+	}
+	_, err = s.GetBackstopEvent(ctx, uuid.New())
+	wantErr(t, "get an unknown backstop", err, domain.ErrNotFound)
+	page1, next, err := s.ListBackstopEvents(ctx, f.Feeder.ID, domain.Page{Size: 1})
+	noErr(t, "list page 1", err)
+	page2, end, err := s.ListBackstopEvents(ctx, f.Feeder.ID, domain.Page{Size: 1, Token: next})
+	noErr(t, "list page 2", err)
+	if len(page1) != 1 || page1[0].ID != second.ID || len(page2) != 1 || page2[0].ID != first.ID || end != "" {
+		t.Errorf("pages = %d and %d, end %q", len(page1), len(page2), end)
+	}
+
+	// What a backstop takes over, and what it gives back.
+	_, _, err = s.ReplaceEnvelopes(ctx, []domain.Envelope{
+		Envelope(a, run.ID, 0, 1000), Envelope(a, run.ID, 1, 1100), Envelope(a, run.ID, 2, 1200), Envelope(b, run.ID, 1, 2100),
+	})
+	noErr(t, "engine envelopes", err)
+	from := Day.Add(40 * time.Minute) // inside interval 1
+	activeNow, err := s.ListActiveEnvelopes(ctx, []uuid.UUID{a, b}, from)
+	noErr(t, "active envelopes", err)
+	if len(activeNow) != 3 {
+		t.Fatalf("%d active envelopes from 00:40, want 3: the one in force and what follows", len(activeNow))
+	}
+	// A backstop envelope supersedes the engine's for interval 1 of site A.
+	override := Envelope(a, run.ID, 1, 0)
+	override.Source, override.EnvelopeRunID, override.BackstopEventID = domain.SourceBackstop, nil, &second.ID
+	_, superseded, err := s.ReplaceEnvelopes(ctx, []domain.Envelope{override})
+	noErr(t, "backstop envelope", err)
+	if superseded != 1 {
+		t.Errorf("superseded %d", superseded)
+	}
+	// And a later engine run had replaced interval 2 before that.
+	_, _, err = s.ReplaceEnvelopes(ctx, []domain.Envelope{Envelope(a, run.ID, 2, 1250)})
+	noErr(t, "newer engine envelope", err)
+
+	latest, err := s.ListLatestEngineEnvelopes(ctx, []uuid.UUID{a}, from)
+	noErr(t, "latest engine envelopes", err)
+	// Interval 1: the engine's 1100, although it is superseded. Interval 2:
+	// the newer 1250, not the older 1200. Interval 0 has ended.
+	if len(latest) != 2 || latest[0].ExportLimitW != 1100 || latest[0].SupersededAt == nil || latest[1].ExportLimitW != 1250 {
+		t.Errorf("latest engine envelopes = %+v", latest)
+	}
+	none, err := s.ListActiveEnvelopes(ctx, nil, from)
+	noErr(t, "active envelopes of no sites", err)
+	if len(none) != 0 {
+		t.Errorf("no sites have %d envelopes", len(none))
+	}
 }
