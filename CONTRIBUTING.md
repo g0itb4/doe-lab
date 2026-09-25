@@ -38,12 +38,14 @@ controller  →  service  →  domain  ←  repo
 | Domain     | `internal/domain`       | Plain types and domain errors                                                                      | everything above, and anything that does I/O                         |
 | Repository | `internal/repo/{pg,objstore,bus}` | Implements the service ports. Maps Postgres error codes to domain errors                  | No business rules                                                    |
 | Engine     | `internal/engine`       | Power flow and envelope search. Pure: no I/O, no clock, no globals                                  | any other package of this module, `os`, `net`, `time`, `database/sql` |
+| Clients    | `internal/enginerun`, `internal/dersim` | The engine and the simulated devices as clients of the API: they call it over RPC | `internal/service`, `internal/controller`, `internal/repo`, pgx |
 
 These rules are lint, not convention: `depguard` in `.golangci.yml` fails the
 pre-commit hook when a forbidden import appears. When you add a layer or a
 package, add its rule in the same commit.
 
-`cmd/engine` talks to the API over RPC only. It never opens the database.
+`cmd/engine` and `cmd/dersim` talk to the API over RPC only. They never open
+the database.
 
 ## Validation is split in two
 

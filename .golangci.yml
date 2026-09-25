@@ -161,6 +161,21 @@ linters:
               desc: SQL belongs in internal/repo/pg
             - pkg: github.com/aws
               desc: object storage belongs in internal/repo/objstore
+        clients:
+          files:
+            - "**/internal/enginerun/**"
+            - "**/internal/dersim/**"
+            # Tests run a client against the API in process.
+            - "!**/*_test.go"
+          deny:
+            - pkg: doelab/api/internal/service
+              desc: the engine and the devices are clients of the API; they call it over RPC
+            - pkg: doelab/api/internal/controller
+              desc: the engine and the devices are clients of the API; they call it over RPC
+            - pkg: doelab/api/internal/repo
+              desc: the engine and the devices never open the database
+            - pkg: github.com/jackc
+              desc: the engine and the devices never open the database
   exclusions:
     generated: strict
     paths:

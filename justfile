@@ -224,3 +224,9 @@ engine *args:
 # the engine on its schedule: a run now, and another every two intervals
 engine-loop *args:
     cd apps/api && {{dev_env}} go run ./cmd/engine "$@"
+
+# Needs the API up, `just import` done, and envelopes from `just engine`.
+#
+# the simulated devices: one virtual inverter per site, some of them misbehaving
+dersim *args:
+    cd apps/api && {{dev_env}} go run ./cmd/dersim -rogue 0.04 -flaky 0.04 "$@"
