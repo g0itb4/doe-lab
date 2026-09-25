@@ -219,6 +219,61 @@ func TestRun(t *testing.T) {
 		}
 	}
 
+	// The state of the feeder is recorded for every interval: the forecast
+	// the envelopes were computed against, the sum of the limits given, and
+	// what the config's fixed limit would have done instead.
+	intervals, err := w.Store.ListEnvelopeRunIntervals(ctx, run.ID)
+	if err != nil || len(intervals) != n {
+		t.Fatalf("%d run intervals, %v; want %d", len(intervals), err, n)
+	}
+	staticTotal := 0.0
+	for _, s := range w.sites {
+		if s.ExportCapW > 0 {
+			staticTotal += min(5000, s.ExportCapW)
+		}
+	}
+	published, err := w.Store.ListFeederEnvelopes(ctx, w.feeder.ID, summary.From, summary.To)
+	if err != nil {
+		t.Fatal(err)
+	}
+	exportTotal, importTotal := map[int64]float64{}, map[int64]float64{}
+	for _, e := range published {
+		exportTotal[e.ValidFrom.Unix()] += e.ExportLimitW
+		importTotal[e.ValidFrom.Unix()] += e.ImportLimitW
+	}
+	reverse, broken := 0, 0
+	for i, row := range intervals {
+		at := row.ValidFrom.Unix()
+		if !row.ValidFrom.Equal(summary.From.Add(time.Duration(i)*30*time.Minute)) || row.ValidTo.Sub(row.ValidFrom) != 30*time.Minute ||
+			row.FeederID != w.feeder.ID || row.ForecastLoadingPct <= 0 || row.ForecastLoadingPct > 200 ||
+			row.ForecastVMinPU < 0.8 || row.ForecastVMinPU > row.ForecastVMaxPU || row.ForecastVMaxPU > 1.3 ||
+			row.ExportLimitTotalW != exportTotal[at] || row.ImportLimitTotalW != importTotal[at] ||
+			row.StaticLimitTotalW != staticTotal || row.StaticVMaxPU < row.ForecastVMinPU {
+			t.Fatalf("interval %d = %+v; envelopes sum to %.0f W out and %.0f W in", i, row, exportTotal[at], importTotal[at])
+		}
+		if (row.StaticBinding == domain.BindingNone) != (row.StaticBindingElement == "") {
+			t.Fatalf("interval %d: the fixed limit breaks %q at %q", i, row.StaticBinding, row.StaticBindingElement)
+		}
+		// Where the fixed limit is within what the envelopes allow, it can
+		// break nothing; where it breaks something, the envelopes held the
+		// sites below it.
+		if row.StaticBinding != domain.BindingNone {
+			broken++
+			if row.ExportLimitTotalW >= row.StaticLimitTotalW {
+				t.Fatalf("interval %d: a fixed limit of %.0f W breaks %s, yet the envelopes allow %.0f W",
+					i, row.StaticLimitTotalW, row.StaticBinding, row.ExportLimitTotalW)
+			}
+		}
+		if row.ForecastNetLoadW < 0 {
+			reverse++
+		}
+	}
+	t.Logf("%d of %d intervals forecast reverse flow; the fixed limit breaks a network limit in %d", reverse, n, broken)
+	// A whole day has an evening of load and a midday of reverse flow.
+	if n == 48 && (reverse == 0 || reverse == n) {
+		t.Errorf("%d of %d intervals forecast reverse flow: want some, not all", reverse, n)
+	}
+
 	// The same horizon again: the run had finished, so nothing is computed.
 	again, err := w.runner.Run(ctx, w.SimClock.Now(), "")
 	if err != nil || !again.Skipped || again.RunID != summary.RunID || again.Published != 0 {
@@ -320,6 +375,7 @@ type flaky struct {
 	doelabv1connect.FeederServiceClient
 	failPublish  atomic.Int32 // fail the publish with this index, once
 	failComplete atomic.Bool
+	failRecord   atomic.Bool
 	cancel       context.CancelFunc
 	longError    string // fail every publish with this message
 }
@@ -339,6 +395,13 @@ func (f *flaky) CompleteEnvelopeRun(ctx context.Context, req *connect.Request[do
 		return nil, connect.NewError(connect.CodeUnavailable, errors.New("connection reset"))
 	}
 	return f.EnvelopeRunServiceClient.CompleteEnvelopeRun(ctx, req)
+}
+
+func (f *flaky) CreateEnvelopeRunIntervals(ctx context.Context, req *connect.Request[doelabv1.CreateEnvelopeRunIntervalsRequest]) (*connect.Response[doelabv1.CreateEnvelopeRunIntervalsResponse], error) {
+	if f.failRecord.Load() {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("connection reset"))
+	}
+	return f.EnvelopeRunServiceClient.CreateEnvelopeRunIntervals(ctx, req)
 }
 
 func (f *flaky) GetFeederForecast(ctx context.Context, req *connect.Request[doelabv1.GetFeederForecastRequest]) (*connect.Response[doelabv1.GetFeederForecastResponse], error) {
@@ -393,6 +456,10 @@ func TestInterruptedRunResumes(t *testing.T) {
 	if run.Status != domain.RunCompleted || run.EnvelopeCount != int32(horizon()*enrolled) {
 		t.Errorf("after resuming: %s with %d envelopes", run.Status, run.EnvelopeCount)
 	}
+	// The first attempt had recorded the intervals; the second left them.
+	if intervals, err := w.Store.ListEnvelopeRunIntervals(ctx, run.ID); err != nil || len(intervals) != horizon() {
+		t.Errorf("%d run intervals after resuming, %v", len(intervals), err)
+	}
 }
 
 // A run that fails is recorded as failed, with the reason.
@@ -429,6 +496,21 @@ func TestFailedRunIsRecorded(t *testing.T) {
 		// What was published before the failure stays in force.
 		if _, err := w.Store.GetCurrentEnvelope(ctx, w.enrolledSite(t).ID, summary.From); err != nil {
 			t.Errorf("the first batch is gone: %v", err)
+		}
+	})
+
+	t.Run("recording the intervals fails", func(t *testing.T) {
+		t.Parallel()
+		w := newWorld(t, true)
+		w.inject().failRecord.Store(true)
+		summary, err := w.runner.Run(ctx, w.SimClock.Now(), "")
+		if err == nil || !strings.Contains(err.Error(), "record intervals") {
+			t.Fatalf("error = %v", err)
+		}
+		// Nothing is published for a run that could not say what it saw.
+		run := w.run(t, summary.RunID)
+		if run.Status != domain.RunFailed || !strings.Contains(*run.Error, "connection reset") || run.EnvelopeCount != 0 {
+			t.Errorf("run = %+v", run)
 		}
 	})
 

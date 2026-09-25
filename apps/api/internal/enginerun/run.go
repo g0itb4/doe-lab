@@ -103,7 +103,10 @@ func (r *Runner) Run(ctx context.Context, from time.Time, suffix string) (Summar
 		return summary, nil
 	}
 
-	batches, err := r.compute(ctx, model, from, interval, &summary)
+	batches, intervals, err := r.compute(ctx, model, from, interval, &summary)
+	if err == nil {
+		err = r.record(ctx, run.GetId(), intervals)
+	}
 	if err == nil {
 		err = r.publish(ctx, run.GetId(), key, batches, &summary)
 	}
@@ -133,12 +136,13 @@ func truncate(s string, n int) string {
 	return s[:n]
 }
 
-// compute solves every interval of the horizon and returns the envelopes in
-// batches, in time order.
-func (r *Runner) compute(ctx context.Context, model feederModel, from time.Time, interval time.Duration, summary *Summary) ([][]*doelabv1.Envelope, error) {
+// compute solves every interval of the horizon. It returns the envelopes in
+// batches, in time order, and for each interval the state of the feeder that
+// the envelopes were computed against.
+func (r *Runner) compute(ctx context.Context, model feederModel, from time.Time, interval time.Duration, summary *Summary) ([][]*doelabv1.Envelope, []*doelabv1.EnvelopeRunInterval, error) {
 	net, siteIDs, err := topology.ToNetwork(model.feeder, model.nodes, model.lines, model.sites)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	config := model.config
 	policy := engine.Equal
@@ -154,7 +158,7 @@ func (r *Runner) compute(ctx context.Context, model feederModel, from time.Time,
 		},
 	})
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// The sites in the engine's order, with their caps.
@@ -173,12 +177,13 @@ func (r *Runner) compute(ctx context.Context, model feederModel, from time.Time,
 	intervals := summary.Intervals
 	points, err := r.API.forecast(ctx, model.feeder.ID, from, from.Add(time.Duration(intervals)*interval))
 	if err != nil {
-		return nil, fmt.Errorf("forecast: %w", err)
+		return nil, nil, fmt.Errorf("forecast: %w", err)
 	}
 
 	// Each interval is independent of the others, so they are solved in
 	// parallel, each worker with a solution of its own.
 	results := make([]engine.Result, intervals)
+	reports := make([]engine.Report, intervals)
 	errs := make([]error, intervals)
 	next := make(chan int, intervals)
 	for k := range intervals {
@@ -217,12 +222,15 @@ func (r *Runner) compute(ctx context.Context, model feederModel, from time.Time,
 				if errs[k] == nil {
 					results[k], errs[k] = eng.Envelope(inputs, &sol)
 				}
+				if errs[k] == nil {
+					reports[k], errs[k] = eng.Report(inputs, config.StaticLimitW, &sol)
+				}
 			}
 		}()
 	}
 	wg.Wait()
 	if err := errors.Join(errs...); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	binding := func(b engine.Binding) (doelabv1.BindingConstraint, string) {
@@ -231,10 +239,21 @@ func (r *Runner) compute(ctx context.Context, model feederModel, from time.Time,
 	summary.MinExportW = math.Inf(1)
 	var batches [][]*doelabv1.Envelope
 	var batch []*doelabv1.Envelope
+	states := make([]*doelabv1.EnvelopeRunInterval, intervals)
 	for k, result := range results {
 		start := from.Add(time.Duration(k) * interval)
 		exportBinding, exportElement := binding(result.Export)
 		importBinding, importElement := binding(result.Import)
+		report := reports[k]
+		staticBinding, staticElement := binding(report.Static.Worst)
+		state := &doelabv1.EnvelopeRunInterval{
+			ValidFrom: timestamppb.New(start), ValidTo: timestamppb.New(start.Add(interval)),
+			ForecastNetLoadW: real(report.Forecast.SourceVA), ForecastLoadingPct: report.Forecast.LoadingPU * 100,
+			ForecastVMinPu: report.Forecast.VMinPU, ForecastVMaxPu: report.Forecast.VMaxPU,
+			StaticLimitTotalW: report.StaticTotalW, StaticVMaxPu: report.Static.VMaxPU,
+			StaticBinding: staticBinding, StaticBindingElement: staticElement,
+		}
+		states[k] = state
 		for i, site := range sites {
 			if site.ExportCapW == 0 && site.ImportCapW == 0 {
 				continue // passive: forecast, not controlled
@@ -251,6 +270,8 @@ func (r *Runner) compute(ctx context.Context, model feederModel, from time.Time,
 				summary.MinExportW = min(summary.MinExportW, e.GetExportLimitW())
 				summary.MaxExportW = max(summary.MaxExportW, e.GetExportLimitW())
 			}
+			state.ExportLimitTotalW += e.GetExportLimitW()
+			state.ImportLimitTotalW += e.GetImportLimitW()
 			batch = append(batch, e)
 		}
 		// Whole intervals in a batch, so a partial publish never leaves an
@@ -265,7 +286,20 @@ func (r *Runner) compute(ctx context.Context, model feederModel, from time.Time,
 	if math.IsInf(summary.MinExportW, 1) {
 		summary.MinExportW = 0
 	}
-	return batches, nil
+	return batches, states, nil
+}
+
+// record stores the state of the feeder for each interval of the run. A run
+// that was interrupted and is run again has stored them already; they are the
+// same, and stay as they are.
+func (r *Runner) record(ctx context.Context, runID string, intervals []*doelabv1.EnvelopeRunInterval) error {
+	_, err := r.API.Runs.CreateEnvelopeRunIntervals(ctx, connect.NewRequest(&doelabv1.CreateEnvelopeRunIntervalsRequest{
+		EnvelopeRunId: runID, Intervals: intervals,
+	}))
+	if err != nil && connect.CodeOf(err) != connect.CodeAlreadyExists {
+		return fmt.Errorf("record intervals: %w", err)
+	}
+	return nil
 }
 
 // publish sends the batches. Each has a key derived from the run's, so a run
