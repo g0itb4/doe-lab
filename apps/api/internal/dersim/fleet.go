@@ -93,6 +93,9 @@ const (
 	// silence must outlast the offline period for an alert to open.
 	flakyPeriod = 4 * time.Hour
 	flakySilent = 20 * time.Minute
+	// maxRetry is the longest a device waits before it reopens a
+	// subscription, on the wall clock.
+	maxRetry = 30 * time.Second
 )
 
 // NewFleet builds a fleet with the defaults.
@@ -261,8 +264,11 @@ func (u *unit) silent(at time.Time) bool {
 func (f *Fleet) bearer(u *unit) string { return "Bearer " + f.Token(u.site.NMI) }
 
 // follow keeps a unit's subscription open until ctx ends, and reopens it when
-// it breaks.
+// it breaks: after Retry at first, then after twice as long each time, up to
+// maxRetry. The wait is jittered, so that a fleet that lost its API at one
+// moment does not come back at one moment.
 func (f *Fleet) follow(ctx context.Context, u *unit) {
+	wait := f.Retry
 	for {
 		req := connect.NewRequest(&doelabv1.SubscribeEnvelopesRequest{Nmi: u.site.NMI})
 		req.Header().Set("Authorization", f.bearer(u))
@@ -270,6 +276,7 @@ func (f *Fleet) follow(ctx context.Context, u *unit) {
 		if err == nil {
 			for stream.Receive() {
 				msg := stream.Msg()
+				wait = f.Retry
 				u.mu.Lock()
 				u.envelope = msg.GetEnvelope()
 				if !msg.GetKeepalive() {
@@ -284,13 +291,20 @@ func (f *Fleet) follow(ctx context.Context, u *unit) {
 			return
 		}
 		// The envelope it holds stays good for its interval; after that the
-		// unit asks.
-		f.Log.WarnContext(ctx, "subscription lost", "nmi", u.site.NMI, "err", err)
+		// unit asks. The first loss is worth a warning; the retries of an
+		// outage are not, one by one.
+		level := slog.LevelDebug
+		if wait == f.Retry {
+			level = slog.LevelWarn
+		}
+		f.Log.Log(ctx, level, "subscription lost", "nmi", u.site.NMI, "err", err, "retry_in", wait.String())
+		jittered := time.Duration(float64(wait) * (0.5 + rand.Float64()/2)) //nolint:gosec // G404: a simulation, not a secret
 		select {
 		case <-ctx.Done():
 			return
-		case <-f.after(f.Retry):
+		case <-f.after(jittered):
 		}
+		wait = min(2*wait, maxRetry)
 	}
 }
 
@@ -331,6 +345,7 @@ func (f *Fleet) Tick(ctx context.Context, at time.Time) (Stats, error) {
 		return stats, fmt.Errorf("forecast: %w", err)
 	}
 	slot := at.Truncate(30 * time.Minute).Unix()
+	var failure error
 	for _, u := range f.units {
 		// Real weather and real households stray from the forecast: the
 		// cloud drifts, and the load jitters around its half-hour average.
@@ -350,10 +365,14 @@ func (f *Fleet) Tick(ctx context.Context, at time.Time) (Stats, error) {
 		}
 		if err := f.report(ctx, u, at, flows); err != nil {
 			stats.Failed++
-			f.Log.WarnContext(ctx, "readings not sent", "nmi", u.site.NMI, "err", err)
+			failure = cmp.Or(failure, fmt.Errorf("%s: %w", u.site.NMI, err))
 			continue
 		}
 		stats.Reported++
+	}
+	if failure != nil {
+		// One line for the step, not one for each site: an outage fails them all.
+		f.Log.WarnContext(ctx, "readings not sent", "sites", stats.Failed, "first", failure)
 	}
 	return stats, nil
 }
