@@ -127,6 +127,10 @@ secrets-push:
 secrets:
     gitleaks git --no-banner --redact
 
+# svelte-check: TypeScript in the .svelte and .ts files of the web app
+typecheck-web:
+    bun run --filter @doelab/web typecheck
+
 # ── tests and coverage ───────────────────────────────────────────────────────
 
 # The offline Go tier: no container, no network. The profile goes through
@@ -164,6 +168,20 @@ cover-go:
     go run ./cmd/covergate
     printf 'cover-go: %.1f s\n' $(( EPOCHREALTIME - start ))
 
+# In a real browser (headless Chromium, through Playwright). The thresholds
+# are in apps/web/vitest.config.ts and, like the Go floors, only go up.
+#
+# web unit and component tests, with the coverage thresholds
+cover-web:
+    bun run --filter @doelab/web test
+
+# The first-load JavaScript and CSS of every prerendered page, gzipped.
+#
+# production build of the web app, held to its bundle budget
+build-web:
+    bun run --filter @doelab/web build
+    bun scripts/bundle-budget.ts apps/web/dist 120
+
 # every Go test of the offline tier, including the slow ones, with the race detector
 test-go:
     cd apps/api && go test -race ./...
@@ -177,8 +195,8 @@ test-go:
 test-db:
     cd apps/api && DOELAB_TEST_DB=1 TESTCONTAINERS_RYUK_DISABLED=true go test -count=1 -race ./internal/repo/... ./internal/testutil/...
 
-# everything: hooks on every file, both Go tiers, and the engine's time budget
-test: check test-go test-db bench
+# everything: hooks on every file, both Go tiers, the engine's time budget, and the web build
+test: check test-go test-db bench build-web
 
 # A plain build: timings mean nothing under the race detector or coverage.
 #
@@ -214,6 +232,24 @@ dev_env := "DOELAB_ENV=development DEMO_CLOCK_SPEED=60 DEMO_CLOCK_ANCHOR=" + `da
 # the API on :3100, restarted when a Go file changes (needs `just up`)
 api: _kill
     cd apps/api && {{dev_env}} go tool wgo run ./cmd/api
+
+# the web UI on :5273, with /rpc proxied to the API on :3100
+web:
+    bun run --filter @doelab/web dev
+
+# Both in watch mode; Ctrl-C stops both.
+#
+# the database, the API and the web UI
+dev: _kill up
+    #!/usr/bin/env zsh
+    trap 'kill 0' INT TERM EXIT
+    (cd apps/api && {{dev_env}} go tool wgo run ./cmd/api) &
+    bun run --filter @doelab/web dev &
+    wait
+
+# the production build of the web UI on :4273 (needs the API up)
+preview: build-web
+    bun run --filter @doelab/web preview
 
 # Needs the API up, and `just import` done.
 #

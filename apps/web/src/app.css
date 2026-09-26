@@ -1,0 +1,169 @@
+@import "tailwindcss";
+
+/* Design tokens. Every colour in the app is one of these, so a theme is a
+   second set of values and nothing else. tokens.svelte.test.ts measures the
+   contrast of each pair that is used together, in both themes: 4.5:1 for
+   text, 3:1 for chart lines and control borders. */
+@theme {
+  --color-bg: #f4f6f9;
+  --color-surface: #ffffff;
+  --color-sunken: #e9edf2;
+  /* rule is decoration; control is the border of something you can use. */
+  --color-rule: #d5dbe3;
+  --color-control: #6b7685;
+  --color-text: #14202e;
+  --color-muted: #4a5868;
+  --color-accent: #0b5cad;
+  --color-accent-text: #ffffff;
+  --color-ok: #0f6b3c;
+  --color-warn: #8a5300;
+  --color-critical: #b3261e;
+  --color-critical-text: #ffffff;
+  /* Chart series: told apart by dash pattern as well, never by hue alone. */
+  --color-series-1: #0b5cad;
+  --color-series-2: #c2410c;
+  --color-series-3: #0f7a55;
+  --color-series-4: #7b3fa3;
+  --color-series-ref: #4a5868;
+
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  --animate-pulse-soft: pulse-soft 1.6s ease-in-out infinite;
+  @keyframes pulse-soft {
+    50% {
+      opacity: 0.55;
+    }
+  }
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  /* The dark values, twice: once for a visitor whose system asks for dark and
+     who has not chosen, once for a visitor who chose dark. CSS has no way to
+     say that in one rule. Keep the two blocks identical. */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --color-bg: #0f141a;
+      --color-surface: #171d25;
+      --color-sunken: #1f2731;
+      --color-rule: #2c3643;
+      --color-control: #8593a5;
+      --color-text: #e8edf3;
+      --color-muted: #a9b4c2;
+      --color-accent: #6cb2ff;
+      --color-accent-text: #0f141a;
+      --color-ok: #5fd39a;
+      --color-warn: #f2b84b;
+      --color-critical: #ff8a80;
+      --color-critical-text: #0f141a;
+      --color-series-1: #6cb2ff;
+      --color-series-2: #ff9d5c;
+      --color-series-3: #5fd39a;
+      --color-series-4: #d6a2f5;
+      --color-series-ref: #a9b4c2;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --color-bg: #0f141a;
+    --color-surface: #171d25;
+    --color-sunken: #1f2731;
+    --color-rule: #2c3643;
+    --color-control: #8593a5;
+    --color-text: #e8edf3;
+    --color-muted: #a9b4c2;
+    --color-accent: #6cb2ff;
+    --color-accent-text: #0f141a;
+    --color-ok: #5fd39a;
+    --color-warn: #f2b84b;
+    --color-critical: #ff8a80;
+    --color-critical-text: #0f141a;
+    --color-series-1: #6cb2ff;
+    --color-series-2: #ff9d5c;
+    --color-series-3: #5fd39a;
+    --color-series-4: #d6a2f5;
+    --color-series-ref: #a9b4c2;
+  }
+
+  html {
+    background-color: var(--color-bg);
+  }
+  body {
+    @apply bg-bg text-text font-sans antialiased;
+    /* The page body never scrolls sideways; a wide table scrolls inside its
+       own container. */
+    overflow-x: hidden;
+  }
+
+  /* One focus ring, everywhere, for keyboard users only. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* Numbers line up in tables and tiles. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation: none !important;
+      transition: none !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /* Controls share a shape, and are at least 24 px in both directions (most
+     are 36). */
+  .btn {
+    @apply border-control bg-surface text-text inline-flex min-h-9 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium;
+    transition:
+      background-color 80ms,
+      transform 80ms;
+  }
+  .btn:hover:not(:disabled) {
+    @apply bg-sunken;
+  }
+  .btn:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+  .btn:disabled {
+    @apply cursor-not-allowed opacity-60;
+  }
+  .btn-primary {
+    @apply border-accent bg-accent text-accent-text;
+  }
+  .btn-primary:hover:not(:disabled) {
+    @apply bg-accent opacity-90;
+  }
+  .btn-danger {
+    @apply border-critical bg-critical text-critical-text;
+  }
+  .btn-danger:hover:not(:disabled) {
+    @apply bg-critical opacity-90;
+  }
+  .field {
+    @apply border-control bg-surface text-text min-h-9 w-full rounded-md border px-3 py-1.5 text-sm;
+  }
+  .field[aria-invalid="true"] {
+    @apply border-critical;
+  }
+  .card {
+    @apply border-rule bg-surface rounded-lg border;
+  }
+  .link {
+    @apply text-accent underline underline-offset-2;
+  }
+}

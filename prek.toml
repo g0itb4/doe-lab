@@ -80,6 +80,14 @@ entry = "just lint-go"
 files = '^(apps/api/.*\.go|apps/api/go\.(mod|sum)|\.golangci\.yml)$'
 pass_filenames = false
 
+[[repos.hooks]]
+id = "web-typecheck"
+name = "lint: svelte-check (types in the web app)"
+language = "system"
+entry = "just typecheck-web"
+files = '^(apps/web/.*\.(ts|js|svelte|json)|proto/.*\.proto)$'
+pass_filenames = false
+
 # ── Secrets ──────────────────────────────────────────────────────────────────
 
 [[repos.hooks]]
@@ -107,4 +115,15 @@ name = "coverage: Go unit tier + per-package floors"
 language = "system"
 entry = "just cover-go"
 files = '^apps/api/(.*\.go|go\.(mod|sum)|coverage\.json|.*/testdata/.*)$'
+pass_filenames = false
+
+# A browser start and a build are too slow for every commit; they run before
+# a push.
+[[repos.hooks]]
+id = "web-cover"
+name = "coverage: web unit tier + thresholds"
+language = "system"
+entry = "just cover-web"
+stages = ["pre-push"]
+files = '^(apps/web/|packages/gen/|proto/)'
 pass_filenames = false

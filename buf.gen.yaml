@@ -13,12 +13,16 @@ managed:
     - module: buf.build/bufbuild/protovalidate
 
 plugins:
-  # Browser client. include_imports because the generated files import their
-  # dependencies (buf/validate) by relative path, so those must exist as files
-  # in the output tree.
+  # Browser client, without the validation rules. Every generated file embeds
+  # its descriptor, options included, and the protovalidate options are most
+  # of it: validate.proto alone is 83 kB of JavaScript, and the CEL strings
+  # come on top. The browser does not run them (the API does), so they are
+  # left out of the image this plugin sees.
   - local: protoc-gen-es
     out: packages/gen/src/gen
     include_imports: true
+    exclude_types:
+      - buf.validate
     opt:
       - target=js+dts
 
