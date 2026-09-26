@@ -83,6 +83,8 @@ func (s *Telemetry) Report(ctx context.Context, feederID uuid.UUID, day time.Tim
 	if err != nil {
 		return out, err
 	}
+	// The intervals of the day that have envelopes: what the report covers.
+	intervals := map[int64]bool{}
 	if len(envelopes) > 0 {
 		points, err := forecast(ctx, s.store, feederID, out.From, out.To)
 		if err != nil {
@@ -96,7 +98,6 @@ func (s *Telemetry) Report(ctx context.Context, feederID uuid.UUID, day time.Tim
 		for _, p := range points {
 			potential[key{p.SiteID, p.TS.Unix()}] = max(0, p.PVW*config.PVScale-p.LoadW)
 		}
-		intervals := map[int64]bool{}
 		for _, e := range envelopes {
 			siteCap, enrolled := exportCap[e.SiteID]
 			if !enrolled {
@@ -121,7 +122,9 @@ func (s *Telemetry) Report(ctx context.Context, feederID uuid.UUID, day time.Tim
 		return out, err
 	}
 	for _, f := range forecasts {
-		if f.StaticBinding != domain.BindingNone {
+		// Counted over the same intervals as the energy, so that "n of m"
+		// means something.
+		if intervals[f.ValidFrom.Unix()] && f.StaticBinding != domain.BindingNone {
 			out.StaticViolationIntervals++
 		}
 	}

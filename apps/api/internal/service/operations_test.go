@@ -698,11 +698,12 @@ func TestDailyReport(t *testing.T) {
 	}
 
 	// The fixed limit would have broken a network limit in two of three
-	// half hours.
+	// half hours. A fourth has no envelope, and so is not one of the report's.
 	quiet := repotest.Interval(o.run.ID, feeder, 1, 11000)
 	quiet.StaticBinding, quiet.StaticBindingElement = domain.BindingNone, ""
 	if err := o.store.CreateEnvelopeRunIntervals(ctx, []domain.EnvelopeRunInterval{
 		repotest.Interval(o.run.ID, feeder, 0, 10000), quiet, repotest.Interval(o.run.ID, feeder, 2, 12000),
+		repotest.Interval(o.run.ID, feeder, 3, 13000),
 	}); err != nil {
 		t.Fatal(err)
 	}
