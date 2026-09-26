@@ -109,3 +109,33 @@ func (t timeout) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 func (timeout) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return next
 }
+
+// Drain ends the streams that are open when the server begins to shut down.
+// stopping is a context that ends at that moment.
+//
+// http.Server.Shutdown waits for every response to finish, and a subscription
+// never does: without this a restart waits out its whole grace period and
+// then cuts the connections. With it the context of each stream ends, the
+// handler returns, and the client sees a clean end and reconnects, to the
+// new process.
+//
+// A unary RPC is left alone: it finishes within the grace period.
+func Drain(stopping context.Context) connect.Interceptor {
+	return drain{stopping: stopping}
+}
+
+type drain struct {
+	clientOnly
+	stopping context.Context
+}
+
+func (drain) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc { return next }
+
+func (d drain) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return func(ctx context.Context, conn connect.StreamingHandlerConn) error {
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
+		defer context.AfterFunc(d.stopping, cancel)()
+		return next(ctx, conn)
+	}
+}

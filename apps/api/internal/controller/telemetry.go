@@ -43,12 +43,43 @@ func (c *Telemetry) ListReadings(ctx context.Context, req *connect.Request[doela
 }
 
 // IngestReadings takes a stream of batches from the devices of one site, and
-// answers when the client closes it.
+// answers when the client closes it, or when the stream's context ends: the
+// server is shutting down. Either way the answer counts what was stored.
 func (c *Telemetry) IngestReadings(ctx context.Context, stream *connect.ClientStream[doelabv1.IngestReadingsRequest]) (*connect.Response[doelabv1.IngestReadingsResponse], error) {
+	// Receive blocks until the device sends, and a device may be silent for a
+	// long time. The wait is in a goroutine, so that the handler can still
+	// leave when its context ends; the goroutine leaves when the request is
+	// closed behind the handler.
+	batches := make(chan *doelabv1.IngestReadingsRequest)
+	go func() {
+		defer close(batches)
+		for stream.Receive() {
+			select {
+			case batches <- stream.Msg():
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
 	var out doelabv1.IngestReadingsResponse
 	nmi := ""
-	for stream.Receive() {
-		msg := stream.Msg()
+	for {
+		var msg *doelabv1.IngestReadingsRequest
+		select {
+		case <-ctx.Done():
+			return connect.NewResponse(&out), nil
+		case received, open := <-batches:
+			if !open {
+				// The goroutine is done with the stream, so its error is
+				// safe to read.
+				if err := stream.Err(); err != nil && !errors.Is(err, io.EOF) && ctx.Err() == nil {
+					return nil, err
+				}
+				return connect.NewResponse(&out), nil
+			}
+			msg = received
+		}
 		// A stream is for one site: the token is checked against the NMI of
 		// every batch, and the NMI may not change on the way.
 		if nmi == "" {
@@ -64,10 +95,6 @@ func (c *Telemetry) IngestReadings(ctx context.Context, stream *connect.ClientSt
 		out.Accepted += int32(stored)                            //nolint:gosec // G115: a batch is at most 1000
 		out.Duplicates += int32(len(msg.GetReadings()) - stored) //nolint:gosec // G115: as above
 	}
-	if err := stream.Err(); err != nil && !errors.Is(err, io.EOF) {
-		return nil, err
-	}
-	return connect.NewResponse(&out), nil
 }
 
 func fleetSummary(s service.FleetSummary) *doelabv1.FleetSummary {

@@ -79,6 +79,10 @@ func run(log *slog.Logger) error {
 	telemetry.WatchEvery = min(time.Second, max(250*time.Millisecond, clock.Real(time.Minute)))
 	go sweep(ctx, log, clock, compliance, backstops)
 
+	// Ends when the server begins to shut down, and the open streams with it.
+	stopping, stopStreams := context.WithCancel(context.Background())
+	defer stopStreams()
+
 	srv := server.New(cfg, log, server.Deps{
 		Feeders:         controller.NewFeeders(service.NewFeeders(store)),
 		Sites:           controller.NewSites(service.NewSites(store)),
@@ -93,6 +97,7 @@ func run(log *slog.Logger) error {
 		Database:        pool,
 		Validator:       validator,
 		Tokens:          auth.NewTokens(cfg.EngineToken, cfg.OperatorToken, cfg.DeviceTokenSecret),
+		Stopping:        stopping,
 	})
 
 	errCh := make(chan error, 1)
@@ -110,11 +115,22 @@ func run(log *slog.Logger) error {
 	}
 
 	// Drain in-flight requests before closing the pool, or the last few
-	// responses fail on a connection that has already gone.
+	// responses fail on a connection that has already gone. The server
+	// streams are told to end first: a subscription never finishes by itself,
+	// and Shutdown would wait for it.
 	log.Info("shutting down")
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	stopStreams()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	return srv.Shutdown(shutdownCtx)
+	err = srv.Shutdown(shutdownCtx)
+	if errors.Is(err, context.DeadlineExceeded) {
+		// What is left is a device that still holds a stream of readings
+		// open. It is cut, and sends again to the next process: a reading
+		// that was already stored is skipped.
+		log.Info("closing the connections that are still open")
+		return srv.Close()
+	}
+	return err
 }
 
 // sweep runs the periodic work until ctx ends: it looks for devices that have

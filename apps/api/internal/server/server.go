@@ -2,6 +2,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"log/slog"
@@ -45,6 +46,9 @@ type Deps struct {
 	Tokens    *auth.Tokens
 	// Extra interceptors run outermost, before Logging. Tracing goes here.
 	Extra []connect.Interceptor
+	// Stopping ends when the server begins to shut down, and the open streams
+	// with it. Unset, the streams are never told to end.
+	Stopping context.Context
 }
 
 // services names every service the server mounts, for health and reflection.
@@ -72,10 +76,12 @@ func Handler(cfg config.Config, log *slog.Logger, deps Deps) http.Handler {
 	// place a message is scrubbed; Throttle refuses before any work is done;
 	// Auth runs before Validate so field-level messages go only to a caller
 	// who may use the procedure; Validate is innermost so no handler sees a
-	// message that failed.
+	// message that failed. Drain sits under Logging, so a stream that a
+	// shutdown ended is logged as ended.
 	chain = append(chain,
 		interceptor.Logging(log, cfg.LogRequests),
 		interceptor.Timeout(cfg.RequestTimeout),
+		interceptor.Drain(cmp.Or(deps.Stopping, context.Background())),
 		interceptor.Errors(log),
 		interceptor.NewThrottle(cfg.TrustProxy),
 		interceptor.Auth(deps.Tokens, Policy()),

@@ -175,6 +175,56 @@ func TestTimeout(t *testing.T) {
 	}
 }
 
+func TestDrain(t *testing.T) {
+	t.Parallel()
+	stopping, stop := context.WithCancel(context.Background())
+	// A stream ends when the server begins to stop.
+	started, ended := make(chan struct{}), make(chan error, 1)
+	go func() {
+		ended <- Drain(stopping).WrapStreamingHandler(func(ctx context.Context, _ connect.StreamingHandlerConn) error {
+			close(started)
+			<-ctx.Done()
+			return nil
+		})(context.Background(), newStream())
+	}()
+	<-started
+	select {
+	case err := <-ended:
+		t.Fatalf("the stream ended before the server stopped: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	stop()
+	select {
+	case err := <-ended:
+		if err != nil {
+			t.Errorf("the stream ended with %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the stream outlived the server")
+	}
+
+	// A unary RPC is left to finish, and so is a stream of a server that is
+	// not stopping.
+	live := func(ctx context.Context) error {
+		if ctx.Err() != nil {
+			return errors.New("the context had ended")
+		}
+		return nil
+	}
+	_, err := Drain(stopping).WrapUnary(func(ctx context.Context, _ connect.AnyRequest) (connect.AnyResponse, error) {
+		return nil, live(ctx)
+	})(context.Background(), newRequest(nil))
+	if err != nil {
+		t.Errorf("a unary RPC after the stop: %v", err)
+	}
+	err = Drain(context.Background()).WrapStreamingHandler(func(ctx context.Context, _ connect.StreamingHandlerConn) error {
+		return live(ctx)
+	})(context.Background(), newStream())
+	if err != nil {
+		t.Errorf("a stream of a server that is not stopping: %v", err)
+	}
+}
+
 func TestErrors(t *testing.T) {
 	t.Parallel()
 	var out bytes.Buffer

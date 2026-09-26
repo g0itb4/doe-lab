@@ -13,6 +13,7 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	doelabv1 "doelab/api/gen/doelab/v1"
+	"doelab/api/internal/domain"
 	"doelab/api/internal/repo/repotest"
 )
 
@@ -590,6 +591,59 @@ func TestSubscribeLeavesNoGoroutineBehind(t *testing.T) {
 	waitFor(t, "the subscriptions to be released", func() bool { return p.Bus.Subscribers() == 0 })
 	p.Close()
 	goleak.VerifyNone(t, before)
+}
+
+// A subscription never ends by itself, so a server that waited for it would
+// never stop. When the API begins to shut down, its streams end cleanly, and
+// a client reconnects to whatever replaces it.
+func TestShutdownEndsStreams(t *testing.T) {
+	t.Parallel()
+	p := prepare(t)
+	nmi := p.fixture.SiteA.NMI
+	sub := p.subscribe(t, p.Tokens.DeviceToken(nmi), nmi)
+	sub.next(t)
+
+	watchCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	watch, err := p.telemetry("").WatchFleet(watchCtx, req(&doelabv1.WatchFleetRequest{FeederId: p.fixture.Feeder.ID.String()}))
+	noErr(t, "watch", err)
+	if !watch.Receive() {
+		t.Fatalf("no summary: %v", watch.Err())
+	}
+
+	// A device with a stream of readings open, and silent for now.
+	solar := p.device(t, p.fixture.SiteA, domain.DERSolar)
+	readings := p.telemetry(p.Tokens.DeviceToken(nmi)).IngestReadings(ctx)
+	noErr(t, "send", readings.Send(&doelabv1.IngestReadingsRequest{Nmi: nmi, Readings: []*doelabv1.Reading{reading(solar, 0, 100)}}))
+	waitFor(t, "the reading to be stored", func() bool {
+		res, err := p.telemetry("").ListReadings(ctx, req(&doelabv1.ListReadingsRequest{DeviceId: solar, From: day(0), To: day(60)}))
+		return err == nil && len(res.Msg.GetReadings()) == 1
+	})
+
+	p.Stop()
+	if err := sub.end(t); err != nil {
+		t.Errorf("the subscription ended with %v, want a clean end", err)
+	}
+	// The stream of readings is answered with what was stored, without
+	// waiting for the device to speak again.
+	stored, err := readings.CloseAndReceive()
+	if err != nil || stored.Msg.GetAccepted() != 1 {
+		t.Errorf("the stream of readings ended with %v, %v; want 1 accepted", stored, err)
+	}
+	for watch.Receive() {
+		// Summaries that were on their way.
+	}
+	if err := watch.Err(); err != nil {
+		t.Errorf("the watch ended with %v, want a clean end", err)
+	}
+	waitFor(t, "the subscription to be released", func() bool { return p.Bus.Subscribers() == 0 })
+
+	// A unary call is still answered: the listener closes later.
+	if _, err := p.envelopes("").GetCurrentEnvelope(ctx, req(&doelabv1.GetCurrentEnvelopeRequest{
+		Site: &doelabv1.GetCurrentEnvelopeRequest_Nmi{Nmi: nmi},
+	})); err != nil {
+		t.Errorf("a unary call after the stop: %v", err)
+	}
 }
 
 func TestClock(t *testing.T) {

@@ -59,6 +59,8 @@ type API struct {
 	Deps server.Deps
 	URL  string
 	HTTP *http.Client
+	// Stop tells the API that it is shutting down: the open streams end.
+	Stop func()
 	// Close stops the listener. It is also registered as a cleanup.
 	Close func()
 }
@@ -132,6 +134,10 @@ func New(t testing.TB) *API {
 	a.Telemetry = service.NewTelemetry(store, clock, a.Compliance)
 	a.Telemetry.WatchEvery = 20 * time.Millisecond
 
+	stopping, stop := context.WithCancel(context.Background())
+	a.Stop = stop
+	t.Cleanup(stop)
+
 	a.Deps = server.Deps{
 		Feeders:         controller.NewFeeders(service.NewFeeders(store)),
 		Sites:           controller.NewSites(service.NewSites(store)),
@@ -146,6 +152,7 @@ func New(t testing.TB) *API {
 		Database:        a.DB,
 		Validator:       validator(),
 		Tokens:          a.Tokens,
+		Stopping:        stopping,
 	}
 	cfg := config.Config{Env: config.Development, Reflection: true}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
