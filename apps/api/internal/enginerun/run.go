@@ -223,7 +223,7 @@ func (r *Runner) compute(ctx context.Context, model feederModel, from time.Time,
 					results[k], errs[k] = eng.Envelope(inputs, &sol)
 				}
 				if errs[k] == nil {
-					reports[k], errs[k] = eng.Report(inputs, config.StaticLimitW, &sol)
+					reports[k], errs[k] = eng.Report(inputs, results[k].ExportW, config.StaticLimitW, &sol)
 				}
 			}
 		}()
@@ -252,6 +252,7 @@ func (r *Runner) compute(ctx context.Context, model feederModel, from time.Time,
 			ForecastVMinPu: report.Forecast.VMinPU, ForecastVMaxPu: report.Forecast.VMaxPU,
 			StaticLimitTotalW: report.StaticTotalW, StaticVMaxPu: report.Static.VMaxPU,
 			StaticBinding: staticBinding, StaticBindingElement: staticElement,
+			EnvelopeVMaxPu: &report.Envelope.VMaxPU,
 		}
 		states[k] = state
 		for i, site := range sites {

@@ -39,10 +39,15 @@ func (e *Engine) state(sol *Solution) State {
 }
 
 // Report is what an interval looks like beside its envelopes: where the
-// feeder is forecast to be, and what a fixed export limit would do to it.
+// feeder is forecast to be, where the envelopes take it, and what a fixed
+// export limit would do to it.
 type Report struct {
 	// Forecast is the feeder with every site at its forecast.
 	Forecast State
+	// Envelope is the feeder with every site that has an export cap exporting
+	// at its envelope, and the others at their forecast: the operating point
+	// that the search for the envelope ended on.
+	Envelope State
 	// Static is the feeder with every site that has an export cap exporting
 	// at the fixed limit, or at its cap where that is lower, and the others
 	// at their forecast: the same question an envelope answers, asked of a
@@ -52,11 +57,12 @@ type Report struct {
 	StaticTotalW float64
 }
 
-// Report solves the two operating points of a Report. staticLimitW is the
-// fixed export limit to compare against, in watts.
-func (e *Engine) Report(sites []SiteInput, staticLimitW float64, sol *Solution) (Report, error) {
-	if len(sites) != len(e.net.Sites) {
-		return Report{}, fmt.Errorf("got %d site inputs for %d sites", len(sites), len(e.net.Sites))
+// Report solves the three operating points of a Report. exportW is the export
+// limit of each site, as Envelope returned it, and staticLimitW the fixed
+// export limit to compare against, in watts.
+func (e *Engine) Report(sites []SiteInput, exportW []float64, staticLimitW float64, sol *Solution) (Report, error) {
+	if len(sites) != len(e.net.Sites) || len(exportW) != len(e.net.Sites) {
+		return Report{}, fmt.Errorf("got %d site inputs and %d export limits for %d sites", len(sites), len(exportW), len(e.net.Sites))
 	}
 	if staticLimitW < 0 || math.IsNaN(staticLimitW) {
 		return Report{}, fmt.Errorf("the fixed limit must not be negative, got %v", staticLimitW)
@@ -71,6 +77,16 @@ func (e *Engine) Report(sites []SiteInput, staticLimitW float64, sol *Solution) 
 		return Report{}, fmt.Errorf("the forecast: %w", err)
 	}
 	r.Forecast = e.state(sol)
+
+	for i, s := range sites {
+		if s.ExportCapW > 0 {
+			load[i] = complex(-exportW[i], 0)
+		}
+	}
+	if err := e.pf.Solve(load, sol); err != nil {
+		return Report{}, fmt.Errorf("the envelopes: %w", err)
+	}
+	r.Envelope = e.state(sol)
 
 	for i, s := range sites {
 		if s.ExportCapW > 0 {

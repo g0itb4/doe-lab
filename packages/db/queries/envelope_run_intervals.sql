@@ -5,8 +5,8 @@ INSERT INTO envelope_run_intervals (
   envelope_run_id, feeder_id, valid_from, valid_to,
   forecast_net_load_w, forecast_loading_pct, forecast_v_min_pu, forecast_v_max_pu,
   export_limit_total_w, import_limit_total_w, static_limit_total_w,
-  static_v_max_pu, static_binding, static_binding_element
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14);
+  static_v_max_pu, static_binding, static_binding_element, envelope_v_max_pu
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15);
 
 -- name: ListEnvelopeRunIntervals :many
 SELECT * FROM envelope_run_intervals

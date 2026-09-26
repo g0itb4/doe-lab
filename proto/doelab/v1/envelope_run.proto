@@ -195,6 +195,10 @@ message EnvelopeRunInterval {
   }];
   string static_binding_element = 14 [(buf.validate.field).string.max_len = 200];
   google.protobuf.Timestamp created_at = 15;
+  // Highest customer voltage if every enrolled site exported at its envelope:
+  // the engine's check on its own answer. Unset for a row from before the
+  // engine recorded it.
+  optional double envelope_v_max_pu = 16 [(buf.validate.field).double.gt = 0];
 
   option (buf.validate.message).cel = {
     id: "envelope_run_interval.period"

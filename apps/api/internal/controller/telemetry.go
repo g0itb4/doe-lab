@@ -136,6 +136,7 @@ func (c *Telemetry) GetFeederSeries(ctx context.Context, req *connect.Request[do
 			StaticLimitTotalW: p.StaticLimitTotalW, StaticVMaxPu: p.StaticVMaxPU,
 			StaticBinding: protomap.BindingConstraintToProto(p.StaticBinding), StaticBindingElement: p.StaticBindingElement,
 			MeasuredExportW: p.MeasuredExportW, MeasuredImportW: p.MeasuredImportW,
+			EnvelopeVMaxPu: p.EnvelopeVMaxPU,
 		}
 	}
 	return connect.NewResponse(out), nil

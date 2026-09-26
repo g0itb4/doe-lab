@@ -894,6 +894,7 @@ func Interval(runID, feederID uuid.UUID, slot int, netLoadW float64) domain.Enve
 		ForecastNetLoadW: netLoadW, ForecastLoadingPct: 12.5, ForecastVMinPU: 1.02, ForecastVMaxPU: 1.06,
 		ExportLimitTotalW: 150000, ImportLimitTotalW: 300000, StaticLimitTotalW: 280000,
 		StaticVMaxPU: 1.13, StaticBinding: domain.BindingVoltageHigh, StaticBindingElement: "XDLAB000014",
+		EnvelopeVMaxPU: Ptr(1.09),
 	}
 }
 
@@ -948,6 +949,18 @@ func testRunIntervals(t *testing.T, s service.Store) {
 	inverted := Interval(first.ID, f.Feeder.ID, 9, 1)
 	inverted.ForecastVMinPU, inverted.ForecastVMaxPU = 1.1, 0.9
 	wantErr(t, "a minimum voltage above the maximum", s.CreateEnvelopeRunIntervals(ctx, []domain.EnvelopeRunInterval{inverted}), domain.ErrInvalid)
+	flat := Interval(first.ID, f.Feeder.ID, 9, 1)
+	flat.EnvelopeVMaxPU = Ptr(0.0)
+	wantErr(t, "an envelope voltage of zero", s.CreateEnvelopeRunIntervals(ctx, []domain.EnvelopeRunInterval{flat}), domain.ErrInvalid)
+	// A row from before the engine recorded the envelope voltage has none.
+	old := Interval(first.ID, f.Feeder.ID, 9, 1)
+	old.EnvelopeVMaxPU = nil
+	noErr(t, "an interval with no envelope voltage", s.CreateEnvelopeRunIntervals(ctx, []domain.EnvelopeRunInterval{old}))
+	stored, err := s.ListEnvelopeRunIntervals(ctx, first.ID)
+	noErr(t, "list", err)
+	if last := stored[len(stored)-1]; last.EnvelopeVMaxPU != nil || *stored[0].EnvelopeVMaxPU != 1.09 {
+		t.Errorf("envelope voltages = %v and %v, want 1.09 and none", stored[0].EnvelopeVMaxPU, last.EnvelopeVMaxPU)
+	}
 }
 
 // Reading returns a reading of a device, minutes into Day.

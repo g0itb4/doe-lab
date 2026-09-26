@@ -248,6 +248,7 @@ erDiagram
     binding_constraint static_binding
     text static_binding_element
     timestamptz created_at
+    float8 envelope_v_max_pu "nullable"
   }
   envelope_runs {
     uuid id PK

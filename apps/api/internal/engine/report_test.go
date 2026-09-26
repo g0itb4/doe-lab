@@ -18,9 +18,18 @@ func TestReport(t *testing.T) {
 
 	// House A draws 2300 W and may export; house B is passive and idle.
 	sites := []SiteInput{{Base: 2300, ExportCapW: 5000}, {}}
-	r, err := e.Report(sites, 2500, &Solution{})
+	r, err := e.Report(sites, []float64{1500, 0}, 2500, &Solution{})
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	// At its envelope house A exports 1500 W: V·I = 1500 with V = 240 + I,
+	// so V = (240 + √(240² + 4·1500)) / 2 = 246.1 V.
+	v := (240 + math.Sqrt(240*240+4*1500)) / 2
+	near(t, "voltage at the envelope", r.Envelope.VMaxPU, v/230, 1e-9)
+	near(t, "power at the envelope", real(r.Envelope.SourceVA), -(1500 - (1500/v)*(1500/v)), 1e-6)
+	if r.Envelope.Worst.Constraint != ConstraintNone {
+		t.Errorf("the envelope breaks %+v", r.Envelope.Worst)
 	}
 
 	f := r.Forecast
@@ -44,7 +53,7 @@ func TestReport(t *testing.T) {
 
 	// A site's own cap bounds the fixed limit, and a site with no export cap
 	// stays at its forecast.
-	capped, err := e.Report([]SiteInput{{Base: 2300, ExportCapW: 1000}, {Base: 500}}, 2500, &Solution{})
+	capped, err := e.Report([]SiteInput{{Base: 2300, ExportCapW: 1000}, {Base: 500}}, []float64{0, 0}, 2500, &Solution{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +61,7 @@ func TestReport(t *testing.T) {
 		t.Errorf("with a cap of 1000 W: %+v", capped)
 	}
 	// With nobody to limit, the fixed-limit case is the forecast.
-	passive, err := e.Report([]SiteInput{{Base: 2300}, {Base: 500}}, 2500, &Solution{})
+	passive, err := e.Report([]SiteInput{{Base: 2300}, {Base: 500}}, []float64{9000, 9000}, 2500, &Solution{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,13 +70,15 @@ func TestReport(t *testing.T) {
 	}
 	near(t, "power with no export cap", real(passive.Static.SourceVA), real(passive.Forecast.SourceVA), 1e-6)
 	near(t, "voltage with no export cap", passive.Static.VMaxPU, passive.Forecast.VMaxPU, 1e-9)
+	// And so is the envelope case: a limit means nothing to a site with no cap.
+	near(t, "envelope voltage with no export cap", passive.Envelope.VMaxPU, passive.Forecast.VMaxPU, 1e-9)
 }
 
 func TestReportWithNoCustomers(t *testing.T) {
 	t.Parallel()
 	net := handCase()
 	net.Sites = nil
-	r, err := mustEngine(t, net, lax()).Report(nil, 5000, &Solution{})
+	r, err := mustEngine(t, net, lax()).Report(nil, nil, 5000, &Solution{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,21 +91,28 @@ func TestReportErrors(t *testing.T) {
 	t.Parallel()
 	e := mustEngine(t, handCase(), lax())
 
-	if _, err := e.Report(nil, 5000, &Solution{}); err == nil || !strings.Contains(err.Error(), "got 0 site inputs for 1 sites") {
+	if _, err := e.Report(nil, nil, 5000, &Solution{}); err == nil || !strings.Contains(err.Error(), "got 0 site inputs and 0 export limits for 1 sites") {
+		t.Errorf("error = %v", err)
+	}
+	if _, err := e.Report([]SiteInput{{}}, nil, 5000, &Solution{}); err == nil || !strings.Contains(err.Error(), "got 1 site inputs and 0 export limits for 1 sites") {
 		t.Errorf("error = %v", err)
 	}
 	for _, limit := range []float64{-1, math.NaN()} {
-		if _, err := e.Report([]SiteInput{{}}, limit, &Solution{}); err == nil || !strings.Contains(err.Error(), "must not be negative") {
+		if _, err := e.Report([]SiteInput{{}}, []float64{0}, limit, &Solution{}); err == nil || !strings.Contains(err.Error(), "must not be negative") {
 			t.Errorf("a fixed limit of %v: %v", limit, err)
 		}
 	}
 	// A forecast past the collapse point has no operating point.
-	_, err := e.Report([]SiteInput{{Base: 20000}}, 5000, &Solution{})
+	_, err := e.Report([]SiteInput{{Base: 20000}}, []float64{0}, 5000, &Solution{})
 	if !errors.Is(err, ErrNotConverged) || !strings.Contains(err.Error(), "the forecast") {
 		t.Errorf("a forecast with no operating point: %v", err)
 	}
 	// Nor has an export beyond anything the loop can settle on.
-	_, err = e.Report([]SiteInput{{Base: 2300, ExportCapW: 1e15}}, 1e15, &Solution{})
+	_, err = e.Report([]SiteInput{{Base: 2300, ExportCapW: 1e15}}, []float64{1e15}, 5000, &Solution{})
+	if !errors.Is(err, ErrNotConverged) || !strings.Contains(err.Error(), "the envelopes") {
+		t.Errorf("an envelope with no operating point: %v", err)
+	}
+	_, err = e.Report([]SiteInput{{Base: 2300, ExportCapW: 1e15}}, []float64{0}, 1e15, &Solution{})
 	if !errors.Is(err, ErrNotConverged) || !strings.Contains(err.Error(), "a fixed limit") {
 		t.Errorf("a fixed limit with no operating point: %v", err)
 	}

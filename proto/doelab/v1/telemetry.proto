@@ -182,6 +182,9 @@ message FeederPoint {
   // interval with no telemetry yet.
   optional double measured_export_w = 13;
   optional double measured_import_w = 14;
+  // Highest customer voltage if every enrolled site exported at its envelope.
+  // Unset for an interval from before the engine recorded it.
+  optional double envelope_v_max_pu = 15;
 }
 
 message GetFeederSeriesRequest {

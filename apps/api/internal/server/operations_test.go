@@ -226,6 +226,7 @@ func interval(slot int, netLoadW float64) *doelabv1.EnvelopeRunInterval {
 		ForecastNetLoadW: netLoadW, ForecastLoadingPct: 12.5, ForecastVMinPu: 1.02, ForecastVMaxPu: 1.06,
 		ExportLimitTotalW: 2000, ImportLimitTotalW: 7000, StaticLimitTotalW: 5000, StaticVMaxPu: 1.13,
 		StaticBinding: doelabv1.BindingConstraint_BINDING_CONSTRAINT_VOLTAGE_HIGH, StaticBindingElement: "XDLAB000014",
+		EnvelopeVMaxPu: new(1.09),
 	}
 }
 
@@ -276,7 +277,7 @@ func TestRunIntervalsAndSeries(t *testing.T) {
 	if len(rows) != 2 || rows[0].GetEnvelopeRunId() != p.runID || rows[0].GetFeederId() != feederID || rows[0].GetForecastNetLoadW() != -10000 ||
 		rows[0].GetForecastLoadingPct() != 12.5 || rows[0].GetForecastVMinPu() != 1.02 || rows[0].GetForecastVMaxPu() != 1.06 ||
 		rows[0].GetExportLimitTotalW() != 2000 || rows[0].GetImportLimitTotalW() != 7000 || rows[0].GetStaticLimitTotalW() != 5000 ||
-		rows[0].GetStaticVMaxPu() != 1.13 || rows[0].GetStaticBinding() != doelabv1.BindingConstraint_BINDING_CONSTRAINT_VOLTAGE_HIGH ||
+		rows[0].GetStaticVMaxPu() != 1.13 || rows[0].GetEnvelopeVMaxPu() != 1.09 || rows[0].GetStaticBinding() != doelabv1.BindingConstraint_BINDING_CONSTRAINT_VOLTAGE_HIGH ||
 		rows[0].GetStaticBindingElement() != "XDLAB000014" || rows[0].GetCreatedAt() == nil || !rows[1].GetValidFrom().AsTime().Equal(repotest.Day.Add(30*time.Minute)) {
 		t.Errorf("intervals = %v", rows)
 	}
@@ -313,7 +314,7 @@ func TestRunIntervalsAndSeries(t *testing.T) {
 	first, second := fs.GetPoints()[0], fs.GetPoints()[1]
 	if first.GetForecastNetLoadW() != -10000 || first.GetForecastLoadingPct() != 12.5 || first.GetForecastVMinPu() != 1.02 ||
 		first.GetForecastVMaxPu() != 1.06 || first.GetExportLimitTotalW() != 2000 || first.GetImportLimitTotalW() != 7000 ||
-		first.GetStaticLimitTotalW() != 5000 || first.GetStaticVMaxPu() != 1.13 ||
+		first.GetStaticLimitTotalW() != 5000 || first.GetStaticVMaxPu() != 1.13 || first.GetEnvelopeVMaxPu() != 1.09 ||
 		first.GetStaticBinding() != doelabv1.BindingConstraint_BINDING_CONSTRAINT_VOLTAGE_HIGH || first.GetStaticBindingElement() != "XDLAB000014" ||
 		!first.GetValidFrom().AsTime().Equal(repotest.Day) || !first.GetValidTo().AsTime().Equal(repotest.Day.Add(30*time.Minute)) ||
 		first.MeasuredExportW == nil || first.GetMeasuredExportW() != 1500 || first.GetMeasuredImportW() != 0 {

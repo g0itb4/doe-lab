@@ -37,6 +37,9 @@ func (r *repos) CreateEnvelopeRunIntervals(_ context.Context, rows []domain.Enve
 		if !row.ValidTo.After(row.ValidFrom) || row.ForecastVMinPU <= 0 || row.ForecastVMinPU > row.ForecastVMaxPU {
 			return fmt.Errorf("envelope_run_intervals_voltage_ordered: %w", domain.ErrInvalid)
 		}
+		if row.EnvelopeVMaxPU != nil && *row.EnvelopeVMaxPU <= 0 {
+			return fmt.Errorf("envelope_run_intervals_envelope_voltage_positive: %w", domain.ErrInvalid)
+		}
 		have[k] = true
 		row.ValidFrom, row.ValidTo, row.CreatedAt = row.ValidFrom.UTC(), row.ValidTo.UTC(), now
 		added = append(added, row)

@@ -232,9 +232,11 @@ func TestOperationsResources(t *testing.T) {
 		ForecastNetLoadW: -12000, ForecastLoadingPct: 12.5, ForecastVMinPU: 1.02, ForecastVMaxPU: 1.06,
 		ExportLimitTotalW: 150000, ImportLimitTotalW: 300000, StaticLimitTotalW: 280000, StaticVMaxPU: 1.13,
 		StaticBinding: domain.BindingVoltageHigh, StaticBindingElement: "XDLAB000014", CreatedAt: created,
+		EnvelopeVMaxPU: new(1.09),
 	}
 	i := EnvelopeRunInterval(interval)
-	if i.GetEnvelopeRunId() != run.String() || i.GetFeederId() != feeder.String() || !i.GetCreatedAt().AsTime().Equal(created) {
+	if i.GetEnvelopeRunId() != run.String() || i.GetFeederId() != feeder.String() || !i.GetCreatedAt().AsTime().Equal(created) ||
+		i.GetEnvelopeVMaxPu() != 1.09 {
 		t.Errorf("interval = %v", i)
 	}
 	// On the way in, the run, the feeder and the time of creation are the

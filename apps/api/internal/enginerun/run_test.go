@@ -236,6 +236,10 @@ func TestRun(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	active, err := w.Store.GetActiveEnvelopeConfig(ctx, w.feeder.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	exportTotal, importTotal := map[int64]float64{}, map[int64]float64{}
 	for _, e := range published {
 		exportTotal[e.ValidFrom.Unix()] += e.ExportLimitW
@@ -248,7 +252,8 @@ func TestRun(t *testing.T) {
 			row.FeederID != w.feeder.ID || row.ForecastLoadingPct <= 0 || row.ForecastLoadingPct > 200 ||
 			row.ForecastVMinPU < 0.8 || row.ForecastVMinPU > row.ForecastVMaxPU || row.ForecastVMaxPU > 1.3 ||
 			row.ExportLimitTotalW != exportTotal[at] || row.ImportLimitTotalW != importTotal[at] ||
-			row.StaticLimitTotalW != staticTotal || row.StaticVMaxPU < row.ForecastVMinPU {
+			row.StaticLimitTotalW != staticTotal || row.StaticVMaxPU < row.ForecastVMinPU ||
+			row.EnvelopeVMaxPU == nil || *row.EnvelopeVMaxPU < row.ForecastVMinPU || *row.EnvelopeVMaxPU > 1.3 {
 			t.Fatalf("interval %d = %+v; envelopes sum to %.0f W out and %.0f W in", i, row, exportTotal[at], importTotal[at])
 		}
 		if (row.StaticBinding == domain.BindingNone) != (row.StaticBindingElement == "") {
@@ -263,6 +268,12 @@ func TestRun(t *testing.T) {
 				t.Fatalf("interval %d: a fixed limit of %.0f W breaks %s, yet the envelopes allow %.0f W",
 					i, row.StaticLimitTotalW, row.StaticBinding, row.ExportLimitTotalW)
 			}
+		}
+		// The envelopes are the engine's answer, and this is its check: with
+		// every site at its limit, the voltage is inside the band. Where the
+		// feeder breaks the band before any site exports, the limits are zero.
+		if row.ExportLimitTotalW > 0 && *row.EnvelopeVMaxPU > active.VMaxPU+1e-6 {
+			t.Fatalf("interval %d: %.4f pu with every site at its envelope, above the limit of %.2f", i, *row.EnvelopeVMaxPU, active.VMaxPU)
 		}
 		if row.ForecastNetLoadW < 0 {
 			reverse++

@@ -2774,6 +2774,17 @@ components:
           allOf:
             - $ref: '#/components/schemas/google.protobuf.Timestamp'
           title: created_at
+        envelopeVMaxPu:
+          exclusiveMinimum: 0
+          type:
+            - number
+            - "null"
+          title: envelope_v_max_pu
+          format: double
+          description: |-
+            Highest customer voltage if every enrolled site exported at its envelope:
+             the engine's check on its own answer. Unset for a row from before the
+             engine recorded it.
       title: EnvelopeRunInterval
       required:
         - validFrom
@@ -3089,6 +3100,15 @@ components:
             - "null"
           title: measured_import_w
           format: double
+        envelopeVMaxPu:
+          type:
+            - number
+            - "null"
+          title: envelope_v_max_pu
+          format: double
+          description: |-
+            Highest customer voltage if every enrolled site exported at its envelope.
+             Unset for an interval from before the engine recorded it.
       title: FeederPoint
       additionalProperties: false
       description: 'One interval of the feeder: forecast, allowed and measured.'

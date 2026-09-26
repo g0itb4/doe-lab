@@ -23,7 +23,7 @@ func runIntervalFromRow(r gen.EnvelopeRunInterval) domain.EnvelopeRunInterval {
 		ExportLimitTotalW: r.ExportLimitTotalW, ImportLimitTotalW: r.ImportLimitTotalW,
 		StaticLimitTotalW: r.StaticLimitTotalW, StaticVMaxPU: r.StaticVMaxPu,
 		StaticBinding: domain.BindingConstraint(r.StaticBinding), StaticBindingElement: r.StaticBindingElement,
-		CreatedAt: r.CreatedAt,
+		CreatedAt: r.CreatedAt, EnvelopeVMaxPU: r.EnvelopeVMaxPu,
 	}
 }
 
@@ -77,6 +77,7 @@ func (r *repos) CreateEnvelopeRunIntervals(ctx context.Context, rows []domain.En
 			ExportLimitTotalW: row.ExportLimitTotalW, ImportLimitTotalW: row.ImportLimitTotalW,
 			StaticLimitTotalW: row.StaticLimitTotalW, StaticVMaxPu: row.StaticVMaxPU,
 			StaticBinding: gen.BindingConstraint(row.StaticBinding), StaticBindingElement: row.StaticBindingElement,
+			EnvelopeVMaxPu: row.EnvelopeVMaxPU,
 		}
 	}
 	_, err := r.q.InsertEnvelopeRunIntervals(ctx, params)

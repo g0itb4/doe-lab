@@ -328,7 +328,7 @@ func EnvelopeRunInterval(i domain.EnvelopeRunInterval) *doelabv1.EnvelopeRunInte
 		ExportLimitTotalW: i.ExportLimitTotalW, ImportLimitTotalW: i.ImportLimitTotalW,
 		StaticLimitTotalW: i.StaticLimitTotalW, StaticVMaxPu: i.StaticVMaxPU,
 		StaticBinding: BindingConstraintToProto(i.StaticBinding), StaticBindingElement: i.StaticBindingElement,
-		CreatedAt: timestamppb.New(i.CreatedAt),
+		CreatedAt: timestamppb.New(i.CreatedAt), EnvelopeVMaxPu: i.EnvelopeVMaxPU,
 	}
 }
 
@@ -342,6 +342,7 @@ func EnvelopeRunIntervalFromProto(p *doelabv1.EnvelopeRunInterval) domain.Envelo
 		ExportLimitTotalW: p.GetExportLimitTotalW(), ImportLimitTotalW: p.GetImportLimitTotalW(),
 		StaticLimitTotalW: p.GetStaticLimitTotalW(), StaticVMaxPU: p.GetStaticVMaxPu(),
 		StaticBinding: BindingConstraintFromProto(p.GetStaticBinding()), StaticBindingElement: p.GetStaticBindingElement(),
+		EnvelopeVMaxPU: p.EnvelopeVMaxPu,
 	}
 }
 

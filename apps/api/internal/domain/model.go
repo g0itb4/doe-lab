@@ -256,6 +256,8 @@ type EnvelopeRunInterval struct {
 	StaticBinding        BindingConstraint `db:"static_binding"`
 	StaticBindingElement string            `db:"static_binding_element"`
 	CreatedAt            time.Time         `db:"created_at"`
+	// EnvelopeVMaxPU is nil for a row from before the engine recorded it.
+	EnvelopeVMaxPU *float64 `db:"envelope_v_max_pu"`
 }
 
 // SitePower mirrors the site_power_1m continuous aggregate: one minute of a
