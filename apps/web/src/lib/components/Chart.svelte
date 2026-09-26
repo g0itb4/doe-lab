@@ -33,6 +33,7 @@
     x,
     series,
     format,
+    axisFormat,
     zone,
     syncKey,
     zoom,
@@ -47,8 +48,10 @@
     // Unix seconds, ascending.
     x: number[];
     series: ChartSeries[];
-    // A value with its unit, for the axis, the readout and the table.
+    // A value with its unit, for the readout and the table; and a shorter
+    // form for the axis, where there is less room.
     format: (value: number) => string;
+    axisFormat?: (value: number) => string;
     // The zone that times are shown in.
     zone: string;
     // Charts with the same key share a cursor.
@@ -105,13 +108,25 @@
       },
       scales: { x: { time: true, range: () => [range().min, range().max] } },
       axes: [
-        { stroke: axis, grid: { stroke: grid, width: 1 }, ticks: { stroke: grid, width: 1 } },
+        {
+          stroke: axis,
+          grid: { stroke: grid, width: 1 },
+          ticks: { stroke: grid, width: 1 },
+          // The 24-hour clock, and the day before the month.
+          values: [
+            [3600 * 24 * 365, "{YYYY}", null, null, null, null, null, null, 1],
+            [3600 * 24 * 28, "{MMM}", "\n{YYYY}", null, null, null, null, null, 1],
+            [3600 * 24, "{D} {MMM}", null, null, null, null, null, null, 1],
+            [60, "{HH}:{mm}", "\n{D} {MMM}", null, "\n{D} {MMM}", null, null, null, 1],
+            [1, "{HH}:{mm}:{ss}", "\n{D} {MMM}", null, "\n{D} {MMM}", null, null, null, 1],
+          ],
+        },
         {
           stroke: axis,
           grid: { stroke: grid, width: 1 },
           ticks: { stroke: grid, width: 1 },
           size: 64,
-          values: (_u, splits) => splits.map((v) => format(v)),
+          values: (_u, splits) => splits.map((v) => (axisFormat ?? format)(v)),
         },
       ],
       series: [

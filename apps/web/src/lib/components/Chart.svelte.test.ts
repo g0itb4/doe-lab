@@ -55,6 +55,13 @@ describe("Chart", () => {
     expect(screen.container.querySelector("[data-points]")!.getAttribute("data-points")).toBe("8");
   });
 
+  it("labels its axis with the shorter form when it is given one", async () => {
+    const axisFormat = vi.fn((v: number) => `${v / 1000} kW`);
+    const screen = await render(Chart, { ...props, axisFormat });
+    await canvas(screen.container);
+    await vi.waitFor(() => expect(axisFormat).toHaveBeenCalled());
+  });
+
   it("is redrawn in the other theme's colours", async () => {
     theme.set("light");
     const screen = await render(Chart, props);
