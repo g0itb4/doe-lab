@@ -9,7 +9,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "prepare": "svelte-kit sync",
-    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --tsgo",
+    "typecheck": "svelte-kit sync && rm -rf .svelte-kit/.svelte-check && svelte-check --tsconfig ./tsconfig.json --tsgo",
     "test": "vitest run --coverage",
     "e2e": "playwright test"
   },
