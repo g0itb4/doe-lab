@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
 import { playwright } from "@vitest/browser-playwright";
@@ -10,6 +11,9 @@ export default defineConfig({
   // compiled, no utility exists, and every assertion about layout or colour
   // measures an unstyled page.
   plugins: [tailwindcss(), sveltekit()],
+  // The monorepo root: a test reads proto/ to check the form's rules
+  // against the API's.
+  server: { fs: { allow: [fileURLToPath(new URL("../..", import.meta.url))] } },
   test: {
     include: ["src/**/*.test.ts"],
     setupFiles: ["src/test-setup.ts"],
