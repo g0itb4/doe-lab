@@ -6,7 +6,7 @@ describe("an error in plain words", () => {
   it.each([
     [Code.Unavailable, "The API cannot be reached"],
     [Code.DeadlineExceeded, "The API cannot be reached"],
-    [Code.Unauthenticated, "needs the operator token"],
+    [Code.Unauthenticated, "token is missing or not valid"],
     [Code.PermissionDenied, "token is not accepted"],
     [Code.NotFound, "Not found"],
     [Code.ResourceExhausted, "Too many requests"],

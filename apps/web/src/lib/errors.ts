@@ -10,7 +10,7 @@ export function describeError(e: unknown): string {
     case Code.Unknown:
       return "The API cannot be reached. Check your connection and try again.";
     case Code.Unauthenticated:
-      return "This needs the operator token.";
+      return "The operator token is missing or not valid.";
     case Code.PermissionDenied:
       return "That token is not accepted for this action.";
     case Code.NotFound:
