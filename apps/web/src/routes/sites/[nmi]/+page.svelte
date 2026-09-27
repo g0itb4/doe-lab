@@ -332,8 +332,9 @@
           <ul class="flex flex-wrap gap-2">
             {#each detail.data.devices as device (device.id)}
               <li class="card px-3 py-2 text-sm">
-                <span class="font-medium">{deviceWords[device.derType] ?? "Device"}</span>
-                <span class="tabular text-muted">, rated {kw(device.ratedW)}</span>
+                <span class="font-medium">{deviceWords[device.derType] ?? "Device"}</span><span
+                  class="tabular text-muted">, rated {kw(device.ratedW)}</span
+                >
               </li>
             {/each}
           </ul>

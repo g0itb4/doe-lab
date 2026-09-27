@@ -185,6 +185,7 @@
               }
               ctx.stroke();
               ctx.restore();
+              if (from < labelled) continue;
               ctx.save();
               ctx.fillStyle = token("--color-critical");
               ctx.font = `${11 * devicePixelRatio}px ${token("--font-sans")}`;
@@ -194,6 +195,7 @@
                 from + 2 * devicePixelRatio,
                 u.bbox.top + 12 * devicePixelRatio,
               );
+              labelled = from + ctx.measureText(span.label).width + 6 * devicePixelRatio;
               ctx.restore();
             }
           },
