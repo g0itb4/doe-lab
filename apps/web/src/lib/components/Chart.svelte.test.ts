@@ -217,6 +217,40 @@ describe("Chart", () => {
     expect(onzoom).toHaveBeenLastCalledWith(undefined);
   });
 
+  it("marks a period with a shade of the critical colour and a label", async () => {
+    theme.set("light");
+    const screen = await render(Chart, {
+      ...props,
+      spans: [{ from: x[2]!, to: x[4]!, label: "breach" }],
+    });
+    const c = await canvas(screen.container);
+    // The shade: the critical colour, #b3261e, at a low alpha. Nothing else
+    // on the canvas is translucent red.
+    const shaded = (el: HTMLCanvasElement) => {
+      const { data } = el.getContext("2d")!.getImageData(0, 0, el.width, el.height);
+      let n = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        const [r, g, b, a] = [data[i]!, data[i + 1]!, data[i + 2]!, data[i + 3]!];
+        if (
+          a > 20 &&
+          a < 90 &&
+          Math.abs(r - 179) < 16 &&
+          Math.abs(g - 38) < 16 &&
+          Math.abs(b - 30) < 16
+        )
+          n++;
+      }
+      return n;
+    };
+    await vi.waitFor(() => expect(shaded(c)).toBeGreaterThan(500));
+
+    // With no span there is no such shade.
+    const plain = await render(Chart, props);
+    const other = await canvas(plain.container);
+    await vi.waitFor(() => expect(colours(other)).toContain(rgb("#0b5cad")));
+    expect(shaded(other)).toBe(0);
+  });
+
   it("shows the range it is given, and the values under the cursor", async () => {
     const zoom: [number, number] = [x[2]!, x[5]!];
     const screen = await render(Chart, { ...props, zoom, now: x[3] });

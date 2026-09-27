@@ -39,6 +39,7 @@
     zoom,
     onzoom,
     now,
+    spans = [],
     height = 220,
   }: {
     title: string;
@@ -62,6 +63,9 @@
     onzoom?: (range: [number, number] | undefined) => void;
     // Feeder time now, marked with a line.
     now?: number;
+    // Periods to mark, in unix seconds: shaded, hatched and labelled, so
+    // that the mark does not depend on its colour.
+    spans?: { from: number; to: number; label: string }[];
     height?: number;
   } = $props();
 
@@ -154,6 +158,46 @@
         ],
         draw: [
           (u) => {
+            const ctx = u.ctx;
+            const [left, right] = [u.bbox.left, u.bbox.left + u.bbox.width];
+            // Where the last label ended: spans that are close share one.
+            let labelled = -Infinity;
+            for (const span of spans) {
+              const from = Math.max(left, u.valToPos(span.from, "x", true));
+              const to = Math.min(right, u.valToPos(span.to, "x", true));
+              if (to <= left || from >= right) continue;
+              // At least a few pixels wide: a breach of a minute must show
+              // on a chart of a day.
+              const width = Math.max(to - from, 3 * devicePixelRatio);
+              ctx.save();
+              ctx.fillStyle = token("--color-critical");
+              ctx.globalAlpha = 0.16;
+              ctx.fillRect(from, u.bbox.top, width, u.bbox.height);
+              ctx.globalAlpha = 0.7;
+              ctx.strokeStyle = token("--color-critical");
+              ctx.lineWidth = devicePixelRatio;
+              ctx.beginPath();
+              ctx.rect(from, u.bbox.top, width, u.bbox.height);
+              ctx.clip();
+              for (let d = -u.bbox.height; d < width; d += 6 * devicePixelRatio) {
+                ctx.moveTo(from + d, u.bbox.top + u.bbox.height);
+                ctx.lineTo(from + d + u.bbox.height, u.bbox.top);
+              }
+              ctx.stroke();
+              ctx.restore();
+              ctx.save();
+              ctx.fillStyle = token("--color-critical");
+              ctx.font = `${11 * devicePixelRatio}px ${token("--font-sans")}`;
+              ctx.textAlign = "left";
+              ctx.fillText(
+                span.label,
+                from + 2 * devicePixelRatio,
+                u.bbox.top + 12 * devicePixelRatio,
+              );
+              ctx.restore();
+            }
+          },
+          (u) => {
             if (now === undefined) return;
             const left = u.valToPos(now, "x", true);
             if (left < u.bbox.left || left > u.bbox.left + u.bbox.width) return;
@@ -217,10 +261,12 @@
     void series;
     void zoom;
     void now;
+    void spans;
     untrack(() => {
       if (!plot || !host) return;
       plot.setData(data(host.clientWidth), false);
       plot.setScale("x", range());
+      plot.redraw(false);
     });
   });
 
