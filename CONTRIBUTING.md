@@ -15,6 +15,9 @@ just check        # every hook of both stages on every file, as CI does
 just fmt          # rewrite formatting in place
 just lint         # every linter
 just cover-go     # Go unit tier with -race, then the per-package coverage gate
+just cover-web    # web unit and component tests in headless Chromium, with thresholds
+just e2e          # the built web app in Playwright: smoke, keyboard, axe (WCAG 2.2 AA)
+just dev          # the database, the API and the web UI, in watch mode
 just data         # download the raw datasets and verify their checksums
 ```
 
@@ -71,7 +74,9 @@ concerns:
 | Lint     | pre-commit | `golangci-lint` (govet, staticcheck, errcheck, revive, gosec, depguard) |
 | Secrets  | pre-commit | `gitleaks` on the staged diff, `detect-private-key`                   |
 | Secrets  | pre-push   | `gitleaks` on the commits being pushed                                |
+| Lint     | pre-commit | `svelte-check` on the web app                                         |
 | Coverage | pre-commit | `just cover-go`: Go unit tier, then `covergate` against `apps/api/coverage.json` |
+| Coverage | pre-push   | `just cover-web`: web tests, thresholds in `apps/web/vitest.config.ts` |
 
 Rules:
 
@@ -105,6 +110,31 @@ The engine is checked against OpenDSS. `tools/opendss_snapshots.py` solves the
 feeder in OpenDSS and writes node voltages to
 `apps/api/internal/engine/testdata/lv10_*.json`; the Go solver must match them
 within the tolerance fixed in the test.
+
+## Web app
+
+`apps/web` is SvelteKit with `adapter-static`: prerendered at build time, no
+server at run time. It reaches the API at `/rpc`.
+
+- Logic lives in `src/lib` as plain modules and small components, and is
+  tested there (`just cover-web`). The pages in `src/routes` wire them
+  together and are tested end to end against the build (`just e2e`), with
+  the API mocked in `e2e/mock.ts`.
+- Every colour is a design token in `src/app.css`. A new pair of colours
+  that is used together goes into `tokens.svelte.test.ts`, which measures
+  its contrast in both themes.
+- Every data view has four states: loading (a `Skeleton` of the final
+  size), empty, error (plain words and a retry) and stale. Use `Resource`
+  for a fetch and `Live` for a stream; they provide the states.
+- The state of a view (range, zoom, filter) lives in the address, through
+  `withQuery` and `queryParam`. Do not read `page.url.searchParams`
+  directly: it throws while a page is prerendered.
+- A number is shown with its unit through `format.ts`; a time in the
+  feeder's zone.
+- The form rules of `/config` mirror the protovalidate rules, and
+  `config-rules.test.ts` fails when they differ. Change the `.proto` first.
+- `docs/ux-audit.md` maps each UX rule to the test that checks it. A new
+  rule needs a check; a changed page needs `just e2e`.
 
 ## Data and licences
 

@@ -182,6 +182,14 @@ build-web:
     bun run --filter @doelab/web build
     bun scripts/bundle-budget.ts apps/web/dist 120
 
+# The production build in headless Chromium, at a phone's width and a
+# desktop's, with the API answered in the browser (apps/web/e2e/mock.ts):
+# smoke, keyboard-only use, WCAG 2.2 AA with axe, and no sideways scroll.
+#
+# end-to-end and accessibility tests of the web app
+e2e: build-web
+    cd apps/web && bunx playwright test
+
 # every Go test of the offline tier, including the slow ones, with the race detector
 test-go:
     cd apps/api && go test -race ./...
@@ -195,8 +203,8 @@ test-go:
 test-db:
     cd apps/api && DOELAB_TEST_DB=1 TESTCONTAINERS_RYUK_DISABLED=true go test -count=1 -race ./internal/repo/... ./internal/testutil/...
 
-# everything: hooks on every file, both Go tiers, the engine's time budget, and the web build
-test: check test-go test-db bench build-web
+# everything: hooks on every file, both Go tiers, the engine's time budget, and the web app end to end
+test: check test-go test-db bench e2e
 
 # A plain build: timings mean nothing under the race detector or coverage.
 #
