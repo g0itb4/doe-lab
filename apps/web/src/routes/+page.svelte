@@ -6,6 +6,7 @@
     GetDailyReportResponse,
     GetFeederSeriesResponse,
   } from "@doelab/gen/doelab/v1/telemetry_pb.js";
+  import { onMount } from "svelte";
   import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { api } from "$lib/api.ts";
@@ -22,7 +23,7 @@
   import { ago, count, kw, kwh, percent, volts } from "$lib/format.ts";
   import { Live } from "$lib/live.svelte.ts";
   import { overviewCharts } from "$lib/overview.ts";
-  import { withQuery } from "$lib/query.ts";
+  import { queryParam, withQuery } from "$lib/query.ts";
   import { Resource } from "$lib/resource.svelte.ts";
   import { rangeKey, windowOf, zoomOf } from "$lib/series.ts";
   import { feederStatus } from "$lib/status.ts";
@@ -31,8 +32,8 @@
   const REPO_URL: string | undefined = import.meta.env.VITE_REPO_URL;
   const INTRO_KEY = "doelab.intro";
 
-  const range = $derived(rangeKey(page.url.searchParams.get("range")));
-  const zoom = $derived(zoomOf(page.url.searchParams.get("from"), page.url.searchParams.get("to")));
+  const range = $derived(rangeKey(queryParam(page.url, "range")));
+  const zoom = $derived(zoomOf(queryParam(page.url, "from"), queryParam(page.url, "to")));
   const zone = $derived(feeder.data?.timezone ?? "Australia/Sydney");
   const nominalV = $derived(feeder.data?.nominalVoltageV ?? 230);
 
@@ -105,12 +106,19 @@
   });
 
   const summary = $derived(fleet?.value);
-  const status = $derived(summary ? feederStatus(summary, series?.data?.sample) : undefined);
+  // The status waits for the envelope that says what binds: shown a moment
+  // earlier it would say "Normal" and then change under the reader's eyes.
+  const status = $derived(
+    summary && (series?.data || series?.error)
+      ? feederStatus(summary, series?.data?.sample)
+      : undefined,
+  );
   const charts = $derived(
     series?.data ? overviewCharts(series.data.series, nominalV, zone) : undefined,
   );
-  // One "now" for the three charts, moving with the clock.
-  const nowSeconds = $derived(clock.now.getTime() / 1000);
+  // One "now" for the three charts. A line on a chart of a day does not move
+  // by the second: every five minutes of feeder time is enough.
+  const nowSeconds = $derived(Math.floor(clock.now.getTime() / 300_000) * 300);
 
   function setZoom(next: [number, number] | undefined) {
     const changes = next
@@ -140,14 +148,19 @@
     spoken = `${status.label}. Export ${kw(summary.exportW)} of ${kw(summary.exportLimitW)} allowed. ${summary.reportingSites} of ${summary.enrolledSites} sites reporting. ${summary.openAlerts} open alerts.`;
   });
 
+  // The panel is in the prerendered page, so a first-time visitor reads it at
+  // first paint. For one who dismissed it, app.html hides it before paint.
   let intro = $state(true);
-  try {
-    intro = localStorage.getItem(INTRO_KEY) === null;
-  } catch {
-    // Storage is blocked: the panel shows on every visit.
-  }
+  onMount(() => {
+    try {
+      intro = localStorage.getItem(INTRO_KEY) === null;
+    } catch {
+      // Storage is blocked: the panel shows on every visit.
+    }
+  });
   function dismissIntro() {
     intro = false;
+    document.documentElement.dataset.intro = "dismissed";
     try {
       localStorage.setItem(INTRO_KEY, "dismissed");
     } catch {
@@ -176,6 +189,7 @@
 
   {#if intro}
     <aside
+      id="intro"
       class="card border-accent flex flex-wrap items-start gap-3 p-3"
       aria-label="About this page"
     >
@@ -199,23 +213,28 @@
     <section aria-labelledby="status-heading" class="card p-3">
       <h2 id="status-heading" class="sr-only">Status now</h2>
       {#if status && summary}
-        <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-          <StatusBadge level={status.level} label={status.label} large />
-          <p class="min-w-0 flex-1 text-sm">{status.detail}</p>
+        <!-- As tall as its skeleton at least, so nothing below moves when it arrives. -->
+        <div class="min-h-[11.5rem] sm:min-h-16">
+          <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <StatusBadge level={status.level} label={status.label} large />
+            <p class="min-w-0 flex-1 text-sm">{status.detail}</p>
+          </div>
+          <p class="text-muted mt-2 text-sm">
+            {#if summary.latestRunAt}
+              Last engine run {ago(date(summary.latestRunAt), new Date())}
+              ({runWords[summary.latestRunStatus ?? RunStatus.UNSPECIFIED] ?? "unknown"}).
+            {:else}
+              The engine has not run yet.
+            {/if}
+            <a class="link" href="/operations">
+              {summary.openAlerts === 1
+                ? "1 open alert"
+                : `${count(summary.openAlerts)} open alerts`}
+            </a>
+          </p>
         </div>
-        <p class="text-muted mt-2 text-sm">
-          {#if summary.latestRunAt}
-            Last engine run {ago(date(summary.latestRunAt), new Date())}
-            ({runWords[summary.latestRunStatus ?? RunStatus.UNSPECIFIED] ?? "unknown"}).
-          {:else}
-            The engine has not run yet.
-          {/if}
-          <a class="link" href="/operations">
-            {summary.openAlerts === 1 ? "1 open alert" : `${count(summary.openAlerts)} open alerts`}
-          </a>
-        </p>
       {:else}
-        <Skeleton label="the feeder's status" class="h-16 w-full" />
+        <Skeleton label="the feeder's status" class="h-[11.5rem] w-full sm:h-16" />
       {/if}
     </section>
 
@@ -259,7 +278,7 @@
       {:else}
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           {#each { length: 6 }, i (i)}
-            <Skeleton label="fleet figures" class="h-[74px] w-full" />
+            <Skeleton label="fleet figures" class="h-[5.5rem] w-full" />
           {/each}
         </div>
       {/if}
@@ -380,7 +399,7 @@
       {:else}
         <div class="grid grid-cols-2 gap-2 lg:grid-cols-4">
           {#each { length: 4 }, i (i)}
-            <Skeleton label="today's figures" class="h-[74px] w-full" />
+            <Skeleton label="today's figures" class="h-[5.5rem] w-full" />
           {/each}
         </div>
       {/if}

@@ -16,6 +16,14 @@
     4: [10, 3, 2, 3],
     ref: [4, 4],
   };
+
+  // Charts are built one per task, in turn: three built in one task block the
+  // page for as long as the three together.
+  let turn = Promise.resolve();
+  function nextTurn(): Promise<void> {
+    turn = turn.then(() => new Promise<void>((resolve) => setTimeout(resolve)));
+    return turn;
+  }
 </script>
 
 <script lang="ts">
@@ -231,14 +239,31 @@
 
   // (Re)build when the canvas appears, the set of series changes, or the
   // theme does: the colours are read from the tokens at build time.
+  // True once the chart has come near the viewport. A chart below the fold
+  // costs nothing until the reader scrolls towards it.
+  let near = $state(false);
+  $effect(() => {
+    const el = host;
+    if (!el || near) return;
+    const watcher = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) near = true;
+      },
+      { rootMargin: "300px" },
+    );
+    watcher.observe(el);
+    return () => watcher.disconnect();
+  });
+
   $effect(() => {
     void shape;
     void theme.version;
     const el = host;
-    if (!el) return;
+    if (!el || !near) return;
     let cancelled = false;
     void (async () => {
       lib ??= (await import("uplot")).default;
+      await nextTurn();
       if (cancelled) return;
       untrack(() => {
         plot?.destroy();
@@ -257,19 +282,23 @@
     };
   });
 
-  // New data, a new range or a new "now": redraw what is there.
+  // New data or a new range: give the chart its data again.
   $effect(() => {
     void x;
     void series;
     void zoom;
-    void now;
-    void spans;
     untrack(() => {
       if (!plot || !host) return;
       plot.setData(data(host.clientWidth), false);
       plot.setScale("x", range());
-      plot.redraw(false);
     });
+  });
+
+  // A new "now" or new marks: the same data, drawn again.
+  $effect(() => {
+    void now;
+    void spans;
+    untrack(() => plot?.redraw(false));
   });
 
   onDestroy(() => {

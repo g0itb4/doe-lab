@@ -167,3 +167,11 @@
     @apply text-accent underline underline-offset-2;
   }
 }
+
+/* The intro panel of a visitor who dismissed it: hidden before the page's
+   script has run (see app.html), so it never flashes. Outside every layer on
+   purpose: a layered rule loses to the panel's own utility classes, whatever
+   its specificity. */
+:root[data-intro="dismissed"] #intro {
+  display: none;
+}

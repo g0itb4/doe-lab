@@ -4,7 +4,7 @@
   let { label, value, hint = "" }: { label: string; value: string; hint?: string } = $props();
 </script>
 
-<div class="card px-3 py-2">
+<div class="card min-h-[5.5rem] px-3 py-2">
   <dt class="text-muted text-xs font-medium">{label}</dt>
   <dd class="tabular mt-0.5 text-xl font-semibold">{value}</dd>
   <dd class="text-muted min-h-4 text-xs">{hint}</dd>

@@ -18,7 +18,7 @@
   import { feeder } from "$lib/feeder.svelte.ts";
   import { ago, count, dayAndTime, kw } from "$lib/format.ts";
   import { operator } from "$lib/operator.svelte.ts";
-  import { withQuery } from "$lib/query.ts";
+  import { queryParam, withQuery } from "$lib/query.ts";
   import { Resource } from "$lib/resource.svelte.ts";
   import { enrolled } from "$lib/sites.ts";
   import type { Level } from "$lib/status.ts";
@@ -31,7 +31,7 @@
   const FILTERS = { open: "Open", breaches: "Breaches", all: "All" } as const;
   type Filter = keyof typeof FILTERS;
   const filter = $derived.by((): Filter => {
-    const value = page.url.searchParams.get("alerts");
+    const value = queryParam(page.url, "alerts");
     return value !== null && value in FILTERS ? (value as Filter) : "open";
   });
 

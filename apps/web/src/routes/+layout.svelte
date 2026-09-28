@@ -1,6 +1,7 @@
 <script lang="ts">
   import "../app.css";
   import type { Snippet } from "svelte";
+  import { browser } from "$app/environment";
   import { page } from "$app/state";
   import { clock } from "$lib/clock.svelte.ts";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
@@ -11,10 +12,14 @@
 
   let { children }: { children: Snippet } = $props();
 
-  // Before the first render, so a stored choice never flashes the other theme.
-  theme.init();
-  void clock.start();
-  ensureFeeder();
+  // In the browser only: while the page is prerendered there is no document,
+  // no storage and no API. The stored theme is applied before first paint by
+  // the script in app.html; this makes the toggle agree with it.
+  if (browser) {
+    theme.init();
+    void clock.start();
+    ensureFeeder();
+  }
 
   const links = [
     { href: "/", label: "Overview" },
@@ -57,10 +62,11 @@
       </ul>
     </nav>
     <div class="ml-auto flex items-center gap-3">
-      <p class="tabular text-muted text-right text-xs leading-tight">
+      <!-- A fixed width, and a dash until the API has said how feeder time
+           runs: the clock arrives without moving anything. -->
+      <p class="tabular text-muted min-w-40 text-right text-xs leading-tight">
         <span class="text-text block text-sm font-semibold">
-          {clockTime(clock.now, zone)}
-          {zoneName(clock.now, zone)}
+          {#if clock.ready}{clockTime(clock.now, zone)} {zoneName(clock.now, zone)}{:else}–:–{/if}
         </span>
         <span>
           Feeder time{#if clock.speed !== 1}, {clock.speed}× accelerated{/if}
@@ -71,7 +77,7 @@
   </div>
 </header>
 
-<main id="main" tabindex="-1" class="mx-auto max-w-6xl px-4 py-4 outline-none">
+<main id="main" tabindex="-1" class="mx-auto min-h-screen max-w-6xl px-4 py-4 outline-none">
   {@render children()}
 </main>
 

@@ -20,7 +20,7 @@
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import { feeder } from "$lib/feeder.svelte.ts";
   import { bindingWords, dayAndTime, exportSentence, kw } from "$lib/format.ts";
-  import { withQuery } from "$lib/query.ts";
+  import { queryParam, withQuery } from "$lib/query.ts";
   import { Resource } from "$lib/resource.svelte.ts";
   import { rangeKey, windowOf, zoomOf } from "$lib/series.ts";
   import { envelopeAt, siteChart } from "$lib/site.ts";
@@ -28,8 +28,8 @@
   import { date, timestamp } from "$lib/time.ts";
 
   const nmi = $derived(page.params.nmi ?? "");
-  const range = $derived(rangeKey(page.url.searchParams.get("range")));
-  const zoom = $derived(zoomOf(page.url.searchParams.get("from"), page.url.searchParams.get("to")));
+  const range = $derived(rangeKey(queryParam(page.url, "range")));
+  const zoom = $derived(zoomOf(queryParam(page.url, "from"), queryParam(page.url, "to")));
   const zone = $derived(feeder.data?.timezone ?? "Australia/Sydney");
 
   // The site itself; "missing" when the feeder has no such NMI.
@@ -93,7 +93,8 @@
     };
   });
 
-  const nowSeconds = $derived(clock.now.getTime() / 1000);
+  // Every minute of feeder time is enough for the chart's "now" line.
+  const nowSeconds = $derived(Math.floor(clock.now.getTime() / 60_000) * 60);
   const chart = $derived(
     detail?.data ? siteChart(detail.data.envelopes, detail.data.series, zone) : undefined,
   );

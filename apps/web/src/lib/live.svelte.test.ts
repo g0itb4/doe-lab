@@ -46,6 +46,7 @@ function harness() {
   const live = new Live<number>(feed.open, {
     retryMs: 100,
     maxRetryMs: 350,
+    reopenMs: 7,
     sleep: (ms) => {
       sleeps.push(ms);
       return new Promise<void>((r) => (wake = r));
@@ -77,7 +78,7 @@ describe("a live stream", () => {
     expect(h.live.stale).toBe(false);
   });
 
-  it("reopens at once a stream that ended after it had spoken", async () => {
+  it("reopens a stream that ended after it had spoken, after a moment and without going stale", async () => {
     const h = harness();
     stop = h.live.start();
     h.feed.send(1);
@@ -85,8 +86,12 @@ describe("a live stream", () => {
     h.frame();
     h.feed.end();
     await settle();
+    // The short pause, not the backoff.
+    expect(h.sleeps).toEqual([7]);
+    expect(h.feed.opened).toBe(1);
+    h.wake();
+    await settle();
     expect(h.feed.opened).toBe(2);
-    expect(h.sleeps).toEqual([]);
     expect(h.live.stale).toBe(false);
     expect(h.live.value).toBe(1);
   });
@@ -98,8 +103,13 @@ describe("a live stream", () => {
     await settle();
     h.frame();
 
-    // The stream breaks; the reconnect fails three times.
+    // The stream breaks: reopened after the short pause. The reconnect then
+    // fails three times.
     h.feed.fail();
+    await settle();
+    expect(h.sleeps).toEqual([7]);
+    expect(h.live.stale).toBe(false);
+    h.wake();
     await settle();
     for (const want of [100, 200, 350]) {
       h.feed.fail();
@@ -123,6 +133,8 @@ describe("a live stream", () => {
     h.frame();
     expect(h.live).toMatchObject({ value: 8, stale: false });
     h.feed.fail();
+    await settle();
+    h.wake();
     await settle();
     h.feed.fail();
     await settle();

@@ -9,6 +9,18 @@
       content="doe-lab: dynamic operating envelopes on a real Australian low-voltage feeder. A simulation, not a real network."
     />
     <link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml" />
+    <!-- Before the first paint: a visitor who chose a theme, or dismissed the
+         intro panel, sees the page that way from the start. The script is
+         inline because it must run before anything is drawn; its hash is
+         added to the CSP by svelte.config.js, which reads it from this file. -->
+    <script>
+      try {
+        var t = localStorage.getItem("doelab.theme");
+        if (t === "light" || t === "dark") document.documentElement.dataset.theme = t;
+        if (localStorage.getItem("doelab.intro"))
+          document.documentElement.dataset.intro = "dismissed";
+      } catch (e) {}
+    </script>
     %sveltekit.head%
   </head>
   <body data-sveltekit-preload-data="hover">

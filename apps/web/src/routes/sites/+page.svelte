@@ -8,13 +8,13 @@
   import Skeleton from "$lib/components/Skeleton.svelte";
   import { feeder } from "$lib/feeder.svelte.ts";
   import { kw } from "$lib/format.ts";
-  import { withQuery } from "$lib/query.ts";
+  import { queryParam, withQuery } from "$lib/query.ts";
   import { Resource } from "$lib/resource.svelte.ts";
   import { enrolled, equipment, filterSites, phaseName } from "$lib/sites.ts";
 
   // The filter lives in the address, so a filtered list can be shared.
-  const query = $derived(page.url.searchParams.get("q") ?? "");
-  const enrolledOnly = $derived(page.url.searchParams.get("enrolled") === "1");
+  const query = $derived(queryParam(page.url, "q") ?? "");
+  const enrolledOnly = $derived(queryParam(page.url, "enrolled") === "1");
 
   let sites = $state<Resource<Site[]>>();
   $effect(() => {
@@ -70,7 +70,7 @@
     <label class="flex min-h-9 items-center gap-2 text-sm">
       <input
         type="checkbox"
-        class="accent-accent size-5"
+        class="accent-accent size-6"
         checked={enrolledOnly}
         onchange={(e) => set({ enrolled: e.currentTarget.checked ? "1" : null })}
       />
@@ -85,10 +85,12 @@
     />
   {/if}
 
+  <!-- Always there, so the list below does not move when the count arrives. -->
+  <p class="text-muted text-sm" aria-live="polite">
+    {#if sites?.data}{shown.length} of {sites.data.length} sites{:else}&nbsp;{/if}
+  </p>
+
   {#if sites?.data}
-    <p class="text-muted text-sm" aria-live="polite">
-      {shown.length} of {sites.data.length} sites
-    </p>
     {#if shown.length === 0}
       <EmptyState title="No site matches">
         Nothing on this feeder has "{query}" in its NMI or name. Clear the search to see every site.

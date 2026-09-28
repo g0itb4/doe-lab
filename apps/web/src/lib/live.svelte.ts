@@ -4,6 +4,8 @@ export type LiveOptions = {
   // The first wait before a reconnect, and the longest. It doubles between.
   retryMs?: number;
   maxRetryMs?: number;
+  // The pause before a stream that ended cleanly is reopened.
+  reopenMs?: number;
   // The clock and the frame scheduler, replaceable in tests.
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
   frame?: (run: () => void) => void;
@@ -40,6 +42,7 @@ export class Live<T> {
       staleAfterMs: 6000,
       retryMs: 1000,
       maxRetryMs: 15000,
+      reopenMs: 500,
       sleep: sleepFor,
       frame: (run) => requestAnimationFrame(run),
       ...options,
@@ -88,9 +91,13 @@ export class Live<T> {
         // Whatever broke it, the answer is the same: say so, and reconnect.
       }
       if (signal.aborted) return;
-      // A stream that ended after it had spoken is reopened at once: a proxy
-      // may close a long response, and that is not an outage.
-      if (!heard) {
+      // A stream that ended after it had spoken is reopened after a moment,
+      // without a word: a proxy may close a long response, or the API restart,
+      // and that is not an outage. The moment keeps a stream that ends as soon
+      // as it opens from becoming a busy loop.
+      if (heard) {
+        await this.#options.sleep(this.#options.reopenMs, signal);
+      } else {
         this.#stale = true;
         await this.#options.sleep(wait, signal);
         wait = Math.min(wait * 2, this.#options.maxRetryMs);

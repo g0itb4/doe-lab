@@ -35,7 +35,7 @@ export default defineConfig({
       exclude: ["src/**/*.test.ts", "src/**/*.test-utils.ts"],
       reporter: ["text-summary", "html", "json"],
       // Floors, as in apps/api/coverage.json: they only go up.
-      thresholds: { lines: 98, functions: 97, statements: 98, branches: 90 },
+      thresholds: { lines: 99, functions: 98, statements: 98, branches: 90 },
     },
   },
 });

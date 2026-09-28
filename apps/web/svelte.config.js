@@ -1,5 +1,16 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import adapter from "@sveltejs/adapter-static";
 import { vitePreprocess } from "@sveltejs/vite-plugin-svelte";
+
+// The one inline script of app.html, which SvelteKit does not know about: its
+// hash goes into the CSP, computed from the file so the two cannot drift.
+const shell = readFileSync(new URL("./src/app.html", import.meta.url), "utf8");
+const inline = /<script>([\s\S]*?)<\/script>/.exec(shell);
+if (!inline) throw new Error("src/app.html has no inline script; remove its hash from the CSP");
+const inlineHash = /** @type {`sha256-${string}`} */ (
+  `sha256-${createHash("sha256").update(inline[1]).digest("base64")}`
+);
 
 /** @type {import('@sveltejs/kit').Config} */
 export default {
@@ -23,7 +34,7 @@ export default {
       mode: "hash",
       directives: {
         "default-src": ["none"],
-        "script-src": ["self"],
+        "script-src": ["self", inlineHash],
         // 'unsafe-inline' is for style attributes: uPlot positions its
         // cursor, legend and selection with them.
         "style-src": ["self", "unsafe-inline"],

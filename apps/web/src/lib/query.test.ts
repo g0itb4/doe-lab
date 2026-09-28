@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { withQuery } from "./query.ts";
+import { queryParam, withQuery } from "./query.ts";
 
 describe("the address of a view", () => {
   const url = new URL("https://example.test/sites?phase=2&q=XD");
@@ -8,6 +8,11 @@ describe("the address of a view", () => {
     expect(withQuery(url, { q: "LAB" })).toBe("/sites?phase=2&q=LAB");
     expect(withQuery(url, { phase: null })).toBe("/sites?q=XD");
     expect(withQuery(url, { range: "6h" })).toBe("/sites?phase=2&q=XD&range=6h");
+  });
+
+  it("reads one parameter", () => {
+    expect(queryParam(url, "phase")).toBe("2");
+    expect(queryParam(url, "range")).toBeNull();
   });
 
   it("has no question mark when nothing is left", () => {
