@@ -41,6 +41,15 @@ up:
 migrate *args:
     cd apps/api && DOELAB_ENV=development go run ./cmd/migrate "$@"
 
+# Prometheus on :9290 and Grafana on :3300, with the doe-lab dashboard
+# provisioned. Needs the API running (`just api` or `just dev`).
+#
+# start the local observability stack
+obs:
+    {{compose}} --profile obs up -d prometheus grafana
+    @echo "Grafana:    http://localhost:3300/d/doelab"
+    @echo "Prometheus: http://localhost:9290"
+
 # psql into the dev database
 psql *args:
     {{compose}} exec postgres psql -U doelab -d doelab "$@"
@@ -235,7 +244,11 @@ import *args:
 
 # Feeder time in development: sixty times the wall clock, anchored at the start
 # of today (UTC), so a day on the feeder passes in 24 minutes.
-dev_env := "DOELAB_ENV=development DEMO_CLOCK_SPEED=60 DEMO_CLOCK_ANCHOR=" + `date -u +%Y-%m-%dT00:00:00Z`
+#
+# METRICS_ADDR is on all interfaces in development, so that the Prometheus
+# container of `just obs` can scrape the API on the host. Production keeps
+# metrics on loopback, and config.Load refuses anything else there.
+dev_env := "DOELAB_ENV=development METRICS_ADDR=0.0.0.0:9464 DEMO_CLOCK_SPEED=60 DEMO_CLOCK_ANCHOR=" + `date -u +%Y-%m-%dT00:00:00Z`
 
 # the API on :3100, restarted when a Go file changes (needs `just up`)
 api: _kill

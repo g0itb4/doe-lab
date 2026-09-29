@@ -281,6 +281,52 @@ type EnvelopeBus interface {
 	Subscribe(siteID uuid.UUID) (signal <-chan struct{}, cancel func())
 }
 
+// Recorder is told what the services do, so that it can be counted. It is a
+// meter, not a ledger: a call is made when the thing happened, and nothing
+// reads it back.
+type Recorder interface {
+	// SubscriptionOpened and SubscriptionClosed bracket one subscription to
+	// a site's envelope.
+	SubscriptionOpened(ctx context.Context)
+	SubscriptionClosed(ctx context.Context)
+	// EnvelopesPublished counts envelopes that a publish wrote.
+	EnvelopesPublished(ctx context.Context, n int)
+	// EnvelopeDispatched says that an envelope written at created, on the
+	// wall clock, has just been sent to a subscriber.
+	EnvelopeDispatched(ctx context.Context, created time.Time)
+	// RunCompleted says how a run of the engine ended, and how long it took.
+	RunCompleted(ctx context.Context, status domain.RunStatus, took time.Duration)
+	// AlertOpened counts a new alert.
+	AlertOpened(ctx context.Context, kind domain.AlertKind, severity domain.AlertSeverity)
+	// ReadingsStored counts readings that an ingest stored.
+	ReadingsStored(ctx context.Context, n int)
+}
+
+// NoRecorder records nothing. It is what a service has until it is given a
+// recorder.
+type NoRecorder struct{}
+
+// SubscriptionOpened does nothing.
+func (NoRecorder) SubscriptionOpened(context.Context) {}
+
+// SubscriptionClosed does nothing.
+func (NoRecorder) SubscriptionClosed(context.Context) {}
+
+// EnvelopesPublished does nothing.
+func (NoRecorder) EnvelopesPublished(context.Context, int) {}
+
+// EnvelopeDispatched does nothing.
+func (NoRecorder) EnvelopeDispatched(context.Context, time.Time) {}
+
+// RunCompleted does nothing.
+func (NoRecorder) RunCompleted(context.Context, domain.RunStatus, time.Duration) {}
+
+// AlertOpened does nothing.
+func (NoRecorder) AlertOpened(context.Context, domain.AlertKind, domain.AlertSeverity) {}
+
+// ReadingsStored does nothing.
+func (NoRecorder) ReadingsStored(context.Context, int) {}
+
 // Clock is feeder time. *simclock.Clock is one.
 type Clock interface {
 	// Now is feeder time now.

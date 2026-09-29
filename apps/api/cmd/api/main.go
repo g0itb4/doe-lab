@@ -16,10 +16,13 @@ import (
 	"time"
 	_ "time/tzdata" // the feeder's zone, on a host with no zone database
 
+	"connectrpc.com/connect"
+
 	"doelab/api/internal/auth"
 	"doelab/api/internal/config"
 	"doelab/api/internal/controller"
 	"doelab/api/internal/interceptor"
+	"doelab/api/internal/obs"
 	"doelab/api/internal/repo/pg"
 	"doelab/api/internal/repo/pgbus"
 	"doelab/api/internal/server"
@@ -28,7 +31,8 @@ import (
 )
 
 func main() {
-	log := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	// A line that is logged with a request's context carries its trace id.
+	log := slog.New(obs.LogHandler(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 	if err := run(log); err != nil {
 		log.Error("fatal", "err", err)
 		os.Exit(1)
@@ -71,9 +75,32 @@ func run(log *slog.Logger) error {
 	envelopeBus := pgbus.New(pool, log)
 	go func() { _ = envelopeBus.Run(ctx) }()
 
+	// Metrics for a scraper on this host, and a trace for every RPC.
+	tel, err := obs.New(ctx, obs.Options{
+		Service: "doelab-api", Version: cfg.Version, Env: string(cfg.Env), OTLPEndpoint: cfg.OTLPEndpoint,
+	})
+	if err != nil {
+		return err
+	}
+	metrics := &http.Server{
+		Addr: cfg.MetricsAddr, Handler: metricsMux(tel.Handler),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() {
+		if err := metrics.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("metrics listener", "addr", cfg.MetricsAddr, "err", err)
+		}
+	}()
+
 	compliance := service.NewCompliance(store, clock)
+	compliance.Metrics = tel.Recorder
 	backstops := service.NewBackstops(store, envelopeBus, clock)
 	telemetry := service.NewTelemetry(store, clock, compliance)
+	telemetry.Metrics = tel.Recorder
+	envelopes := service.NewEnvelopes(store, envelopeBus, clock)
+	envelopes.Metrics = tel.Recorder
+	runs := service.NewEnvelopeRuns(store)
+	runs.Metrics = tel.Recorder
 	// The fleet summary moves once a minute of feeder time, and at least
 	// four times a second of wall time.
 	telemetry.WatchEvery = min(time.Second, max(250*time.Millisecond, clock.Real(time.Minute)))
@@ -88,8 +115,8 @@ func run(log *slog.Logger) error {
 		Sites:           controller.NewSites(service.NewSites(store)),
 		Devices:         controller.NewDevices(service.NewDevices(store)),
 		EnvelopeConfigs: controller.NewEnvelopeConfigs(service.NewEnvelopeConfigs(store)),
-		EnvelopeRuns:    controller.NewEnvelopeRuns(service.NewEnvelopeRuns(store)),
-		Envelopes:       controller.NewEnvelopes(service.NewEnvelopes(store, envelopeBus, clock)),
+		EnvelopeRuns:    controller.NewEnvelopeRuns(runs),
+		Envelopes:       controller.NewEnvelopes(envelopes),
 		Clock:           controller.NewClock(clock),
 		Telemetry:       controller.NewTelemetry(telemetry),
 		Alerts:          controller.NewAlerts(service.NewAlerts(store)),
@@ -98,6 +125,7 @@ func run(log *slog.Logger) error {
 		Validator:       validator,
 		Tokens:          auth.NewTokens(cfg.EngineToken, cfg.OperatorToken, cfg.DeviceTokenSecret),
 		Stopping:        stopping,
+		Extra:           []connect.Interceptor{tel.Interceptor},
 	})
 
 	errCh := make(chan error, 1)
@@ -123,6 +151,10 @@ func run(log *slog.Logger) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	err = srv.Shutdown(shutdownCtx)
+	// The last spans are sent, and the metrics listener closed, whatever the
+	// API's own shutdown said.
+	_ = metrics.Shutdown(shutdownCtx)
+	_ = tel.Shutdown(shutdownCtx)
 	if errors.Is(err, context.DeadlineExceeded) {
 		// What is left is a device that still holds a stream of readings
 		// open. It is cut, and sends again to the next process: a reading
@@ -131,6 +163,13 @@ func run(log *slog.Logger) error {
 		return srv.Close()
 	}
 	return err
+}
+
+// metricsMux serves the metrics, and nothing else, on the metrics listener.
+func metricsMux(metrics http.Handler) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", metrics)
+	return mux
 }
 
 // sweep runs the periodic work until ctx ends: it looks for devices that have

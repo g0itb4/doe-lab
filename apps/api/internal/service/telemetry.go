@@ -19,6 +19,8 @@ type Telemetry struct {
 	store      Store
 	clock      Clock
 	compliance *Compliance
+	// Metrics is told of the readings that are stored.
+	Metrics Recorder
 	// WatchEvery is how often WatchFleet sends a summary, on the wall clock.
 	WatchEvery time.Duration
 	after      func(time.Duration) <-chan time.Time
@@ -26,7 +28,7 @@ type Telemetry struct {
 
 // NewTelemetry builds the service.
 func NewTelemetry(store Store, clock Clock, compliance *Compliance) *Telemetry {
-	return &Telemetry{store: store, clock: clock, compliance: compliance, WatchEvery: time.Second, after: time.After}
+	return &Telemetry{store: store, clock: clock, compliance: compliance, Metrics: NoRecorder{}, WatchEvery: time.Second, after: time.After}
 }
 
 // Ingest stores a batch of readings from the devices of the site at nmi, and
@@ -74,6 +76,9 @@ func (s *Telemetry) Ingest(ctx context.Context, nmi string, readings []domain.Re
 		}
 		return s.compliance.Observe(ctx, r, site, latest, grace)
 	})
+	if err == nil {
+		s.Metrics.ReadingsStored(ctx, stored)
+	}
 	return stored, err
 }
 

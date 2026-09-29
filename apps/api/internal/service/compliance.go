@@ -19,6 +19,8 @@ import (
 type Compliance struct {
 	store Store
 	clock Clock
+	// Metrics is told of each alert that opens.
+	Metrics Recorder
 
 	mu sync.Mutex
 	// over holds, for each site that is above its export limit now, when
@@ -35,7 +37,7 @@ type excess struct {
 
 // NewCompliance builds the service.
 func NewCompliance(store Store, clock Clock) *Compliance {
-	return &Compliance{store: store, clock: clock, over: map[uuid.UUID]excess{}}
+	return &Compliance{store: store, clock: clock, Metrics: NoRecorder{}, over: map[uuid.UUID]excess{}}
 }
 
 // ExportToleranceW is how far above its limit a site may read before it
@@ -100,11 +102,14 @@ func (c *Compliance) Observe(ctx context.Context, r Repos, site domain.Site, rea
 		// Exporting through an emergency backstop is the serious case.
 		severity = domain.SeverityCritical
 	}
-	_, _, err = r.OpenAlert(ctx, domain.Alert{
+	_, opened, err := r.OpenAlert(ctx, domain.Alert{
 		SiteID: site.ID, FeederID: site.FeederID, Kind: domain.AlertConstraintBreach, Severity: severity,
 		OpenedAt: state.since, LimitW: &envelope.ExportLimitW, PeakW: &state.peakW,
 		Detail: fmt.Sprintf("Net export above the %.0f W limit for more than %s.", envelope.ExportLimitW, grace),
 	})
+	if opened {
+		c.Metrics.AlertOpened(ctx, domain.AlertConstraintBreach, severity)
+	}
 	return err
 }
 
@@ -161,6 +166,7 @@ func (c *Compliance) sweepFeeder(ctx context.Context, feederID uuid.UUID, now ti
 			}
 			if isNew {
 				opened++
+				c.Metrics.AlertOpened(ctx, domain.AlertDeviceOffline, domain.SeverityInfo)
 			}
 		}
 		return nil

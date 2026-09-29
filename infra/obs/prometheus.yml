@@ -1,0 +1,12 @@
+# Prometheus for local runs (`just obs`). It scrapes the API, which runs on
+# the host, not in a container: `just api` serves /metrics on all interfaces
+# in development so that this container can reach it. In production the API
+# serves metrics on loopback only, for a scraper on the same host.
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: doelab-api
+    static_configs:
+      - targets: ["host.docker.internal:9464"]

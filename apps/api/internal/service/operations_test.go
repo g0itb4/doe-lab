@@ -3,8 +3,10 @@ package service_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1161,4 +1163,163 @@ func TestRunIntervals(t *testing.T) {
 	if _, err := runs.CreateIntervals(ctx, o.run.ID, late); !errors.Is(err, domain.ErrFailedPrecondition) {
 		t.Errorf("a run that has finished: %v", err)
 	}
+}
+
+// meter is a recorder that keeps what it was told.
+type meter struct {
+	mu            sync.Mutex
+	subscriptions int
+	opened        int
+	published     int
+	dispatched    []time.Time
+	runs          []string
+	alerts        []string
+	readings      int
+}
+
+func (m *meter) SubscriptionOpened(context.Context) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.subscriptions++
+	m.opened++
+}
+
+func (m *meter) SubscriptionClosed(context.Context) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.subscriptions--
+}
+
+func (m *meter) EnvelopesPublished(_ context.Context, n int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.published += n
+}
+
+func (m *meter) EnvelopeDispatched(_ context.Context, created time.Time) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.dispatched = append(m.dispatched, created)
+}
+
+func (m *meter) RunCompleted(_ context.Context, status domain.RunStatus, took time.Duration) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.runs = append(m.runs, fmt.Sprintf("%s in %s", status, took))
+}
+
+func (m *meter) AlertOpened(_ context.Context, kind domain.AlertKind, severity domain.AlertSeverity) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.alerts = append(m.alerts, fmt.Sprintf("%s/%s", kind, severity))
+}
+
+func (m *meter) ReadingsStored(_ context.Context, n int) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.readings += n
+}
+
+func (m *meter) read(f func()) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	f()
+}
+
+// What the services do is counted, once each.
+func TestServicesTellTheRecorder(t *testing.T) {
+	t.Parallel()
+	o := newOps(t)
+	ctx := repotest.Ctx()
+	m := &meter{}
+	o.compliance.Metrics, o.telemetry.Metrics, o.envelopes.Metrics = m, m, m
+	runs := service.NewEnvelopeRuns(o.store)
+	runs.Metrics = m
+
+	// Readings, and the breach they add up to: one alert, however long it lasts.
+	o.limit(t, 0, 1000)
+	o.report(t, 0, 2000)
+	o.report(t, 60, 2000)
+	o.report(t, 120, 2100)
+	// A device that goes silent: one more, from the sweep.
+	o.clock.set(at(120 + 301))
+	if opened, err := o.compliance.Sweep(ctx); err != nil || opened != 1 {
+		t.Fatalf("sweep opened %d, %v", opened, err)
+	}
+	if _, err := o.compliance.Sweep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// A batch that stores nothing new counts nothing; one that fails counts nothing.
+	if _, err := o.telemetry.Ingest(asDevice(o.f.SiteA), o.f.SiteA.NMI, []domain.Reading{repotest.Reading(o.solar.ID, 0, 2000)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := o.telemetry.Ingest(asDevice(o.f.SiteA), o.f.SiteA.NMI, []domain.Reading{repotest.Reading(o.ev.ID, 0, 1)}); err == nil {
+		t.Fatal("a reading of another site's device was stored")
+	}
+	m.read(func() {
+		if m.readings != 3 || len(m.alerts) != 2 || m.alerts[0] != "constraint_breach/warning" || m.alerts[1] != "device_offline/info" {
+			t.Errorf("readings %d, alerts %v", m.readings, m.alerts)
+		}
+	})
+
+	// A subscription: counted in while it is open, and out when it ends.
+	o.clock.set(repotest.Day)
+	following, stop := context.WithCancel(asDevice(o.f.SiteA))
+	sent := make(chan *domain.Envelope, 16)
+	done := make(chan error, 1)
+	go func() {
+		done <- o.envelopes.Follow(following, o.f.SiteA.NMI, func(e *domain.Envelope, _ time.Time, keepalive bool) error {
+			if !keepalive {
+				sent <- e
+			}
+			return nil
+		})
+	}()
+	if first := <-sent; first == nil || first.ExportLimitW != 1000 {
+		t.Fatalf("the first envelope = %+v", first)
+	}
+	m.read(func() {
+		if m.subscriptions != 1 || len(m.dispatched) != 0 {
+			t.Errorf("%d subscriptions and %d dispatches after the first send; the first send is not a dispatch", m.subscriptions, len(m.dispatched))
+		}
+	})
+
+	// A publish: its envelopes are counted, and the send that it causes is a
+	// dispatch, timed from the write.
+	result, err := o.envelopes.Publish(ctx, o.run.ID, "batch-000001", []domain.Envelope{repotest.Envelope(o.f.SiteA.ID, o.run.ID, 0, 700)})
+	if err != nil || result.Published != 1 {
+		t.Fatalf("publish = %+v, %v", result, err)
+	}
+	next := <-sent
+	stop()
+	if err := <-done; err != nil {
+		t.Fatalf("follow ended with %v", err)
+	}
+	// The same batch again writes nothing, and counts nothing.
+	if replay, err := o.envelopes.Publish(ctx, o.run.ID, "batch-000001", []domain.Envelope{repotest.Envelope(o.f.SiteA.ID, o.run.ID, 0, 700)}); err != nil || !replay.Replayed {
+		t.Fatalf("replay = %+v, %v", replay, err)
+	}
+	m.read(func() {
+		if next == nil || next.ExportLimitW != 700 || len(m.dispatched) != 1 || !m.dispatched[0].Equal(next.CreatedAt) {
+			t.Errorf("after the publish: sent %+v, dispatched %v", next, m.dispatched)
+		}
+		if m.published != 1 || m.subscriptions != 0 || m.opened != 1 {
+			t.Errorf("published %d, %d subscriptions open of %d opened", m.published, m.subscriptions, m.opened)
+		}
+	})
+
+	// A run that ends is counted once, however often its completion is sent.
+	for range 2 {
+		if _, err := runs.Complete(ctx, o.run.ID, service.RunResult{Status: domain.RunCompleted, DurationMS: 250, SiteCount: 1, IntervalCount: 48}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := runs.Complete(ctx, uuid.New(), service.RunResult{Status: domain.RunCompleted}); err == nil {
+		t.Fatal("an unknown run was completed")
+	}
+	m.read(func() {
+		if len(m.runs) != 1 || m.runs[0] != "completed in 250ms" {
+			t.Errorf("runs = %v", m.runs)
+		}
+	})
 }

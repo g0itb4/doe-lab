@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -12,11 +13,13 @@ import (
 // EnvelopeRuns records the runs of the engine.
 type EnvelopeRuns struct {
 	store Store
+	// Metrics is told how each run ended.
+	Metrics Recorder
 }
 
 // NewEnvelopeRuns builds the service.
 func NewEnvelopeRuns(store Store) *EnvelopeRuns {
-	return &EnvelopeRuns{store: store}
+	return &EnvelopeRuns{store: store, Metrics: NoRecorder{}}
 }
 
 // Get returns a run by id.
@@ -67,6 +70,7 @@ func (s *EnvelopeRuns) Complete(ctx context.Context, id uuid.UUID, result RunRes
 		return domain.EnvelopeRun{}, fmt.Errorf("%w: a failed run needs an error, and only a failed run", domain.ErrInvalid)
 	}
 	var out domain.EnvelopeRun
+	ended := false
 	err := s.store.Tx(ctx, func(ctx context.Context, r Repos) error {
 		run, err := r.GetEnvelopeRun(ctx, id)
 		if err != nil {
@@ -77,8 +81,14 @@ func (s *EnvelopeRuns) Complete(ctx context.Context, id uuid.UUID, result RunRes
 			return nil
 		}
 		out, err = r.CompleteEnvelopeRun(ctx, id, result)
+		ended = err == nil
 		return err
 	})
+	// Once: a completion that is sent again changes nothing, and is not
+	// counted again.
+	if err == nil && ended {
+		s.Metrics.RunCompleted(ctx, result.Status, time.Duration(result.DurationMS)*time.Millisecond)
+	}
 	return out, err
 }
 

@@ -28,6 +28,7 @@
     "doelab/api/internal/repo/bus": 100,
     "doelab/api/internal/simclock": 100,
     "doelab/api/internal/enginerun": 98,
-    "doelab/api/internal/dersim": 100
+    "doelab/api/internal/dersim": 100,
+    "doelab/api/internal/obs": 90
   }
 }

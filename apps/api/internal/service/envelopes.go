@@ -23,6 +23,8 @@ type Envelopes struct {
 	// Keepalive is how often a subscription repeats its envelope when
 	// nothing changes, on the wall clock.
 	Keepalive time.Duration
+	// Metrics is told of subscriptions, publishes and dispatches.
+	Metrics Recorder
 	// after is time.After, replaceable in tests.
 	after func(time.Duration) <-chan time.Time
 }
@@ -32,7 +34,7 @@ const DefaultKeepalive = 15 * time.Second
 
 // NewEnvelopes builds the service.
 func NewEnvelopes(store Store, bus EnvelopeBus, clock Clock) *Envelopes {
-	return &Envelopes{store: store, bus: bus, clock: clock, Keepalive: DefaultKeepalive, after: time.After}
+	return &Envelopes{store: store, bus: bus, clock: clock, Keepalive: DefaultKeepalive, Metrics: NoRecorder{}, after: time.After}
 }
 
 // Current returns the envelope in force for a site at an instant of feeder
@@ -202,6 +204,7 @@ func (s *Envelopes) Publish(ctx context.Context, runID uuid.UUID, key string, en
 		}
 	}
 	_ = s.bus.Notify(ctx, changed)
+	s.Metrics.EnvelopesPublished(ctx, result.Published)
 	return result, nil
 }
 
@@ -252,9 +255,14 @@ func (s *Envelopes) Follow(ctx context.Context, nmi string, send func(envelope *
 
 	signal, cancel := s.bus.Subscribe(site.ID)
 	defer cancel()
+	s.Metrics.SubscriptionOpened(ctx)
+	defer s.Metrics.SubscriptionClosed(context.WithoutCancel(ctx))
 
 	var sent uuid.UUID // the id of the envelope last sent; Nil for "none"
 	first := true
+	// told is true when this turn of the loop was woken by the bus: something
+	// was written for the site a moment ago.
+	told := false
 	for {
 		now := s.clock.Now()
 		envelope, err := s.current(ctx, site.ID, now)
@@ -269,7 +277,11 @@ func (s *Envelopes) Follow(ctx context.Context, nmi string, send func(envelope *
 		if err := send(envelope, now, !changed); err != nil {
 			return err
 		}
-		sent, first = id, false
+		if told && changed && envelope != nil {
+			// From the write to this send: the dispatch latency.
+			s.Metrics.EnvelopeDispatched(ctx, envelope.CreatedAt)
+		}
+		sent, first, told = id, false, false
 
 		// Wake at the end of the interval, at the keepalive, or when told,
 		// whichever comes first.
@@ -283,6 +295,7 @@ func (s *Envelopes) Follow(ctx context.Context, nmi string, send func(envelope *
 		case <-ctx.Done():
 			return nil
 		case <-signal:
+			told = true
 		case <-s.after(wait):
 		}
 	}
