@@ -15,11 +15,16 @@ type EnvelopeRuns struct {
 	store Store
 	// Metrics is told how each run ended.
 	Metrics Recorder
+	// Objects is where an export is written. Nil means that this API cannot
+	// export.
+	Objects ObjectStore
+	// now is the wall clock, replaceable in tests.
+	now func() time.Time
 }
 
 // NewEnvelopeRuns builds the service.
 func NewEnvelopeRuns(store Store) *EnvelopeRuns {
-	return &EnvelopeRuns{store: store, Metrics: NoRecorder{}}
+	return &EnvelopeRuns{store: store, Metrics: NoRecorder{}, now: time.Now}
 }
 
 // Get returns a run by id.

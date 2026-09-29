@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	doelabv1 "doelab/api/gen/doelab/v1"
 	"doelab/api/gen/doelab/v1/doelabv1connect"
@@ -103,5 +104,22 @@ func (c *EnvelopeRuns) ListEnvelopeRunIntervals(ctx context.Context, req *connec
 	}
 	return connect.NewResponse(&doelabv1.ListEnvelopeRunIntervalsResponse{
 		Intervals: protomap.Slice(intervals, protomap.EnvelopeRunInterval),
+	}), nil
+}
+
+// ExportEnvelopeRun writes a run's envelopes to the object store and returns
+// a link to the file.
+func (c *EnvelopeRuns) ExportEnvelopeRun(ctx context.Context, req *connect.Request[doelabv1.ExportEnvelopeRunRequest]) (*connect.Response[doelabv1.ExportEnvelopeRunResponse], error) {
+	id, err := parseID("id", req.Msg.GetId())
+	if err != nil {
+		return nil, err
+	}
+	export, err := c.svc.Export(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&doelabv1.ExportEnvelopeRunResponse{
+		Url: export.URL, ExpiresAt: timestamppb.New(export.ExpiresAt),
+		Rows: int32(export.Rows), ObjectKey: export.Key, //nolint:gosec // G115: the envelopes of one run
 	}), nil
 }

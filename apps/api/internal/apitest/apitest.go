@@ -53,7 +53,9 @@ type API struct {
 	Compliance *service.Compliance
 	Backstops  *service.Backstops
 	Telemetry  *service.Telemetry
-	Tokens     *auth.Tokens
+	// Objects is the object store that exports are written to.
+	Objects *mem.Objects
+	Tokens  *auth.Tokens
 	// DB is the database as the health check sees it.
 	DB   *FakeDB
 	Deps server.Deps
@@ -134,6 +136,10 @@ func New(t testing.TB) *API {
 	a.Telemetry = service.NewTelemetry(store, clock, a.Compliance)
 	a.Telemetry.WatchEvery = 20 * time.Millisecond
 
+	a.Objects = mem.NewObjects()
+	runs := service.NewEnvelopeRuns(store)
+	runs.Objects = a.Objects
+
 	stopping, stop := context.WithCancel(context.Background())
 	a.Stop = stop
 	t.Cleanup(stop)
@@ -143,7 +149,7 @@ func New(t testing.TB) *API {
 		Sites:           controller.NewSites(service.NewSites(store)),
 		Devices:         controller.NewDevices(service.NewDevices(store)),
 		EnvelopeConfigs: controller.NewEnvelopeConfigs(service.NewEnvelopeConfigs(store)),
-		EnvelopeRuns:    controller.NewEnvelopeRuns(service.NewEnvelopeRuns(store)),
+		EnvelopeRuns:    controller.NewEnvelopeRuns(runs),
 		Envelopes:       controller.NewEnvelopes(a.Envelopes),
 		Clock:           controller.NewClock(clock),
 		Telemetry:       controller.NewTelemetry(a.Telemetry),

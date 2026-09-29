@@ -53,6 +53,7 @@ func Policy() interceptor.Policy {
 		doelabv1connect.EnvelopeRunServiceListEnvelopeRunsProcedure:    public,
 		doelabv1connect.EnvelopeRunServiceCreateEnvelopeRunProcedure:   engine,
 		doelabv1connect.EnvelopeRunServiceCompleteEnvelopeRunProcedure: engine,
+		doelabv1connect.EnvelopeRunServiceExportEnvelopeRunProcedure:   operator,
 
 		doelabv1connect.EnvelopeServiceGetCurrentEnvelopeProcedure: public,
 		doelabv1connect.EnvelopeServiceListEnvelopesProcedure:      public,

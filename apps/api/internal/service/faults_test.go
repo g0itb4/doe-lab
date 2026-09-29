@@ -168,6 +168,13 @@ func (r faultyRepos) ReplaceEnvelopes(ctx context.Context, envelopes []domain.En
 	return r.Repos.ReplaceEnvelopes(ctx, envelopes)
 }
 
+func (r faultyRepos) ListRunEnvelopes(ctx context.Context, runID uuid.UUID, page domain.Page) ([]domain.Envelope, string, error) {
+	if err := r.plan.down("ListRunEnvelopes"); err != nil {
+		return nil, "", err
+	}
+	return r.Repos.ListRunEnvelopes(ctx, runID, page)
+}
+
 func (r faultyRepos) ListFeederEnvelopes(ctx context.Context, feederID uuid.UUID, from, to time.Time) ([]domain.Envelope, error) {
 	if err := r.plan.down("ListFeederEnvelopes"); err != nil {
 		return nil, err

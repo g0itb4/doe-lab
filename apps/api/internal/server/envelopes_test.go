@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"github.com/google/uuid"
 	"go.uber.org/goleak"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
@@ -730,4 +731,62 @@ func TestFeederForecast(t *testing.T) {
 	wantViolation(t, "more than 7 days", err, "at most 7 days")
 	_, err = p.feeders("").GetFeederForecast(ctx, req(&doelabv1.GetFeederForecastRequest{FeederId: unknownID, From: timestamppb.New(day), To: timestamppb.New(day.Add(time.Hour))}))
 	wantCode(t, "an unknown feeder", err, connect.CodeNotFound)
+}
+
+func TestExportEnvelopeRun(t *testing.T) {
+	t.Parallel()
+	p := prepare(t)
+	a, b := p.fixture.SiteA.ID.String(), p.fixture.SiteB.ID.String()
+	_, err := p.publish(engineToken, p.runID, "batch-0001",
+		envelope(a, 0, 1500), envelope(a, 1, 1400), envelope(b, 0, 900))
+	noErr(t, "publish", err)
+
+	export := func(token, id string) (*doelabv1.ExportEnvelopeRunResponse, error) {
+		res, err := p.runs(token).ExportEnvelopeRun(ctx, req(&doelabv1.ExportEnvelopeRunRequest{Id: id}))
+		if err != nil {
+			return nil, err
+		}
+		return res.Msg, nil
+	}
+	// An export writes to the object store: it is the operator's to ask for.
+	_, err = export("", p.runID)
+	wantCode(t, "no token", err, connect.CodeUnauthenticated)
+	_, err = export(engineToken, p.runID)
+	wantCode(t, "the engine's token", err, connect.CodePermissionDenied)
+	_, err = export(operatorToken, "not-a-uuid")
+	wantViolation(t, "a malformed id", err, "id")
+	_, err = export(operatorToken, p.runID)
+	wantCode(t, "a run that is still running", err, connect.CodeFailedPrecondition)
+	_, err = export(operatorToken, uuid.NewString())
+	wantCode(t, "an unknown run", err, connect.CodeNotFound)
+
+	_, err = p.runs(engineToken).CompleteEnvelopeRun(ctx, req(&doelabv1.CompleteEnvelopeRunRequest{
+		Id: p.runID, Status: doelabv1.RunStatus_RUN_STATUS_COMPLETED, DurationMs: 120, SiteCount: 2, IntervalCount: 2,
+	}))
+	noErr(t, "complete", err)
+
+	before := time.Now()
+	res, err := export(operatorToken, p.runID)
+	noErr(t, "export", err)
+	if res.GetRows() != 3 || res.GetObjectKey() != "exports/runs/LV10/"+p.runID+".csv" || !contains(res.GetUrl(), p.runID) {
+		t.Errorf("export = %v", res)
+	}
+	if expires := res.GetExpiresAt().AsTime(); expires.Before(before.Add(14*time.Minute)) || expires.After(before.Add(16*time.Minute)) {
+		t.Errorf("the link expires at %v, want about fifteen minutes from now", expires)
+	}
+	// The file has a line for the header and one for each envelope the run
+	// published.
+	file, ok := p.Objects.Stat(res.GetObjectKey())
+	if !ok {
+		t.Fatal("no file in the object store")
+	}
+	lines := 0
+	for _, c := range file.Body {
+		if c == '\n' {
+			lines++
+		}
+	}
+	if lines != 1+int(res.GetRows()) {
+		t.Errorf("the file has %d lines for %d rows:\n%s", lines, res.GetRows(), file.Body)
+	}
 }

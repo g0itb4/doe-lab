@@ -787,6 +787,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/doelab.v1.CreateEnvelopeRunIntervalsResponse'
+  /doelab.v1.EnvelopeRunService/ExportEnvelopeRun:
+    post:
+      tags:
+        - doelab.v1.EnvelopeRunService
+      summary: ExportEnvelopeRun
+      description: |-
+        Writes the envelopes that a completed run published to the object store,
+         as CSV, and returns a link to the file that works for a short time.
+         Exporting a run again replaces the file with the same rows. Needs the
+         operator scope.
+      operationId: doelab.v1.EnvelopeRunService.ExportEnvelopeRun
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.ExportEnvelopeRunRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.ExportEnvelopeRunResponse'
   /doelab.v1.EnvelopeRunService/GetEnvelopeRun:
     post:
       tags:
@@ -2803,6 +2846,40 @@ components:
         - ENVELOPE_SOURCE_ENGINE
         - ENVELOPE_SOURCE_BACKSTOP
       description: What produced an envelope. Mirrors the envelope_source type.
+    doelab.v1.ExportEnvelopeRunRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+      title: ExportEnvelopeRunRequest
+      additionalProperties: false
+    doelab.v1.ExportEnvelopeRunResponse:
+      type: object
+      properties:
+        url:
+          type: string
+          title: url
+          description: |-
+            A presigned link to the CSV file. Anyone who has it can download the
+             file until expires_at.
+        expiresAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: expires_at
+          description: Wall-clock time the link stops working.
+        rows:
+          type: integer
+          title: rows
+          format: int32
+          description: 'Envelopes in the file: its lines, less the header.'
+        objectKey:
+          type: string
+          title: object_key
+          description: Where the file is in the object store.
+      title: ExportEnvelopeRunResponse
+      additionalProperties: false
     doelab.v1.Feeder:
       type: object
       properties:

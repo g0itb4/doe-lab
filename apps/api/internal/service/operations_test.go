@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -15,6 +16,7 @@ import (
 	"doelab/api/internal/auth"
 	"doelab/api/internal/domain"
 	"doelab/api/internal/profile"
+	"doelab/api/internal/repo/mem"
 	"doelab/api/internal/repo/repotest"
 	"doelab/api/internal/service"
 )
@@ -1322,4 +1324,117 @@ func TestServicesTellTheRecorder(t *testing.T) {
 			t.Errorf("runs = %v", m.runs)
 		}
 	})
+}
+
+// brokenObjects is an object store that fails where a test says.
+type brokenObjects struct {
+	*mem.Objects
+	put, sign error
+}
+
+func (b brokenObjects) Put(ctx context.Context, key, contentType string, body []byte) error {
+	if b.put != nil {
+		return b.put
+	}
+	return b.Objects.Put(ctx, key, contentType, body)
+}
+
+func (b brokenObjects) PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error) {
+	if b.sign != nil {
+		return "", b.sign
+	}
+	return b.Objects.PresignGet(ctx, key, ttl)
+}
+
+func TestExportRun(t *testing.T) {
+	t.Parallel()
+	o := newOps(t)
+	ctx := repotest.Ctx()
+	objects := mem.NewObjects()
+	runs := service.NewEnvelopeRuns(o.store)
+
+	// With nowhere to write, there is no export.
+	_, err := runs.Export(ctx, o.run.ID)
+	if !errors.Is(err, domain.ErrFailedPrecondition) || !strings.Contains(err.Error(), "no object store") {
+		t.Errorf("with no object store: %v", err)
+	}
+	runs.Objects = objects
+
+	// The run published two intervals for site A, and then the first again:
+	// three envelopes, one of them superseded.
+	for _, e := range []domain.Envelope{
+		repotest.Envelope(o.f.SiteA.ID, o.run.ID, 0, 1000), repotest.Envelope(o.f.SiteA.ID, o.run.ID, 1, 1500),
+		repotest.Envelope(o.f.SiteA.ID, o.run.ID, 0, 800.5),
+	} {
+		if _, _, err := o.store.ReplaceEnvelopes(ctx, []domain.Envelope{e}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Only a completed run is exported: a running one may still publish.
+	_, err = runs.Export(ctx, o.run.ID)
+	if !errors.Is(err, domain.ErrFailedPrecondition) || !strings.Contains(err.Error(), "is running") {
+		t.Errorf("a running run: %v", err)
+	}
+	if _, err := runs.Export(ctx, uuid.New()); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("an unknown run: %v", err)
+	}
+	if _, err := runs.Complete(ctx, o.run.ID, service.RunResult{Status: domain.RunCompleted, DurationMS: 250, SiteCount: 1, IntervalCount: 2}); err != nil {
+		t.Fatal(err)
+	}
+
+	before := time.Now()
+	export, err := runs.Export(ctx, o.run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key := "exports/runs/LV10/" + o.run.ID.String() + ".csv"
+	if export.Rows != 3 || export.Key != key || !strings.Contains(export.URL, o.run.ID.String()) || !strings.Contains(export.URL, "expires=15m0s") {
+		t.Errorf("export = %+v", export)
+	}
+	if export.ExpiresAt.Before(before.Add(service.ExportTTL)) || export.ExpiresAt.After(time.Now().Add(service.ExportTTL)) {
+		t.Errorf("the link expires at %v, want fifteen minutes from now", export.ExpiresAt)
+	}
+	stored, ok := objects.Stat(key)
+	if !ok || stored.ContentType != "text/csv; charset=utf-8" {
+		t.Fatalf("the stored object = %+v, %v", stored, ok)
+	}
+	nmi, site := o.f.SiteA.NMI, o.f.SiteA.ID.String()
+	want := "nmi,site_id,valid_from,valid_to,export_limit_w_opModExpLimW,import_limit_w_opModImpLimW,export_binding,export_binding_element,import_binding,import_binding_element\n" +
+		nmi + "," + site + ",2012-10-01T00:00:00Z,2012-10-01T00:30:00Z,1000,7000,voltage_high,Ld1_LOAD_A,site_cap,\n" +
+		nmi + "," + site + ",2012-10-01T00:00:00Z,2012-10-01T00:30:00Z,800.5,7000,voltage_high,Ld1_LOAD_A,site_cap,\n" +
+		nmi + "," + site + ",2012-10-01T00:30:00Z,2012-10-01T01:00:00Z,1500,7000,voltage_high,Ld1_LOAD_A,site_cap,\n"
+	// The two envelopes of the first interval come in the order of their ids,
+	// whichever that is: compare as sets of lines.
+	gotLines, wantLines := strings.Split(string(stored.Body), "\n"), strings.Split(want, "\n")
+	slices.Sort(gotLines[1:])
+	slices.Sort(wantLines[1:])
+	if !slices.Equal(gotLines, wantLines) {
+		t.Errorf("the file:\n%s\nwant:\n%s", stored.Body, want)
+	}
+
+	// Again: the same key, the same rows.
+	again, err := runs.Export(ctx, o.run.ID)
+	if err != nil || again.Key != export.Key || again.Rows != 3 {
+		t.Errorf("a second export = %+v, %v", again, err)
+	}
+
+	// A store that fails is reported, and each read that fails is too.
+	down := errors.New("the bucket is gone")
+	runs.Objects = brokenObjects{Objects: objects, put: down}
+	if _, err := runs.Export(ctx, o.run.ID); !errors.Is(err, down) || !strings.Contains(err.Error(), "store the export") {
+		t.Errorf("a put that fails: %v", err)
+	}
+	runs.Objects = brokenObjects{Objects: objects, sign: down}
+	if _, err := runs.Export(ctx, o.run.ID); !errors.Is(err, down) || !strings.Contains(err.Error(), "sign the link") {
+		t.Errorf("a presign that fails: %v", err)
+	}
+	runs.Objects = objects
+	for _, step := range []string{"GetFeeder", "ListAllSites", "ListRunEnvelopes"} {
+		o.store.failAt(step)
+		if _, err := runs.Export(ctx, o.run.ID); !errors.Is(err, errDown) {
+			t.Errorf("with %s down: %v", step, err)
+		}
+	}
+	o.store.failAt("")
 }

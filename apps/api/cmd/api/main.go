@@ -23,6 +23,7 @@ import (
 	"doelab/api/internal/controller"
 	"doelab/api/internal/interceptor"
 	"doelab/api/internal/obs"
+	"doelab/api/internal/repo/objstore"
 	"doelab/api/internal/repo/pg"
 	"doelab/api/internal/repo/pgbus"
 	"doelab/api/internal/server"
@@ -100,7 +101,7 @@ func run(log *slog.Logger) error {
 	envelopes := service.NewEnvelopes(store, envelopeBus, clock)
 	envelopes.Metrics = tel.Recorder
 	runs := service.NewEnvelopeRuns(store)
-	runs.Metrics = tel.Recorder
+	runs.Metrics, runs.Objects = tel.Recorder, objstore.New(cfg.S3)
 	// The fleet summary moves once a minute of feeder time, and at least
 	// four times a second of wall time.
 	telemetry.WatchEvery = min(time.Second, max(250*time.Millisecond, clock.Real(time.Minute)))

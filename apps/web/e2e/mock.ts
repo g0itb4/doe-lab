@@ -286,6 +286,15 @@ export async function mockApi(page: Page): Promise<Mock> {
           : {}),
       })),
     }),
+    "EnvelopeRunService/ExportEnvelopeRun": (req, token) => {
+      operatorOnly(token);
+      return {
+        url: `https://objects.example/exports/runs/LV10/${req.id}.csv?signature=e2e`,
+        expiresAt: iso(Date.now() + 900_000),
+        rows: 96,
+        objectKey: `exports/runs/LV10/${req.id}.csv`,
+      };
+    },
     "BackstopService/ListBackstopEvents": () => ({ backstopEvents: [...backstops].reverse() }),
     "BackstopService/CreateBackstopEvent": (req, token) => {
       operatorOnly(token);

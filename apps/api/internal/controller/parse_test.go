@@ -108,6 +108,10 @@ func TestHandlersRefuseMalformedIDs(t *testing.T) {
 			_, err := runs.ListEnvelopeRuns(ctx, connect.NewRequest(&doelabv1.ListEnvelopeRunsRequest{FeederId: bad}))
 			return err
 		},
+		"ExportEnvelopeRun": func() error {
+			_, err := runs.ExportEnvelopeRun(ctx, connect.NewRequest(&doelabv1.ExportEnvelopeRunRequest{Id: bad}))
+			return err
+		},
 		"CompleteEnvelopeRun": func() error {
 			_, err := runs.CompleteEnvelopeRun(ctx, connect.NewRequest(&doelabv1.CompleteEnvelopeRunRequest{Id: bad}))
 			return err

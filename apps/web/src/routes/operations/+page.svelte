@@ -109,6 +109,30 @@
     }
   }
 
+  // An export writes the run's envelopes to the object store as CSV, and
+  // gives back a link that works for a quarter of an hour.
+  let exporting = $state<string>();
+  let exported = $state<Record<string, { url: string; rows: number }>>({});
+  async function exportRun(run: EnvelopeRun) {
+    if (exporting) return;
+    exporting = run.id;
+    try {
+      const res = await api.runs.exportEnvelopeRun({ id: run.id }, bearer(operator.token));
+      exported[run.id] = { url: res.url, rows: res.rows };
+      toasts.show("ok", `Exported ${count(res.rows)} envelopes. The link works for 15 minutes.`);
+    } catch (e) {
+      const code = ConnectError.from(e).code;
+      toasts.show(
+        "error",
+        code === Code.Unauthenticated || code === Code.PermissionDenied
+          ? "Exporting needs the operator token: enter it in the Backstop panel above."
+          : describeError(e),
+      );
+    } finally {
+      exporting = undefined;
+    }
+  }
+
   const runLevel: Partial<Record<RunStatus, Level>> = {
     [RunStatus.RUNNING]: "info",
     [RunStatus.COMPLETED]: "ok",
@@ -231,7 +255,7 @@
       {:else}
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
         <div class="card overflow-x-auto" tabindex="0" role="region" aria-label="Engine runs">
-          <table class="tabular w-full min-w-[640px] text-sm">
+          <table class="tabular w-full min-w-[760px] text-sm">
             <thead>
               <tr class="border-rule border-b text-left">
                 <th scope="col" class="px-3 py-2 font-semibold">Horizon from</th>
@@ -240,6 +264,7 @@
                 <th scope="col" class="px-3 py-2 text-right font-semibold">Envelopes</th>
                 <th scope="col" class="px-3 py-2 text-right font-semibold">Took</th>
                 <th scope="col" class="px-3 py-2 font-semibold">Ran</th>
+                <th scope="col" class="px-3 py-2 font-semibold">Envelopes as CSV</th>
               </tr>
             </thead>
             <tbody>
@@ -262,6 +287,28 @@
                   >
                   <td class="px-3 py-2 whitespace-nowrap">{ago(date(run.startedAt), new Date())}</td
                   >
+                  <td class="px-3 py-2 whitespace-nowrap">
+                    {#if exported[run.id]}
+                      <a
+                        class="link inline-flex min-h-6 items-center"
+                        href={exported[run.id]?.url}
+                        download
+                      >
+                        Download ({count(exported[run.id]?.rows ?? 0)} rows)
+                      </a>
+                    {:else if run.status === RunStatus.COMPLETED}
+                      <button
+                        type="button"
+                        class="btn"
+                        disabled={exporting !== undefined}
+                        onclick={() => exportRun(run)}
+                      >
+                        {exporting === run.id ? "Exporting…" : "Export"}
+                      </button>
+                    {:else}
+                      –
+                    {/if}
+                  </td>
                 </tr>
               {/each}
             </tbody>

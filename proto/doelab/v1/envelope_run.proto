@@ -33,6 +33,13 @@ service EnvelopeRunService {
   rpc ListEnvelopeRunIntervals(ListEnvelopeRunIntervalsRequest) returns (ListEnvelopeRunIntervalsResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
   }
+  // Writes the envelopes that a completed run published to the object store,
+  // as CSV, and returns a link to the file that works for a short time.
+  // Exporting a run again replaces the file with the same rows. Needs the
+  // operator scope.
+  rpc ExportEnvelopeRun(ExportEnvelopeRunRequest) returns (ExportEnvelopeRunResponse) {
+    option idempotency_level = IDEMPOTENT;
+  }
 }
 
 // One run of the engine. Mirrors the envelope_runs table.
@@ -230,4 +237,20 @@ message ListEnvelopeRunIntervalsRequest {
 
 message ListEnvelopeRunIntervalsResponse {
   repeated EnvelopeRunInterval intervals = 1;
+}
+
+message ExportEnvelopeRunRequest {
+  string id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message ExportEnvelopeRunResponse {
+  // A presigned link to the CSV file. Anyone who has it can download the
+  // file until expires_at.
+  string url = 1;
+  // Wall-clock time the link stops working.
+  google.protobuf.Timestamp expires_at = 2;
+  // Envelopes in the file: its lines, less the header.
+  int32 rows = 3;
+  // Where the file is in the object store.
+  string object_key = 4;
 }

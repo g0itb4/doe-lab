@@ -366,6 +366,22 @@ test("an alert links to its site, and can be acknowledged", async ({ page, api }
   await expect(page.getByText("Device stopped reporting")).toBeVisible();
 });
 
+test("a completed run can be exported, and the link to the file appears in its row", async ({
+  page,
+  api,
+}) => {
+  await open(page, "/operations", "Engine runs");
+  const runs = page.getByRole("region", { name: "Engine runs" }).locator("tbody tr");
+  // The failed run has nothing to export.
+  await expect(runs.nth(2).getByRole("button", { name: "Export" })).toHaveCount(0);
+  await page.getByLabel("Operator token").fill(OPERATOR_TOKEN);
+  await runs.first().getByRole("button", { name: "Export" }).click();
+  const link = runs.first().getByRole("link", { name: "Download (96 rows)" });
+  await expect(link).toHaveAttribute("href", /\/exports\/runs\/LV10\/.+\.csv\?signature=e2e$/);
+  expect(api.writes).toEqual(["EnvelopeRunService/ExportEnvelopeRun"]);
+  await expect(page.getByRole("status").filter({ hasText: "Exported 96 envelopes" })).toBeVisible();
+});
+
 test("the config form rejects a value out of range inline, previews the change and saves a new version", async ({
   page,
   api,
