@@ -83,7 +83,7 @@ func Handler(cfg config.Config, log *slog.Logger, deps Deps) http.Handler {
 		interceptor.Timeout(cfg.RequestTimeout),
 		interceptor.Drain(cmp.Or(deps.Stopping, context.Background())),
 		interceptor.Errors(log),
-		interceptor.NewThrottle(cfg.TrustProxy),
+		interceptor.NewThrottle(cfg.TrustProxy, cfg.RateLimitPerSecond, cfg.RateLimitBurst),
 		interceptor.Auth(deps.Tokens, Policy()),
 		interceptor.Validate(deps.Validator),
 	)

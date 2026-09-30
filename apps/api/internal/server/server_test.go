@@ -122,7 +122,7 @@ func TestReflectionInDevelopmentOnly(t *testing.T) {
 	}
 
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	prod := server.Handler(config.Config{Env: config.Production}, log, a.Deps)
+	prod := server.Handler(config.Config{Env: config.Production, RateLimitPerSecond: 100, RateLimitBurst: 400}, log, a.Deps)
 	r, _ := http.NewRequest(http.MethodPost, "/grpc.reflection.v1.ServerReflection/ServerReflectionInfo", strings.NewReader("{}"))
 	w := &recorder{header: http.Header{}}
 	prod.ServeHTTP(w, r)
@@ -168,7 +168,7 @@ func TestNewServer(t *testing.T) {
 	t.Parallel()
 	a := newAPI(t)
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	srv := server.New(config.Config{Host: "127.0.0.1", Port: 3100, Env: config.Production}, log, a.Deps)
+	srv := server.New(config.Config{Host: "127.0.0.1", Port: 3100, Env: config.Production, RateLimitPerSecond: 100, RateLimitBurst: 400}, log, a.Deps)
 	if srv.Addr != "127.0.0.1:3100" || srv.Handler == nil || srv.ReadHeaderTimeout == 0 {
 		t.Errorf("server = %+v", srv)
 	}
@@ -195,7 +195,7 @@ func TestPanicIsRecovered(t *testing.T) {
 	var out bytes.Buffer
 	deps := a.Deps
 	deps.Feeders = panicking{}
-	handler := server.Handler(config.Config{Env: config.Production}, slog.New(slog.NewTextHandler(&out, nil)), deps)
+	handler := server.Handler(config.Config{Env: config.Production, RateLimitPerSecond: 100, RateLimitBurst: 400}, slog.New(slog.NewTextHandler(&out, nil)), deps)
 
 	r, _ := http.NewRequest(http.MethodPost, "/doelab.v1.FeederService/ListFeeders", strings.NewReader("{}"))
 	r.Header.Set("Content-Type", "application/json")

@@ -72,6 +72,10 @@ type Config struct {
 	// Env decides every hardening default below. Production unless something
 	// says otherwise.
 	Env Environment
+	// RateLimitPerSecond and RateLimitBurst bound the calls of one client
+	// address: a stream counts once, when it opens.
+	RateLimitPerSecond int
+	RateLimitBurst     int
 	// TrustProxy decides whether X-Forwarded-For is evidence or input.
 	// Production runs on loopback behind Caddy, which appends the address it
 	// saw; development has nothing in front of it.
@@ -147,6 +151,21 @@ func Load() (Config, error) {
 		return c, err
 	}
 	c.RequestTimeout = time.Duration(timeoutMS) * time.Millisecond
+
+	// Generous for a demo nobody is attacking, and still far below what it
+	// takes to hurt the box. The burst covers a page that opens several
+	// panels at once, and a fleet of simulated devices that all subscribe
+	// from one address. A load test raises both.
+	if c.RateLimitPerSecond, err = envInt("RATE_LIMIT_PER_SECOND", 100); err != nil {
+		return c, err
+	}
+	if c.RateLimitBurst, err = envInt("RATE_LIMIT_BURST", 400); err != nil {
+		return c, err
+	}
+	if c.RateLimitPerSecond < 1 || c.RateLimitBurst < c.RateLimitPerSecond {
+		return c, fmt.Errorf("RATE_LIMIT_PER_SECOND and RATE_LIMIT_BURST: expected at least 1 a second and a burst no smaller, got %d and %d",
+			c.RateLimitPerSecond, c.RateLimitBurst)
+	}
 
 	c.S3 = S3{
 		Endpoint:        env("S3_ENDPOINT", "http://localhost:9200"),

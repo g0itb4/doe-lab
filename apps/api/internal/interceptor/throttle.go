@@ -27,23 +27,16 @@ type Throttle struct {
 	now        func() time.Time
 }
 
-// Generous for a demo nobody is attacking, and still far below what it takes
-// to hurt the box. The burst covers a page that opens several panels at once,
-// and a fleet of simulated devices that all subscribe from one address.
-const (
-	defaultBurst     = 400
-	defaultPerSecond = 100
+// A backstop, not a working set. Reaching it means something is spraying
+// addresses, which is exactly when the map must not be what falls over.
+const throttleMax = 8192
 
-	// A backstop, not a working set. Reaching it means something is spraying
-	// addresses, which is exactly when the map must not be what falls over.
-	throttleMax = 8192
-)
-
-// NewThrottle builds the limiter. trustProxy says whether X-Forwarded-For is
+// NewThrottle builds the limiter: perSecond calls a second for each client
+// address, with a burst of burst. trustProxy says whether X-Forwarded-For is
 // evidence (an edge in front appends the address it saw) or input.
-func NewThrottle(trustProxy bool) *Throttle {
+func NewThrottle(trustProxy bool, perSecond, burst int) *Throttle {
 	return &Throttle{
-		buckets: make(map[string]*bucket), burst: defaultBurst, perSecond: defaultPerSecond,
+		buckets: make(map[string]*bucket), burst: float64(burst), perSecond: float64(perSecond),
 		trustProxy: trustProxy, now: time.Now,
 	}
 }

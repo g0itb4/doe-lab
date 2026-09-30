@@ -20,6 +20,7 @@ var production = map[string]string{
 var allKeys = []string{
 	"DOELAB_ENV", "DATABASE_URL", "HOST", "PORT", "DOELAB_VERSION", "API_URL", "METRICS_ADDR",
 	"OTEL_EXPORTER_OTLP_ENDPOINT", "ANTHROPIC_API_KEY", "DB_MAX_CONNS", "REQUEST_TIMEOUT_MS",
+	"RATE_LIMIT_PER_SECOND", "RATE_LIMIT_BURST",
 	"S3_ENDPOINT", "S3_REGION", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY", "S3_PATH_STYLE",
 	"ENGINE_TOKEN", "OPERATOR_TOKEN", "DEVICE_TOKEN_SECRET", "DEMO_CLOCK_SPEED", "DEMO_CLOCK_ANCHOR",
 }
@@ -45,7 +46,8 @@ func TestLoadDevelopment(t *testing.T) {
 	if c.Env != Development || !c.Reflection || !c.LogRequests || c.TrustProxy {
 		t.Errorf("development posture = %+v", c)
 	}
-	if c.Port != 3100 || c.Host != "127.0.0.1" || c.DBMaxConns != 16 || c.RequestTimeout != 15*time.Second {
+	if c.Port != 3100 || c.Host != "127.0.0.1" || c.DBMaxConns != 16 || c.RequestTimeout != 15*time.Second ||
+		c.RateLimitPerSecond != 100 || c.RateLimitBurst != 400 {
 		t.Errorf("defaults = %+v", c)
 	}
 	if c.DatabaseURL != defaultDatabaseURL || c.EngineToken != devEngineToken || c.OperatorToken != devOperatorToken {
@@ -70,6 +72,7 @@ func TestLoadTestCountsAsDevelopment(t *testing.T) {
 func TestLoadProduction(t *testing.T) {
 	setEnv(t, production, map[string]string{
 		"PORT": "8443", "DB_MAX_CONNS": "32", "REQUEST_TIMEOUT_MS": "5000", "S3_PATH_STYLE": "false",
+		"RATE_LIMIT_PER_SECOND": "2000", "RATE_LIMIT_BURST": "20000",
 		"DOELAB_VERSION": "abc123", "S3_ENDPOINT": "https://syd1.digitaloceanspaces.com",
 	})
 	c, err := Load()
@@ -79,7 +82,8 @@ func TestLoadProduction(t *testing.T) {
 	if c.Env != Production || c.Reflection || c.LogRequests || !c.TrustProxy || c.S3.PathStyle {
 		t.Errorf("production posture = %+v", c)
 	}
-	if c.Port != 8443 || c.DBMaxConns != 32 || c.RequestTimeout != 5*time.Second || c.Version != "abc123" {
+	if c.Port != 8443 || c.DBMaxConns != 32 || c.RequestTimeout != 5*time.Second || c.Version != "abc123" ||
+		c.RateLimitPerSecond != 2000 || c.RateLimitBurst != 20000 {
 		t.Errorf("overrides = %+v", c)
 	}
 }
@@ -108,6 +112,10 @@ func TestLoadErrors(t *testing.T) {
 		{name: "bad port", vars: map[string]string{"DOELAB_ENV": "development", "PORT": "http"}, want: `PORT: expected an integer, got "http"`},
 		{name: "bad pool size", vars: map[string]string{"DOELAB_ENV": "development", "DB_MAX_CONNS": "many"}, want: "DB_MAX_CONNS: expected an integer"},
 		{name: "pool size out of range", vars: map[string]string{"DOELAB_ENV": "development", "DB_MAX_CONNS": "0"}, want: "DB_MAX_CONNS: expected 1 to 1000, got 0"},
+		{name: "bad rate limit", vars: map[string]string{"DOELAB_ENV": "development", "RATE_LIMIT_PER_SECOND": "lots"}, want: "RATE_LIMIT_PER_SECOND: expected an integer"},
+		{name: "bad burst", vars: map[string]string{"DOELAB_ENV": "development", "RATE_LIMIT_BURST": "more"}, want: "RATE_LIMIT_BURST: expected an integer"},
+		{name: "no rate at all", vars: map[string]string{"DOELAB_ENV": "development", "RATE_LIMIT_PER_SECOND": "0"}, want: "expected at least 1 a second and a burst no smaller, got 0 and 400"},
+		{name: "a burst below the rate", vars: map[string]string{"DOELAB_ENV": "development", "RATE_LIMIT_PER_SECOND": "500"}, want: "got 500 and 400"},
 		{name: "bad timeout", vars: map[string]string{"DOELAB_ENV": "development", "REQUEST_TIMEOUT_MS": "1s"}, want: "REQUEST_TIMEOUT_MS: expected an integer"},
 		{name: "bad clock speed", vars: map[string]string{"DOELAB_ENV": "development", "DEMO_CLOCK_SPEED": "fast"}, want: `DEMO_CLOCK_SPEED: expected a number, got "fast"`},
 		{name: "fast clock with no anchor", vars: map[string]string{"DOELAB_ENV": "development", "DEMO_CLOCK_SPEED": "60"}, want: "DEMO_CLOCK_ANCHOR: required when DEMO_CLOCK_SPEED is not 1"},

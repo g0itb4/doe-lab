@@ -6,6 +6,8 @@
 //	dersim                         every device behaves
 //	dersim -rogue 0.05 -flaky 0.05 one in twenty ignores its limit, and one
 //	                               in twenty goes silent from time to time
+//	dersim -load 10000             a load test: hold that many subscriptions
+//	                               open, and time each envelope's arrival
 //
 // It is a client of the API and nothing else. This file is wiring; the work
 // is in internal/dersim.
@@ -45,12 +47,19 @@ func run(log *slog.Logger) error {
 	every := flag.Duration("every", dersim.DefaultEvery, "feeder time between two readings of a device")
 	fallback := flag.Float64("default-export", dersim.DefaultExportW, "export limit, in watts, of a device with no envelope")
 	seed := flag.Uint64("seed", 1, "seed of the fleet's randomness")
+	load := flag.Int("load", 0, "load test: hold this many subscriptions open instead of simulating the devices")
+	rate := flag.Int("rate", 500, "with -load: subscriptions opened a second")
+	hold := flag.Duration("hold", 2*time.Minute, "with -load: how long to hold the subscriptions once they are all started")
+	metrics := flag.String("metrics", "http://127.0.0.1:9464/metrics", "with -load: the API's metrics page, for its memory; empty to skip")
 	flag.Parse()
 	if *rogue < 0 || *rogue > 1 || *flaky < 0 || *flaky > 1 || *rogue+*flaky > 1 {
 		return fmt.Errorf("-rogue and -flaky are shares from 0 to 1 that sum to at most 1, got %v and %v", *rogue, *flaky)
 	}
 	if *every < time.Second {
 		return fmt.Errorf("-every must be at least 1s, got %v", *every)
+	}
+	if *load < 0 || *rate < 1 {
+		return fmt.Errorf("-load must not be negative and -rate must be at least 1, got %d and %d", *load, *rate)
 	}
 
 	cfg, err := config.Load()
@@ -75,6 +84,9 @@ func run(log *slog.Logger) error {
 	// A device's token is derived from its NMI, as a commissioning system
 	// would hand it out.
 	tokens := auth.NewTokens(cfg.EngineToken, cfg.OperatorToken, cfg.DeviceTokenSecret)
+	if *load > 0 {
+		return runLoad(ctx, log, api, tokens, *feeder, *load, *rate, *hold, *metrics)
+	}
 	fleet := dersim.NewFleet(api, *feeder, tokens.DeviceToken, log)
 	fleet.Every, fleet.DefaultExportW = *every, *fallback
 	fleet.RogueFraction, fleet.FlakyFraction, fleet.Seed = *rogue, *flaky, *seed
@@ -110,3 +122,49 @@ func client(apiURL string) *http.Client {
 		HTTP2: &http.HTTP2Config{SendPingTimeout: 15 * time.Second, PingTimeout: 10 * time.Second},
 	}}
 }
+
+// runLoad is the load test: it holds n subscriptions open, and prints how
+// long envelopes took to reach them and what the API's process looked like
+// with them open.
+func runLoad(ctx context.Context, log *slog.Logger, api *dersim.API, tokens *auth.Tokens, feeder string, n, rate int, hold time.Duration, metrics string) error {
+	l := dersim.NewLoad(api, feeder, tokens.DeviceToken, n, log)
+	l.Rate = rate
+	scrape := func(when string) {
+		if metrics == "" {
+			return
+		}
+		p, err := dersim.ScrapeProcess(ctx, http.DefaultClient, metrics)
+		if err != nil {
+			log.Warn("the API's metrics", "err", err)
+			return
+		}
+		log.Info("api process", "when", when, "subscriptions", p.Subscriptions, "goroutines", p.Goroutines,
+			"resident_mb", fmt.Sprintf("%.0f", p.ResidentBytes/(1<<20)), "heap_mb", fmt.Sprintf("%.0f", p.HeapBytes/(1<<20)))
+	}
+	scrape("before")
+	log.Info("load", "feeder", feeder, "subscribers", n, "rate", rate, "hold", hold.String())
+
+	// The process is looked at while the subscriptions are open: shortly
+	// before the hold ends.
+	watching, stop := context.WithCancel(ctx)
+	defer stop()
+	go func() {
+		ramp := time.Duration(n/rate) * time.Second
+		select {
+		case <-watching.Done():
+		case <-time.After(ramp + hold*9/10):
+			scrape("under load")
+		}
+	}()
+
+	report, err := l.Run(ctx, hold)
+	if err != nil {
+		return err
+	}
+	log.Info("load report", "subscribers", report.Subscribers, "connected", report.Connected, "failed", report.Failed,
+		"messages", report.Messages, "dispatches", report.Dispatches,
+		"p50_ms", ms(report.P50), "p90_ms", ms(report.P90), "p99_ms", ms(report.P99), "max_ms", ms(report.Max))
+	return nil
+}
+
+func ms(d time.Duration) string { return fmt.Sprintf("%.1f", float64(d.Microseconds())/1000) }

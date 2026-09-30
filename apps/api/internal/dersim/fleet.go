@@ -142,9 +142,9 @@ type forecastKey struct {
 	ts   int64
 }
 
-// call makes one unary call, bounded by the fleet's timeout.
-func call[Req, Res any](ctx context.Context, f *Fleet, method func(context.Context, *connect.Request[Req]) (*connect.Response[Res], error), msg *Req) (*Res, error) {
-	ctx, cancel := context.WithTimeout(ctx, f.Timeout)
+// call makes one unary call, bounded by a timeout on the wall clock.
+func call[Req, Res any](ctx context.Context, timeout time.Duration, method func(context.Context, *connect.Request[Req]) (*connect.Response[Res], error), msg *Req) (*Res, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	res, err := method(ctx, connect.NewRequest(msg))
 	if err != nil {
@@ -153,37 +153,46 @@ func call[Req, Res any](ctx context.Context, f *Fleet, method func(context.Conte
 	return res.Msg, nil
 }
 
+// feederSites reads a feeder by its code, and its sites.
+func (a *API) feederSites(ctx context.Context, timeout time.Duration, code string) (*doelabv1.Feeder, []domain.Site, error) {
+	res, err := call(ctx, timeout, a.Feeders.GetFeeder, &doelabv1.GetFeederRequest{
+		Key: &doelabv1.GetFeederRequest_Code{Code: code},
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("feeder %s: %w", code, err)
+	}
+	feeder := res.GetFeeder()
+	var sites []domain.Site
+	for token := ""; ; {
+		res, err := call(ctx, timeout, a.Sites.ListSites, &doelabv1.ListSitesRequest{
+			FeederId: feeder.GetId(), PageSize: pageSize, PageToken: token,
+		})
+		if err != nil {
+			return nil, nil, fmt.Errorf("sites: %w", err)
+		}
+		sites = append(sites, protomap.Slice(res.GetSites(), protomap.SiteFromMessage)...)
+		if token = res.GetNextPageToken(); token == "" {
+			return feeder, sites, nil
+		}
+	}
+}
+
 // Connect reads the feeder, its sites and their devices, and opens a
 // subscription for every site that has a device. The subscriptions live until
 // ctx ends or Close is called.
 func (f *Fleet) Connect(ctx context.Context) error {
-	feeder, err := call(ctx, f, f.API.Feeders.GetFeeder, &doelabv1.GetFeederRequest{
-		Key: &doelabv1.GetFeederRequest_Code{Code: f.FeederCode},
-	})
+	feeder, sites, err := f.API.feederSites(ctx, f.Timeout, f.FeederCode)
 	if err != nil {
-		return fmt.Errorf("feeder %s: %w", f.FeederCode, err)
+		return err
 	}
-	f.feederID = feeder.GetFeeder().GetId()
-	if f.zone, err = time.LoadLocation(feeder.GetFeeder().GetTimezone()); err != nil {
-		return fmt.Errorf("feeder %s: time zone %q: %w", f.FeederCode, feeder.GetFeeder().GetTimezone(), err)
+	f.feederID = feeder.GetId()
+	if f.zone, err = time.LoadLocation(feeder.GetTimezone()); err != nil {
+		return fmt.Errorf("feeder %s: time zone %q: %w", f.FeederCode, feeder.GetTimezone(), err)
 	}
 
-	var sites []domain.Site
-	for token := ""; ; {
-		res, err := call(ctx, f, f.API.Sites.ListSites, &doelabv1.ListSitesRequest{
-			FeederId: f.feederID, PageSize: pageSize, PageToken: token,
-		})
-		if err != nil {
-			return fmt.Errorf("sites: %w", err)
-		}
-		sites = append(sites, protomap.Slice(res.GetSites(), protomap.SiteFromMessage)...)
-		if token = res.GetNextPageToken(); token == "" {
-			break
-		}
-	}
 	devices := map[uuid.UUID][]domain.Device{}
 	for token := ""; ; {
-		res, err := call(ctx, f, f.API.Devices.ListDevices, &doelabv1.ListDevicesRequest{PageSize: pageSize, PageToken: token})
+		res, err := call(ctx, f.Timeout, f.API.Devices.ListDevices, &doelabv1.ListDevicesRequest{PageSize: pageSize, PageToken: token})
 		if err != nil {
 			return fmt.Errorf("devices: %w", err)
 		}
@@ -384,7 +393,7 @@ func (f *Fleet) refresh(ctx context.Context, at time.Time) error {
 		return nil
 	}
 	pvScale, interval := 1.0, defaultInterval
-	config, err := call(ctx, f, f.API.Configs.GetActiveEnvelopeConfig, &doelabv1.GetActiveEnvelopeConfigRequest{FeederId: f.feederID})
+	config, err := call(ctx, f.Timeout, f.API.Configs.GetActiveEnvelopeConfig, &doelabv1.GetActiveEnvelopeConfigRequest{FeederId: f.feederID})
 	switch {
 	case err == nil:
 		pvScale = config.GetEnvelopeConfig().GetPvScale()
@@ -393,7 +402,7 @@ func (f *Fleet) refresh(ctx context.Context, at time.Time) error {
 		return err
 	}
 	from := at.Truncate(30 * time.Minute)
-	res, err := call(ctx, f, f.API.Feeders.GetFeederForecast, &doelabv1.GetFeederForecastRequest{
+	res, err := call(ctx, f.Timeout, f.API.Feeders.GetFeederForecast, &doelabv1.GetFeederForecastRequest{
 		FeederId: f.feederID, From: timestamppb.New(from), To: timestamppb.New(from.Add(forecastWindow)),
 	})
 	if err != nil {
@@ -432,7 +441,7 @@ func (f *Fleet) limits(ctx context.Context, u *unit, at time.Time, stats *Stats)
 	if !covers(envelope, at) && !at.Before(u.noneUntil) {
 		stats.Asked++
 		envelope = nil
-		res, err := call(ctx, f, f.API.Envelopes.GetCurrentEnvelope, &doelabv1.GetCurrentEnvelopeRequest{
+		res, err := call(ctx, f.Timeout, f.API.Envelopes.GetCurrentEnvelope, &doelabv1.GetCurrentEnvelopeRequest{
 			Site: &doelabv1.GetCurrentEnvelopeRequest_Nmi{Nmi: u.site.NMI}, At: timestamppb.New(at),
 		})
 		switch {

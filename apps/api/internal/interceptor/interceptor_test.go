@@ -284,7 +284,7 @@ func TestErrors(t *testing.T) {
 func TestThrottle(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
-	th := NewThrottle(false)
+	th := NewThrottle(false, 100, 400)
 	th.now = func() time.Time { return now }
 	th.burst, th.perSecond = 3, 1
 
@@ -341,7 +341,7 @@ func TestThrottle(t *testing.T) {
 func TestThrottleEviction(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
-	th := NewThrottle(false)
+	th := NewThrottle(false, 100, 400)
 	th.now = func() time.Time { return now }
 
 	// Fill the table with buckets that have each spent one token.

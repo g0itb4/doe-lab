@@ -160,7 +160,7 @@ func New(t testing.TB) *API {
 		Tokens:          a.Tokens,
 		Stopping:        stopping,
 	}
-	cfg := config.Config{Env: config.Development, Reflection: true}
+	cfg := config.Config{Env: config.Development, Reflection: true, RateLimitPerSecond: 100, RateLimitBurst: 400}
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	srv := httptest.NewUnstartedServer(server.Handler(cfg, log, a.Deps))
 	srv.EnableHTTP2 = true
