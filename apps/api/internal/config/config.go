@@ -76,6 +76,11 @@ type Config struct {
 	// address: a stream counts once, when it opens.
 	RateLimitPerSecond int
 	RateLimitBurst     int
+	// KeepReadings, KeepEnvelopes and KeepAlerts are how much history the
+	// API keeps, in feeder time.
+	KeepReadings  time.Duration
+	KeepEnvelopes time.Duration
+	KeepAlerts    time.Duration
 	// TrustProxy decides whether X-Forwarded-For is evidence or input.
 	// Production runs on loopback behind Caddy, which appends the address it
 	// saw; development has nothing in front of it.
@@ -165,6 +170,28 @@ func Load() (Config, error) {
 	if c.RateLimitPerSecond < 1 || c.RateLimitBurst < c.RateLimitPerSecond {
 		return c, fmt.Errorf("RATE_LIMIT_PER_SECOND and RATE_LIMIT_BURST: expected at least 1 a second and a burst no smaller, got %d and %d",
 			c.RateLimitPerSecond, c.RateLimitBurst)
+	}
+
+	// How much history is kept, in days of feeder time. A demo that runs the
+	// clock at sixty times writes a day of history every 24 minutes, so these
+	// are what bound the database's size.
+	for _, keep := range []struct {
+		key      string
+		fallback int
+		into     *time.Duration
+	}{
+		{"RETENTION_READINGS_DAYS", 14, &c.KeepReadings},
+		{"RETENTION_ENVELOPES_DAYS", 30, &c.KeepEnvelopes},
+		{"RETENTION_ALERTS_DAYS", 90, &c.KeepAlerts},
+	} {
+		days, err := envInt(keep.key, keep.fallback)
+		if err != nil {
+			return c, err
+		}
+		if days < 1 || days > 3650 {
+			return c, fmt.Errorf("%s: expected 1 to 3650 days, got %d", keep.key, days)
+		}
+		*keep.into = time.Duration(days) * 24 * time.Hour
 	}
 
 	c.S3 = S3{

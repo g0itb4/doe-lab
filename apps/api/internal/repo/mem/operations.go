@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
@@ -543,4 +544,49 @@ func (r *repos) SupersedeBackstopEnvelopes(_ context.Context, eventID uuid.UUID,
 		}
 	}
 	return n, nil
+}
+
+func (r *repos) PurgeBefore(_ context.Context, readingsBefore, envelopesBefore, alertsBefore time.Time) (int, error) {
+	defer r.lock()()
+	st := r.s.st
+	for _, byTime := range st.readings {
+		maps.DeleteFunc(byTime, func(_ int64, reading domain.Reading) bool { return reading.TS.Before(readingsBefore) })
+	}
+	maps.DeleteFunc(st.envelopes, func(_ uuid.UUID, e domain.Envelope) bool { return e.ValidFrom.Before(envelopesBefore) })
+
+	// What an envelope still refers to stays.
+	runs, backstops := map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
+	for _, e := range st.envelopes {
+		if e.EnvelopeRunID != nil {
+			runs[*e.EnvelopeRunID] = true
+		}
+		if e.BackstopEventID != nil {
+			backstops[*e.BackstopEventID] = true
+		}
+	}
+	deleted := 0
+	for id, run := range st.runs {
+		if run.HorizonTo.Before(envelopesBefore) && !runs[id] {
+			delete(st.runs, id)
+			st.intervals = slices.DeleteFunc(st.intervals, func(i domain.EnvelopeRunInterval) bool { return i.EnvelopeRunID == id })
+			maps.DeleteFunc(st.keys, func(_ [2]string, k domain.IdempotencyKey) bool {
+				return k.EnvelopeRunID != nil && *k.EnvelopeRunID == id
+			})
+			deleted++
+		}
+	}
+	for id, alert := range st.alerts {
+		if alert.ResolvedAt != nil && alert.ResolvedAt.Before(alertsBefore) {
+			delete(st.alerts, id)
+			deleted++
+		}
+	}
+	for id, event := range st.backstops {
+		if event.ClearedAt != nil && event.ClearedAt.Before(alertsBefore) && !backstops[id] {
+			delete(st.backstops, id)
+			delete(st.backstopSites, id)
+			deleted++
+		}
+	}
+	return deleted, nil
 }

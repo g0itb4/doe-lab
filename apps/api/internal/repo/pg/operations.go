@@ -327,3 +327,10 @@ func (r *repos) SupersedeBackstopEnvelopes(ctx context.Context, eventID uuid.UUI
 	n, err := r.q.SupersedeBackstopEnvelopes(ctx, gen.SupersedeBackstopEnvelopesParams{BackstopEventID: &eventID, FromTs: from})
 	return int(n), pgErr(err)
 }
+
+func (r *repos) PurgeBefore(ctx context.Context, readingsBefore, envelopesBefore, alertsBefore time.Time) (int, error) {
+	deleted, err := r.q.PurgeBefore(ctx, gen.PurgeBeforeParams{
+		ReadingsBefore: readingsBefore, EnvelopesBefore: envelopesBefore, AlertsBefore: alertsBefore,
+	})
+	return int(deleted), pgErr(err)
+}

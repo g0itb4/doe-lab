@@ -40,6 +40,7 @@ type Repos interface {
 	TelemetryRepo
 	AlertRepo
 	BackstopRepo
+	RetentionRepo
 }
 
 // FeederRepo stores the network model.
@@ -236,6 +237,18 @@ type AlertRepo interface {
 	// acknowledged is returned as it is.
 	AcknowledgeAlert(ctx context.Context, id uuid.UUID, by string) (domain.Alert, error)
 	CountOpenAlerts(ctx context.Context, feederID uuid.UUID) (int, error)
+}
+
+// RetentionRepo removes history.
+type RetentionRepo interface {
+	// PurgeBefore removes what is older than the cutoffs, which are in feeder
+	// time: readings, envelopes, and then the runs, the resolved alerts and
+	// the cleared backstops that no envelope refers to any more. Readings and
+	// envelopes may be removed in whole chunks, so some that are older than
+	// the cutoff may stay until the next chunk goes; nothing newer than the
+	// cutoff is ever removed, and neither is an open alert or an active
+	// backstop. It returns the number of runs, alerts and backstops removed.
+	PurgeBefore(ctx context.Context, readingsBefore, envelopesBefore, alertsBefore time.Time) (int, error)
 }
 
 // BackstopRepo stores backstop events, and reads the envelopes a backstop

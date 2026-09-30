@@ -106,6 +106,10 @@ func run(log *slog.Logger) error {
 	// four times a second of wall time.
 	telemetry.WatchEvery = min(time.Second, max(250*time.Millisecond, clock.Real(time.Minute)))
 	go sweep(ctx, log, clock, compliance, backstops)
+	retention := service.NewRetention(store, clock, service.Keep{
+		Readings: cfg.KeepReadings, Envelopes: cfg.KeepEnvelopes, Alerts: cfg.KeepAlerts,
+	})
+	go retain(ctx, log, retention)
 
 	// Ends when the server begins to shut down, and the open streams with it.
 	stopping, stopStreams := context.WithCancel(context.Background())
@@ -171,6 +175,28 @@ func metricsMux(metrics http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /metrics", metrics)
 	return mux
+}
+
+// retain removes old history until ctx ends: a minute after the start, so a
+// restart loop cannot hammer the database, and every ten minutes after. A
+// sweep that finds nothing to remove costs a few index reads.
+func retain(ctx context.Context, log *slog.Logger, retention *service.Retention) {
+	wait := time.Minute
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait):
+		}
+		wait = 10 * time.Minute
+		removed, err := retention.Sweep(ctx)
+		switch {
+		case err != nil:
+			log.WarnContext(ctx, "retention sweep failed", "err", err)
+		case removed > 0:
+			log.InfoContext(ctx, "retention", "removed", removed)
+		}
+	}
 }
 
 // sweep runs the periodic work until ctx ends: it looks for devices that have

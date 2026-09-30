@@ -1438,3 +1438,53 @@ func TestExportRun(t *testing.T) {
 	}
 	o.store.failAt("")
 }
+
+func TestRetentionSweep(t *testing.T) {
+	t.Parallel()
+	o := newOps(t)
+	ctx := repotest.Ctx()
+	day := 24 * time.Hour
+	retention := service.NewRetention(o.store, o.clock, service.Keep{Readings: 14 * day, Envelopes: 30 * day, Alerts: 90 * day})
+
+	// A reading, an envelope and a resolved breach, all on the profile day.
+	o.limit(t, 0, 1000)
+	o.report(t, 0, 2000)
+	o.report(t, 60, 2000)
+	o.report(t, 120, 500)
+	count := func() (readings, envelopes, alerts int) {
+		r, _, err := o.store.ListReadings(ctx, o.solar.ID, repotest.Day, repotest.Day.Add(day), domain.Page{Size: 100})
+		if err != nil {
+			t.Fatal(err)
+		}
+		e, _, err := o.store.ListEnvelopes(ctx, o.f.SiteA.ID, repotest.Day, repotest.Day.Add(day), true, domain.Page{Size: 100})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return len(r), len(e), len(o.listAlerts(t, o.f.Feeder.ID))
+	}
+
+	// Each kind of history has its own age: after 20 days the readings have
+	// gone and the rest has not.
+	for _, step := range []struct {
+		days                        int
+		removed                     int
+		readings, envelopes, alerts int
+	}{
+		{days: 10, removed: 0, readings: 3, envelopes: 1, alerts: 1},
+		{days: 20, removed: 0, readings: 0, envelopes: 1, alerts: 1},
+		// The run's horizon ends a day after the profile day begins.
+		{days: 32, removed: 1, readings: 0, envelopes: 0, alerts: 1},
+		{days: 91, removed: 1, readings: 0, envelopes: 0, alerts: 0},
+	} {
+		o.clock.set(repotest.Day.Add(time.Duration(step.days) * day))
+		removed, err := retention.Sweep(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		readings, envelopes, alerts := count()
+		if removed != step.removed || readings != step.readings || envelopes != step.envelopes || alerts != step.alerts {
+			t.Errorf("after %d days: removed %d, left %d readings, %d envelopes, %d alerts; want %+v",
+				step.days, removed, readings, envelopes, alerts, step)
+		}
+	}
+}

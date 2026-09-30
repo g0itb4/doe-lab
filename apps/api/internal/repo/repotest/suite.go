@@ -1,6 +1,7 @@
 package repotest
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"math"
@@ -33,6 +34,7 @@ func Run(t *testing.T, newStore func(t *testing.T) service.Store) {
 		"Readings":        testReadings,
 		"Alerts":          testAlerts,
 		"Backstops":       testBackstops,
+		"Retention":       testRetention,
 		"Transactions":    testTransactions,
 		"PageTokens":      testPageTokens,
 	}
@@ -1336,5 +1338,133 @@ func testBackstops(t *testing.T, s service.Store) {
 	noErr(t, "active envelopes of no sites", err)
 	if len(none) != 0 {
 		t.Errorf("no sites have %d envelopes", len(none))
+	}
+}
+
+// Old history goes, and what is recent, open or active stays.
+func testRetention(t *testing.T, s service.Store) {
+	ctx := Ctx()
+	f := Seed(t, s, "LV10", 1)
+	config, err := s.CreateEnvelopeConfig(ctx, Config(f.Feeder.ID))
+	noErr(t, "config", err)
+	device, err := s.CreateDevice(ctx, domain.Device{SiteID: f.SiteA.ID, DERType: domain.DERSolar, RatedW: 5000})
+	noErr(t, "device", err)
+	a := f.SiteA.ID
+	// Two months on: well past any cutoff the test uses.
+	later := Day.Add(60 * 24 * time.Hour)
+
+	// An old run with an envelope, an interval and an idempotency key; and a
+	// recent one.
+	old, _, err := s.CreateEnvelopeRun(ctx, NewRun(f.Feeder.ID, config.ID, "run-old-0001"))
+	noErr(t, "old run", err)
+	recentRun := NewRun(f.Feeder.ID, config.ID, "run-new-0001")
+	recentRun.HorizonFrom, recentRun.HorizonTo = later, later.Add(24*time.Hour)
+	recent, _, err := s.CreateEnvelopeRun(ctx, recentRun)
+	noErr(t, "recent run", err)
+	recentEnvelope := Envelope(a, recent.ID, 0, 2000)
+	recentEnvelope.ValidFrom, recentEnvelope.ValidTo = later, later.Add(30*time.Minute)
+	_, _, err = s.ReplaceEnvelopes(ctx, []domain.Envelope{Envelope(a, old.ID, 0, 1000), recentEnvelope})
+	noErr(t, "envelopes", err)
+	noErr(t, "interval", s.CreateEnvelopeRunIntervals(ctx, []domain.EnvelopeRunInterval{Interval(old.ID, f.Feeder.ID, 0, 1)}))
+	_, _, err = s.ClaimIdempotencyKey(ctx, domain.IdempotencyKey{Scope: "publish_envelopes", Key: "batch-old-0001", RequestHash: bytes.Repeat([]byte{7}, 32), EnvelopeRunID: &old.ID})
+	noErr(t, "key", err)
+
+	// Readings then and now.
+	fresh := Reading(device.ID, 0, 900)
+	fresh.TS = later
+	_, err = s.InsertReadings(ctx, []domain.Reading{Reading(device.ID, 0, 1000), Reading(device.ID, 60, 1100), fresh})
+	noErr(t, "readings", err)
+
+	// An alert that was resolved long ago, one that is still open, and one
+	// that was resolved recently.
+	breach := domain.Alert{
+		SiteID: a, FeederID: f.Feeder.ID, Kind: domain.AlertConstraintBreach, Severity: domain.SeverityWarning,
+		OpenedAt: Day, LimitW: Ptr(1000.0), PeakW: Ptr(2000.0),
+	}
+	resolved, _, err := s.OpenAlert(ctx, breach)
+	noErr(t, "old alert", err)
+	_, err = s.ResolveAlert(ctx, a, domain.AlertConstraintBreach, Day.Add(time.Hour))
+	noErr(t, "resolve", err)
+	open, _, err := s.OpenAlert(ctx, domain.Alert{
+		SiteID: a, FeederID: f.Feeder.ID, DeviceID: &device.ID, Kind: domain.AlertDeviceOffline, Severity: domain.SeverityInfo, OpenedAt: Day,
+	})
+	noErr(t, "open alert", err)
+	breach.OpenedAt = later
+	lately, _, err := s.OpenAlert(ctx, breach)
+	noErr(t, "recent alert", err)
+	_, err = s.ResolveAlert(ctx, a, domain.AlertConstraintBreach, later.Add(time.Hour))
+	noErr(t, "resolve the recent alert", err)
+
+	// A backstop that was cleared long ago, and one that is active.
+	cleared, err := s.CreateBackstopEvent(ctx, domain.BackstopEvent{FeederID: f.Feeder.ID, Reason: "storm", TriggeredBy: "operator", TriggeredAt: Day.Add(2 * time.Hour)}, []uuid.UUID{a})
+	noErr(t, "old backstop", err)
+	_, err = s.ClearBackstopEvent(ctx, cleared.ID, "operator", Day.Add(3*time.Hour))
+	noErr(t, "clear", err)
+	active, err := s.CreateBackstopEvent(ctx, domain.BackstopEvent{FeederID: f.Feeder.ID, Reason: "fault", TriggeredBy: "operator", TriggeredAt: Day.Add(4 * time.Hour)}, []uuid.UUID{a})
+	noErr(t, "active backstop", err)
+
+	readings := func(from time.Time) int {
+		rows, _, err := s.ListReadings(ctx, device.ID, from, from.Add(24*time.Hour), domain.Page{Size: 100})
+		noErr(t, "list readings", err)
+		return len(rows)
+	}
+	envelopes := func(from time.Time) int {
+		rows, _, err := s.ListEnvelopes(ctx, a, from, from.Add(24*time.Hour), true, domain.Page{Size: 100})
+		noErr(t, "list envelopes", err)
+		return len(rows)
+	}
+
+	// A cutoff before everything removes nothing.
+	early := Day.Add(-24 * time.Hour)
+	n, err := s.PurgeBefore(ctx, early, early, early)
+	noErr(t, "purge before everything", err)
+	if n != 0 || readings(Day) != 2 || envelopes(Day) != 1 {
+		t.Fatalf("a cutoff before everything removed %d rows; %d readings and %d envelopes are left", n, readings(Day), envelopes(Day))
+	}
+
+	// A month on: the old run, the old alert and the cleared backstop go,
+	// with the readings and the envelopes of their time.
+	cutoff := Day.Add(30 * 24 * time.Hour)
+	n, err = s.PurgeBefore(ctx, cutoff, cutoff, cutoff)
+	noErr(t, "purge", err)
+	if n != 3 {
+		t.Errorf("the purge removed %d rows, want 3: a run, an alert and a backstop", n)
+	}
+	if readings(Day) != 0 || envelopes(Day) != 0 || readings(later) != 1 || envelopes(later) != 1 {
+		t.Errorf("after the purge: %d old and %d recent readings, %d old and %d recent envelopes; want 0, 1, 0, 1",
+			readings(Day), readings(later), envelopes(Day), envelopes(later))
+	}
+	_, err = s.GetEnvelopeRun(ctx, old.ID)
+	wantErr(t, "the old run", err, domain.ErrNotFound)
+	intervals, err := s.ListEnvelopeRunIntervals(ctx, old.ID)
+	noErr(t, "intervals", err)
+	if len(intervals) != 0 {
+		t.Errorf("the old run left %d intervals", len(intervals))
+	}
+	// Its key went with it: the same key can be claimed again.
+	_, claimed, err := s.ClaimIdempotencyKey(ctx, domain.IdempotencyKey{Scope: "publish_envelopes", Key: "batch-old-0001", RequestHash: bytes.Repeat([]byte{7}, 32), EnvelopeRunID: &recent.ID})
+	noErr(t, "claim the old key again", err)
+	if !claimed {
+		t.Error("the old run's idempotency key is still held")
+	}
+	_, err = s.GetEnvelopeRun(ctx, recent.ID)
+	noErr(t, "the recent run", err)
+
+	_, err = s.GetAlert(ctx, resolved.ID)
+	wantErr(t, "the alert resolved long ago", err, domain.ErrNotFound)
+	for name, id := range map[string]uuid.UUID{"the open alert": open.ID, "the alert resolved recently": lately.ID} {
+		_, err = s.GetAlert(ctx, id)
+		noErr(t, name, err)
+	}
+	_, err = s.GetBackstopEvent(ctx, cleared.ID)
+	wantErr(t, "the backstop cleared long ago", err, domain.ErrNotFound)
+	_, err = s.GetBackstopEvent(ctx, active.ID)
+	noErr(t, "the active backstop", err)
+
+	// Again: there is nothing more to remove.
+	n, err = s.PurgeBefore(ctx, cutoff, cutoff, cutoff)
+	noErr(t, "purge again", err)
+	if n != 0 {
+		t.Errorf("a second purge removed %d rows", n)
 	}
 }
