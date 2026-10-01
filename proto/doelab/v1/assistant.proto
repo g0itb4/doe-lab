@@ -1,0 +1,100 @@
+syntax = "proto3";
+
+package doelab.v1;
+
+import "buf/validate/validate.proto";
+
+// AssistantService answers a question about a feeder in plain words. A
+// language model writes the answer; what it knows of the feeder it reads
+// through four lookups, each of which the public API also serves. It changes
+// nothing: there is no tool that writes, and a backstop stays a person's
+// decision.
+//
+// The service is off unless the server was given a key for the model, and
+// each answer costs money, so it is rationed: a few questions a minute for
+// one address, a bound on the length of an answer, and a daily budget.
+service AssistantService {
+  // Says whether the assistant can be asked.
+  rpc GetAssistantStatus(GetAssistantStatusRequest) returns (GetAssistantStatusResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // Streams the answer to one question. Each question stands alone: the
+  // server keeps no conversation.
+  rpc Ask(AskRequest) returns (stream AskResponse);
+}
+
+// Why the assistant cannot be asked.
+enum AssistantUnavailable {
+  ASSISTANT_UNAVAILABLE_UNSPECIFIED = 0;
+  // The server has no key for the model.
+  ASSISTANT_UNAVAILABLE_OFF = 1;
+  // The budget of the day is spent. It is full again at midnight UTC.
+  ASSISTANT_UNAVAILABLE_BUDGET_SPENT = 2;
+}
+
+// A lookup the assistant can make.
+enum AssistantTool {
+  ASSISTANT_TOOL_UNSPECIFIED = 0;
+  // The limits of a site for an interval.
+  ASSISTANT_TOOL_GET_ENVELOPE = 1;
+  // What stops a site's limits from being larger.
+  ASSISTANT_TOOL_GET_BINDING_CONSTRAINT = 2;
+  // The alerts of the feeder, or of one site.
+  ASSISTANT_TOOL_LIST_BREACHES = 3;
+  // The config the engine runs with.
+  ASSISTANT_TOOL_GET_CONFIG = 4;
+}
+
+// How an answer ended.
+enum AnswerEnd {
+  ANSWER_END_UNSPECIFIED = 0;
+  // The answer is whole.
+  ANSWER_END_COMPLETE = 1;
+  // The answer reached the length bound and stops short.
+  ANSWER_END_CUT_SHORT = 2;
+  // The model declined to answer.
+  ANSWER_END_DECLINED = 3;
+  // The model asked for more lookups than one question may make.
+  ANSWER_END_TOO_MANY_LOOKUPS = 4;
+}
+
+message GetAssistantStatusRequest {}
+
+message GetAssistantStatusResponse {
+  bool available = 1;
+  // Set exactly when the assistant is not available.
+  AssistantUnavailable unavailable = 2;
+  // The longest question Ask accepts, in characters.
+  int32 max_question_chars = 3;
+}
+
+message AskRequest {
+  // The feeder the question is about.
+  string feeder_code = 1 [(buf.validate.field).string.pattern = "^[A-Z0-9][A-Z0-9_-]{0,31}$"];
+  string question = 2 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 500
+  }];
+  // The site on the asker's screen, so that "this site" means something.
+  optional string nmi = 3 [(buf.validate.field).string.pattern = "^[A-Z0-9]{10}[0-9]$"];
+}
+
+// One step of an answer. A stream is zero or more lookups and pieces of
+// text, in the order they happen, and then exactly one end.
+message AskResponse {
+  oneof step {
+    // The next piece of the answer. The pieces, joined, are the answer.
+    string text = 1;
+    // The assistant has looked something up.
+    AssistantLookup lookup = 2;
+    AnswerEnd end = 3;
+  }
+}
+
+message AssistantLookup {
+  AssistantTool tool = 1;
+  // What was looked up, in a few words: "XDLAB000014 at 12:30".
+  string subject = 2;
+  // False when the lookup found nothing, or was asked for badly.
+  bool found = 3;
+}

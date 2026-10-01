@@ -55,7 +55,11 @@ type API struct {
 	Telemetry  *service.Telemetry
 	// Objects is the object store that exports are written to.
 	Objects *mem.Objects
-	Tokens  *auth.Tokens
+	// Model is the scripted model behind the assistant, and Assistant the
+	// service, for a test that moves its rations.
+	Model     *Model
+	Assistant *service.Assistant
+	Tokens    *auth.Tokens
 	// DB is the database as the health check sees it.
 	DB   *FakeDB
 	Deps server.Deps
@@ -140,6 +144,9 @@ func New(t testing.TB) *API {
 	runs := service.NewEnvelopeRuns(store)
 	runs.Objects = a.Objects
 
+	a.Model = &Model{}
+	a.Assistant = service.NewAssistant(store, clock, a.Model, 1_000_000)
+
 	stopping, stop := context.WithCancel(context.Background())
 	a.Stop = stop
 	t.Cleanup(stop)
@@ -155,6 +162,7 @@ func New(t testing.TB) *API {
 		Telemetry:       controller.NewTelemetry(a.Telemetry),
 		Alerts:          controller.NewAlerts(service.NewAlerts(store)),
 		Backstops:       controller.NewBackstops(a.Backstops),
+		Assistant:       controller.NewAssistant(a.Assistant, false),
 		Database:        a.DB,
 		Validator:       validator(),
 		Tokens:          a.Tokens,

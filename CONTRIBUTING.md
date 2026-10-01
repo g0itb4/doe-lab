@@ -36,10 +36,10 @@ controller  →  service  →  domain  ←  repo
 
 | Layer      | Package                 | Does                                                                                               | Must not import                                                      |
 | ---------- | ----------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
-| Controller | `internal/controller`   | ConnectRPC handlers, proto ↔ domain mapping (`internal/protomap`), stream lifecycle                 | `internal/repo`, pgx, the AWS SDK. No business rules, no SQL         |
-| Service    | `internal/service`      | Business rules. Declares the interfaces it needs in `service/ports.go`                             | generated proto (`doelab/api/gen`), Connect, `internal/repo`, sqlc, pgx, the AWS SDK |
+| Controller | `internal/controller`   | ConnectRPC handlers, proto ↔ domain mapping (`internal/protomap`), stream lifecycle                 | `internal/repo`, pgx, the AWS SDK, the model SDK. No business rules, no SQL |
+| Service    | `internal/service`      | Business rules. Declares the interfaces it needs in `service/ports.go`                             | generated proto (`doelab/api/gen`), Connect, `internal/repo`, sqlc, pgx, the AWS SDK, the model SDK |
 | Domain     | `internal/domain`       | Plain types and domain errors                                                                      | everything above, and anything that does I/O                         |
-| Repository | `internal/repo/{pg,objstore,bus}` | Implements the service ports. Maps Postgres error codes to domain errors                  | No business rules                                                    |
+| Repository | `internal/repo/{pg,objstore,bus,llm}` | Implements the service ports. Maps Postgres error codes, and a model provider's failures, to domain errors | No business rules                                         |
 | Engine     | `internal/engine`       | Power flow and envelope search. Pure: no I/O, no clock, no globals                                  | any other package of this module, `os`, `net`, `time`, `database/sql` |
 | Clients    | `internal/enginerun`, `internal/dersim` | The engine and the simulated devices as clients of the API: they call it over RPC | `internal/service`, `internal/controller`, `internal/repo`, pgx |
 
@@ -49,6 +49,11 @@ package, add its rule in the same commit.
 
 `cmd/engine` and `cmd/dersim` talk to the API over RPC only. They never open
 the database.
+
+The assistant follows the same split: `service.Assistant` owns the
+conversation (the brief, the lookups, the rations), `service.Model` is the
+port, and `internal/repo/llm` is the only package that imports the provider's
+SDK. A lookup only reads. Do not add one that writes.
 
 ## Validation is split in two
 

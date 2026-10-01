@@ -115,6 +115,9 @@ type Config struct {
 	// AnthropicAPIKey enables the assistant. Empty means the assistant is
 	// off.
 	AnthropicAPIKey string
+	// AssistantDailyBudgetMicroUSD is what a UTC day of the assistant's
+	// answers may cost, in millionths of a US dollar.
+	AssistantDailyBudgetMicroUSD int64
 }
 
 // Load reads the environment. It returns an error rather than exiting so that
@@ -218,6 +221,17 @@ func Load() (Config, error) {
 	} else if c.ClockSpeed != 1 {
 		return c, errors.New("DEMO_CLOCK_ANCHOR: required when DEMO_CLOCK_SPEED is not 1")
 	}
+
+	// What the assistant may spend in a day. Small on purpose: the demo is
+	// public, and whoever finds it is asking with the owner's money.
+	budget, err := envFloat("ASSISTANT_DAILY_BUDGET_USD", 2)
+	if err != nil {
+		return c, err
+	}
+	if budget <= 0 || budget > 1000 {
+		return c, fmt.Errorf("ASSISTANT_DAILY_BUDGET_USD: expected more than 0 and at most 1000, got %v", budget)
+	}
+	c.AssistantDailyBudgetMicroUSD = int64(budget * 1e6)
 
 	c.EngineToken = env("ENGINE_TOKEN", devEngineToken)
 	c.OperatorToken = env("OPERATOR_TOKEN", devOperatorToken)

@@ -19,7 +19,7 @@ var production = map[string]string{
 // developer's own shell cannot leak in.
 var allKeys = []string{
 	"DOELAB_ENV", "DATABASE_URL", "HOST", "PORT", "DOELAB_VERSION", "API_URL", "METRICS_ADDR",
-	"OTEL_EXPORTER_OTLP_ENDPOINT", "ANTHROPIC_API_KEY", "DB_MAX_CONNS", "REQUEST_TIMEOUT_MS",
+	"OTEL_EXPORTER_OTLP_ENDPOINT", "ANTHROPIC_API_KEY", "ASSISTANT_DAILY_BUDGET_USD", "DB_MAX_CONNS", "REQUEST_TIMEOUT_MS",
 	"RATE_LIMIT_PER_SECOND", "RATE_LIMIT_BURST",
 	"RETENTION_READINGS_DAYS", "RETENTION_ENVELOPES_DAYS", "RETENTION_ALERTS_DAYS",
 	"S3_ENDPOINT", "S3_REGION", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY", "S3_PATH_STYLE",
@@ -61,6 +61,9 @@ func TestLoadDevelopment(t *testing.T) {
 	if c.AnthropicAPIKey != "" || c.OTLPEndpoint != "" {
 		t.Errorf("optional features on by default: %+v", c)
 	}
+	if c.AssistantDailyBudgetMicroUSD != 2_000_000 {
+		t.Errorf("the assistant's budget = %d millionths of a dollar, want two dollars", c.AssistantDailyBudgetMicroUSD)
+	}
 }
 
 func TestLoadTestCountsAsDevelopment(t *testing.T) {
@@ -76,6 +79,7 @@ func TestLoadProduction(t *testing.T) {
 		"PORT": "8443", "DB_MAX_CONNS": "32", "REQUEST_TIMEOUT_MS": "5000", "S3_PATH_STYLE": "false",
 		"RATE_LIMIT_PER_SECOND": "2000", "RATE_LIMIT_BURST": "20000", "RETENTION_ENVELOPES_DAYS": "7",
 		"DOELAB_VERSION": "abc123", "S3_ENDPOINT": "https://syd1.digitaloceanspaces.com",
+		"ANTHROPIC_API_KEY": "key-for-the-assistant", "ASSISTANT_DAILY_BUDGET_USD": "0.5",
 	})
 	c, err := Load()
 	if err != nil {
@@ -85,7 +89,8 @@ func TestLoadProduction(t *testing.T) {
 		t.Errorf("production posture = %+v", c)
 	}
 	if c.Port != 8443 || c.DBMaxConns != 32 || c.RequestTimeout != 5*time.Second || c.Version != "abc123" ||
-		c.RateLimitPerSecond != 2000 || c.RateLimitBurst != 20000 || c.KeepEnvelopes != 7*24*time.Hour {
+		c.RateLimitPerSecond != 2000 || c.RateLimitBurst != 20000 || c.KeepEnvelopes != 7*24*time.Hour ||
+		c.AnthropicAPIKey != "key-for-the-assistant" || c.AssistantDailyBudgetMicroUSD != 500_000 {
 		t.Errorf("overrides = %+v", c)
 	}
 }
@@ -120,6 +125,8 @@ func TestLoadErrors(t *testing.T) {
 		{name: "a burst below the rate", vars: map[string]string{"DOELAB_ENV": "development", "RATE_LIMIT_PER_SECOND": "500"}, want: "got 500 and 400"},
 		{name: "bad retention", vars: map[string]string{"DOELAB_ENV": "development", "RETENTION_READINGS_DAYS": "a week"}, want: "RETENTION_READINGS_DAYS: expected an integer"},
 		{name: "no retention at all", vars: map[string]string{"DOELAB_ENV": "development", "RETENTION_ALERTS_DAYS": "0"}, want: "RETENTION_ALERTS_DAYS: expected 1 to 3650 days, got 0"},
+		{name: "bad budget", vars: map[string]string{"DOELAB_ENV": "development", "ASSISTANT_DAILY_BUDGET_USD": "two dollars"}, want: "ASSISTANT_DAILY_BUDGET_USD: expected a number"},
+		{name: "no budget at all", vars: map[string]string{"DOELAB_ENV": "development", "ASSISTANT_DAILY_BUDGET_USD": "-1"}, want: "ASSISTANT_DAILY_BUDGET_USD: expected more than 0 and at most 1000, got -1"},
 		{name: "bad timeout", vars: map[string]string{"DOELAB_ENV": "development", "REQUEST_TIMEOUT_MS": "1s"}, want: "REQUEST_TIMEOUT_MS: expected an integer"},
 		{name: "bad clock speed", vars: map[string]string{"DOELAB_ENV": "development", "DEMO_CLOCK_SPEED": "fast"}, want: `DEMO_CLOCK_SPEED: expected a number, got "fast"`},
 		{name: "fast clock with no anchor", vars: map[string]string{"DOELAB_ENV": "development", "DEMO_CLOCK_SPEED": "60"}, want: "DEMO_CLOCK_ANCHOR: required when DEMO_CLOCK_SPEED is not 1"},

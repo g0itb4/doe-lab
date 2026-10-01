@@ -33,4 +33,7 @@ var (
 	ErrUnauthenticated = errors.New("unauthenticated")
 	// ErrPermissionDenied: the credentials are good but lack the scope.
 	ErrPermissionDenied = errors.New("permission denied")
+	// ErrExhausted: the request is fine, but its ration is spent: a rate
+	// limit or a budget. Later it may pass.
+	ErrExhausted = errors.New("exhausted")
 )

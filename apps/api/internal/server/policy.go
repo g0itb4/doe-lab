@@ -83,5 +83,9 @@ func Policy() interceptor.Policy {
 		doelabv1connect.BackstopServiceListBackstopEventsProcedure:  public,
 		doelabv1connect.BackstopServiceCreateBackstopEventProcedure: operator,
 		doelabv1connect.BackstopServiceClearBackstopProcedure:       operator,
+
+		// Public, and rationed by the service: a question costs money.
+		doelabv1connect.AssistantServiceGetAssistantStatusProcedure: public,
+		doelabv1connect.AssistantServiceAskProcedure:                public,
 	}
 }

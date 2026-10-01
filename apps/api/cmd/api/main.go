@@ -23,6 +23,7 @@ import (
 	"doelab/api/internal/controller"
 	"doelab/api/internal/interceptor"
 	"doelab/api/internal/obs"
+	"doelab/api/internal/repo/llm"
 	"doelab/api/internal/repo/objstore"
 	"doelab/api/internal/repo/pg"
 	"doelab/api/internal/repo/pgbus"
@@ -111,6 +112,13 @@ func run(log *slog.Logger) error {
 	})
 	go retain(ctx, log, retention)
 
+	// No key, no model, and the assistant says that it is off.
+	var model service.Model
+	if cfg.AnthropicAPIKey != "" {
+		model = llm.New(cfg.AnthropicAPIKey, log)
+	}
+	assistant := service.NewAssistant(store, clock, model, cfg.AssistantDailyBudgetMicroUSD)
+
 	// Ends when the server begins to shut down, and the open streams with it.
 	stopping, stopStreams := context.WithCancel(context.Background())
 	defer stopStreams()
@@ -126,6 +134,7 @@ func run(log *slog.Logger) error {
 		Telemetry:       controller.NewTelemetry(telemetry),
 		Alerts:          controller.NewAlerts(service.NewAlerts(store)),
 		Backstops:       controller.NewBackstops(backstops),
+		Assistant:       controller.NewAssistant(assistant, cfg.TrustProxy),
 		Database:        pool,
 		Validator:       validator,
 		Tokens:          auth.NewTokens(cfg.EngineToken, cfg.OperatorToken, cfg.DeviceTokenSecret),

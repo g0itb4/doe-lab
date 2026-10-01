@@ -120,6 +120,46 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/doelab.v1.ListAlertsResponse'
+  /doelab.v1.AssistantService/Ask: {}
+  /doelab.v1.AssistantService/GetAssistantStatus:
+    post:
+      tags:
+        - doelab.v1.AssistantService
+      summary: GetAssistantStatus
+      description: Says whether the assistant can be asked.
+      operationId: doelab.v1.AssistantService.GetAssistantStatus
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetAssistantStatusRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetAssistantStatusResponse'
   /doelab.v1.BackstopService/ClearBackstop:
     post:
       tags:
@@ -2041,6 +2081,120 @@ components:
         - AMPACITY_SOURCE_ASSUMED
         - AMPACITY_SOURCE_OPERATOR
       description: Where a line's current rating came from. Mirrors the ampacity_source type.
+    doelab.v1.AnswerEnd:
+      type: string
+      title: AnswerEnd
+      enum:
+        - ANSWER_END_UNSPECIFIED
+        - ANSWER_END_COMPLETE
+        - ANSWER_END_CUT_SHORT
+        - ANSWER_END_DECLINED
+        - ANSWER_END_TOO_MANY_LOOKUPS
+      description: How an answer ended.
+    doelab.v1.AskRequest:
+      type: object
+      properties:
+        feederCode:
+          type: string
+          title: feeder_code
+          pattern: ^[A-Z0-9][A-Z0-9_-]{0,31}$
+          description: The feeder the question is about.
+        question:
+          type: string
+          title: question
+          maxLength: 500
+          minLength: 1
+        nmi:
+          type:
+            - string
+            - "null"
+          title: nmi
+          pattern: ^[A-Z0-9]{10}[0-9]$
+          description: The site on the asker's screen, so that "this site" means something.
+      title: AskRequest
+      additionalProperties: false
+    doelab.v1.AskResponse:
+      type: object
+      anyOf:
+        - type: object
+          properties:
+            end:
+              allOf:
+                - $ref: '#/components/schemas/doelab.v1.AnswerEnd'
+              title: end
+          title: end
+        - type: object
+          properties:
+            lookup:
+              allOf:
+                - $ref: '#/components/schemas/doelab.v1.AssistantLookup'
+              title: lookup
+              description: The assistant has looked something up.
+          title: lookup
+        - type: object
+          properties:
+            text:
+              type: string
+              title: text
+              description: The next piece of the answer. The pieces, joined, are the answer.
+          title: text
+      unevaluatedProperties: false
+      not:
+        allOf:
+          - anyOf:
+              - required:
+                  - end
+              - required:
+                  - lookup
+              - required:
+                  - text
+          - not:
+              oneOf:
+                - required:
+                    - end
+                - required:
+                    - lookup
+                - required:
+                    - text
+      title: AskResponse
+      description: |-
+        One step of an answer. A stream is zero or more lookups and pieces of
+         text, in the order they happen, and then exactly one end.
+    doelab.v1.AssistantLookup:
+      type: object
+      properties:
+        tool:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.AssistantTool'
+          title: tool
+        subject:
+          type: string
+          title: subject
+          description: 'What was looked up, in a few words: "XDLAB000014 at 12:30".'
+        found:
+          type: boolean
+          title: found
+          description: False when the lookup found nothing, or was asked for badly.
+      title: AssistantLookup
+      additionalProperties: false
+    doelab.v1.AssistantTool:
+      type: string
+      title: AssistantTool
+      enum:
+        - ASSISTANT_TOOL_UNSPECIFIED
+        - ASSISTANT_TOOL_GET_ENVELOPE
+        - ASSISTANT_TOOL_GET_BINDING_CONSTRAINT
+        - ASSISTANT_TOOL_LIST_BREACHES
+        - ASSISTANT_TOOL_GET_CONFIG
+      description: A lookup the assistant can make.
+    doelab.v1.AssistantUnavailable:
+      type: string
+      title: AssistantUnavailable
+      enum:
+        - ASSISTANT_UNAVAILABLE_UNSPECIFIED
+        - ASSISTANT_UNAVAILABLE_OFF
+        - ASSISTANT_UNAVAILABLE_BUDGET_SPENT
+      description: Why the assistant cannot be asked.
     doelab.v1.BackstopEvent:
       type: object
       properties:
@@ -3326,6 +3480,28 @@ components:
             - $ref: '#/components/schemas/doelab.v1.Alert'
           title: alert
       title: GetAlertResponse
+      additionalProperties: false
+    doelab.v1.GetAssistantStatusRequest:
+      type: object
+      title: GetAssistantStatusRequest
+      additionalProperties: false
+    doelab.v1.GetAssistantStatusResponse:
+      type: object
+      properties:
+        available:
+          type: boolean
+          title: available
+        unavailable:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.AssistantUnavailable'
+          title: unavailable
+          description: Set exactly when the assistant is not available.
+        maxQuestionChars:
+          type: integer
+          title: max_question_chars
+          format: int32
+          description: The longest question Ask accepts, in characters.
+      title: GetAssistantStatusResponse
       additionalProperties: false
     doelab.v1.GetBackstopEventRequest:
       type: object
@@ -4881,6 +5057,17 @@ tags:
       AlertService shows the alerts of a feeder. Only the compliance service
        opens and resolves an alert, so there is no create, update or delete here:
        an operator can acknowledge one.
+  - name: doelab.v1.AssistantService
+    description: |-
+      AssistantService answers a question about a feeder in plain words. A
+       language model writes the answer; what it knows of the feeder it reads
+       through four lookups, each of which the public API also serves. It changes
+       nothing: there is no tool that writes, and a backstop stays a person's
+       decision.
+
+       The service is off unless the server was given a key for the model, and
+       each answer costs money, so it is rationed: a few questions a minute for
+       one address, a bound on the length of an answer, and a daily budget.
   - name: doelab.v1.BackstopService
     description: |-
       BackstopService is the emergency backstop: an operator overrides the

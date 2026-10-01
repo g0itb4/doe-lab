@@ -54,6 +54,8 @@ func (e errorMapper) translate(ctx context.Context, procedure string, err error)
 		code = connect.CodeUnauthenticated
 	case errors.Is(err, domain.ErrPermissionDenied):
 		code = connect.CodePermissionDenied
+	case errors.Is(err, domain.ErrExhausted):
+		code = connect.CodeResourceExhausted
 	case errors.Is(err, context.DeadlineExceeded):
 		code = connect.CodeDeadlineExceeded
 	case errors.Is(err, context.Canceled):

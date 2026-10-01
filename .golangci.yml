@@ -130,6 +130,8 @@ linters:
               desc: domain does no I/O
             - pkg: github.com/aws
               desc: domain does no I/O
+            - pkg: github.com/anthropics
+              desc: domain does no I/O
         service:
           files:
             - "**/internal/service/**"
@@ -150,6 +152,8 @@ linters:
               desc: SQL belongs in internal/repo/pg
             - pkg: github.com/aws
               desc: object storage belongs in internal/repo/objstore
+            - pkg: github.com/anthropics
+              desc: the language model belongs in internal/repo/llm; declare a port
         controller:
           files:
             - "**/internal/controller/**"
@@ -161,6 +165,8 @@ linters:
               desc: SQL belongs in internal/repo/pg
             - pkg: github.com/aws
               desc: object storage belongs in internal/repo/objstore
+            - pkg: github.com/anthropics
+              desc: the language model belongs in internal/repo/llm
         clients:
           files:
             - "**/internal/enginerun/**"

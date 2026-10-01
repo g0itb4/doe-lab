@@ -44,3 +44,6 @@ s3_secret_access_key: CHANGE_ME
 # Empty turns each off.
 otlp_endpoint: ""
 anthropic_api_key: ""
+# What a UTC day of the assistant's answers may cost, in US dollars. The API
+# counts it in memory, so also set a spending limit on the key itself.
+assistant_daily_budget_usd: 2

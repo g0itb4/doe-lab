@@ -371,3 +371,80 @@ type ObjectStore interface {
 	// until ttl has passed, with no credentials.
 	PresignGet(ctx context.Context, key string, ttl time.Duration) (string, error)
 }
+
+// Model is a language model that answers a question, and may ask for lookups
+// on the way. The adapter owns the wire format and the provider's types; the
+// service owns the loop, the lookups and the limits.
+type Model interface {
+	// Start opens a conversation. Nothing is sent until its first Next.
+	Start(brief ModelBrief) Conversation
+}
+
+// ModelBrief is what a conversation starts from.
+type ModelBrief struct {
+	// System is the standing instruction: the same for every question.
+	System string
+	Tools  []ModelTool
+	// Question is the asker's message, with its context.
+	Question string
+	// MaxTokens bounds what one turn may write.
+	MaxTokens int
+}
+
+// ModelTool describes a lookup to the model. Properties is the JSON schema
+// of each input field, by name.
+type ModelTool struct {
+	Name        string
+	Description string
+	Properties  map[string]any
+	Required    []string
+}
+
+// Conversation is one question in progress.
+type Conversation interface {
+	// Next runs one turn of the model. The first call takes no results; each
+	// later one takes the result of every call that the turn before asked
+	// for. Text reaches onText as the model writes it.
+	//
+	// A turn that the provider failed is domain.ErrRetryable, with nothing of
+	// the provider's own message in it.
+	Next(ctx context.Context, results []ToolResult, onText func(text string)) (ModelTurn, error)
+}
+
+// ModelStop is why a turn ended.
+type ModelStop int
+
+// The reasons a turn ends.
+const (
+	// StopAnswered: the answer is whole.
+	StopAnswered ModelStop = iota
+	// StopLookups: the model waits for the results of Calls.
+	StopLookups
+	// StopLength: the turn reached MaxTokens.
+	StopLength
+	// StopDeclined: the model refused.
+	StopDeclined
+)
+
+// ModelTurn is what one turn produced, besides its text.
+type ModelTurn struct {
+	Stop  ModelStop
+	Calls []ToolCall
+	// CostMicroUSD is what the turn cost, in millionths of a US dollar.
+	CostMicroUSD int64
+}
+
+// ToolCall is a lookup the model asks for. Input is a JSON object.
+type ToolCall struct {
+	ID    string
+	Name  string
+	Input []byte
+}
+
+// ToolResult answers a ToolCall.
+type ToolResult struct {
+	CallID  string
+	Content string
+	// IsError says the lookup could not be made as asked.
+	IsError bool
+}

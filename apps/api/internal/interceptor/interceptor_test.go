@@ -241,6 +241,7 @@ func TestErrors(t *testing.T) {
 		{domain.ErrRetryable, connect.CodeUnavailable},
 		{domain.ErrUnauthenticated, connect.CodeUnauthenticated},
 		{domain.ErrPermissionDenied, connect.CodePermissionDenied},
+		{domain.ErrExhausted, connect.CodeResourceExhausted},
 		{context.DeadlineExceeded, connect.CodeDeadlineExceeded},
 		{context.Canceled, connect.CodeCanceled},
 		// Already a Connect error: passed through untouched.

@@ -259,6 +259,13 @@ func (r faultyRepos) GetActiveBackstopEvent(ctx context.Context, feederID uuid.U
 	return r.Repos.GetActiveBackstopEvent(ctx, feederID)
 }
 
+func (r faultyRepos) GetBackstopEvent(ctx context.Context, id uuid.UUID) (domain.BackstopEvent, error) {
+	if err := r.plan.down("GetBackstopEvent"); err != nil {
+		return domain.BackstopEvent{}, err
+	}
+	return r.Repos.GetBackstopEvent(ctx, id)
+}
+
 func (r faultyRepos) ListBackstopEvents(ctx context.Context, feederID uuid.UUID, page domain.Page) ([]domain.BackstopEvent, string, error) {
 	if err := r.plan.down("ListBackstopEvents"); err != nil {
 		return nil, "", err

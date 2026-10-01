@@ -142,6 +142,7 @@ no update and no delete.
 | `EnvelopeService` | `PublishEnvelopes` (idempotent), `GetCurrentEnvelope`, `SubscribeEnvelopes` (server stream) |
 | `TelemetryService` | `IngestReadings` (client stream), the fleet's live summary, the feeder and site series, the daily report |
 | `AlertService`, `BackstopService` | Breaches, silent devices, and the operator's override |
+| `AssistantService` | `Ask` (server stream): a question about the feeder, answered in plain words by a language model that can only read. Off unless the server has a key |
 
 The limits carry their CSIP-AUS names on the wire (`opModExpLimW`,
 `opModImpLimW`); the transport is ConnectRPC, not IEEE 2030.5.
