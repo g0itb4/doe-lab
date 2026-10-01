@@ -135,11 +135,11 @@ is 120 kB and `just build-web` fails above it.
 
 | Page                            | First load |
 | ------------------------------- | ---------- |
-| `/`                             | 96.1 kB    |
-| `/sites`                        | 86.9 kB    |
-| `/sites/[nmi]` (fallback shell) | 83.5 kB    |
-| `/operations`                   | 91.9 kB    |
-| `/config`                       | 90.6 kB    |
+| `/`                             | 96.2 kB    |
+| `/sites`                        | 87.0 kB    |
+| `/sites/[nmi]` (fallback shell) | 83.6 kB    |
+| `/operations`                   | 92.3 kB    |
+| `/config`                       | 90.7 kB    |
 
 The browser's generated client leaves out the protovalidate rules (they
 were more than half of the generated JavaScript), and uPlot is not part of
