@@ -1,0 +1,28 @@
+# The simulated devices under systemd: a virtual inverter for every site that
+# has one, so that the public demo is live. A few of them misbehave on
+# purpose, so that the alerts have something to say.
+
+[Unit]
+Description=doe-lab simulated devices
+After=doelab-api.service
+Wants=doelab-api.service
+
+[Service]
+DynamicUser=yes
+EnvironmentFile=/etc/doelab/doelab.env
+EnvironmentFile=-/srv/doelab/current/version.env
+ExecStart=/srv/doelab/current/dersim -feeder LV10 -rogue 0.04 -flaky 0.04
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,146 @@
+# CI runs what a developer's hooks run, through the same `just` recipes, plus
+# the tiers that are too slow for a hook: the full Go suite, the container
+# tier and the web app end to end.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The versions the hooks were written against. Keep them in step with the
+  # tools on a developer's machine.
+  GOLANGCI_LINT_VERSION: v2.14.0
+  SQLC_VERSION: "1.31.1"
+  GITLEAKS_VERSION: "8.30.1"
+  PREK_VERSION: "0.5.4"
+
+jobs:
+  # Every git hook of both stages on every file: style, lint, secrets, and
+  # the Go and web unit tiers with their coverage floors.
+  hooks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The whole history: gitleaks scans every commit.
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/api/go.mod
+          cache-dependency-path: apps/api/go.sum
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: extractions/setup-just@v2
+      # The justfile's recipes run under zsh, which the runner does not ship.
+      - run: sudo apt-get update && sudo apt-get install -y zsh
+      - uses: sqlc-dev/setup-sqlc@v4
+        with:
+          sqlc-version: ${{ env.SQLC_VERSION }}
+      - name: Install golangci-lint, gitleaks and prek
+        run: |
+          curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "$(go env GOPATH)/bin" "$GOLANGCI_LINT_VERSION"
+          mkdir -p "$HOME/.local/bin"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C "$HOME/.local/bin" gitleaks
+          pipx install "prek==${PREK_VERSION}"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: bun install --frozen-lockfile
+      - run: just gen
+      - name: The generated OpenAPI description is up to date
+        run: git diff --exit-code -- docs/openapi
+      - name: Install the browser for the web tests
+        run: cd apps/web && bunx playwright install --with-deps chromium
+      - run: just check
+      - name: Scan the whole history for secrets
+        run: just secrets
+
+  # Every Go test with the race detector, the repositories against a real
+  # TimescaleDB and S3 gateway, and the engine's time budget.
+  go:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/api/go.mod
+          cache-dependency-path: apps/api/go.sum
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: extractions/setup-just@v2
+      # The justfile's recipes run under zsh, which the runner does not ship.
+      - run: sudo apt-get update && sudo apt-get install -y zsh
+      - uses: sqlc-dev/setup-sqlc@v4
+        with:
+          sqlc-version: ${{ env.SQLC_VERSION }}
+      - run: bun install --frozen-lockfile
+      - run: just gen
+      - run: cd apps/api && go vet ./...
+      - run: just test-go
+      # testcontainers starts the database and the object store in Docker,
+      # which the runner has.
+      - run: just test-db
+      - run: just bench
+
+  # The production build of the web app: its bundle budget, then Playwright
+  # at two widths with the accessibility scan.
+  web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: apps/api/go.mod
+          cache-dependency-path: apps/api/go.sum
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - uses: extractions/setup-just@v2
+      # The justfile's recipes run under zsh, which the runner does not ship.
+      - run: sudo apt-get update && sudo apt-get install -y zsh
+      - uses: sqlc-dev/setup-sqlc@v4
+        with:
+          sqlc-version: ${{ env.SQLC_VERSION }}
+      - run: bun install --frozen-lockfile
+      - run: just gen
+      - run: cd apps/web && bunx playwright install --with-deps chromium
+      - run: just e2e
+        env:
+          CI: "true"
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          retention-days: 7
+
+  # A pull request may not break the wire format of what main serves.
+  proto:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - name: buf breaking against the base branch
+        run: bunx buf breaking --against ".git#ref=origin/${{ github.base_ref }}"

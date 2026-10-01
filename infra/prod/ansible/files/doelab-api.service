@@ -1,0 +1,36 @@
+# The API under systemd. Installed by the playbook, which also enables it;
+# scripts/deploy.sh restarts it on every deploy.
+#
+# The binary is stateless (no files written, no sockets beyond its two
+# listeners), which is what makes DynamicUser and ProtectSystem=strict free:
+# there is nothing on disk that it needs to own.
+
+[Unit]
+Description=doe-lab API
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+DynamicUser=yes
+# Secrets, rendered by the playbook from vars.yml. Never in the repo.
+EnvironmentFile=/etc/doelab/doelab.env
+# DOELAB_VERSION, written by scripts/deploy.sh for each release. The leading -
+# means that a missing file is not an error.
+EnvironmentFile=-/srv/doelab/current/version.env
+ExecStart=/srv/doelab/current/api
+Restart=on-failure
+RestartSec=2
+# On SIGTERM the API ends its streams and drains for up to 10 s.
+TimeoutStopSec=15
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target

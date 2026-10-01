@@ -1,0 +1,311 @@
+# Provisions the production server: everything between "a fresh Ubuntu 24.04
+# box with your ssh key" and "ready for `just deploy`". It can be run again at
+# any time, to bring a server that has drifted back into line, or against a
+# new box to move.
+#
+# What it does not do: DNS, the first `just deploy`, and the import of the
+# feeder. Those are the manual steps in ../README.md, which is also the
+# runbook for what this automates.
+---
+- name: Provision the doe-lab server
+  hosts: doelab
+  become: true
+  vars_files:
+    - "{{ playbook_dir }}/vars.yml"
+
+  handlers:
+    - name: Reload ssh
+      ansible.builtin.service:
+        name: ssh
+        state: reloaded
+
+    - name: Reload caddy
+      ansible.builtin.service:
+        name: caddy
+        state: reloaded
+
+    - name: Restart postgres
+      ansible.builtin.service:
+        name: postgresql
+        state: restarted
+
+  tasks:
+    # ----- base -------------------------------------------------------------
+    - name: Base packages
+      ansible.builtin.apt:
+        name:
+          - rsync # deploy.sh ships releases with it
+          - curl
+          - acl # lets ansible become the unprivileged postgres user
+          - unattended-upgrades
+          - ufw
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Enable unattended security upgrades
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/20auto-upgrades
+        content: |
+          APT::Periodic::Update-Package-Lists "1";
+          APT::Periodic::Unattended-Upgrade "1";
+        mode: "0644"
+
+    # A small droplet has little headroom over Postgres, Caddy and three Go
+    # processes, and the provider's images ship with no swap: a spike would
+    # invite the OOM killer, whose favourite target is Postgres. Swap turns
+    # that into "slow for a moment".
+    - name: Swapfile allocated
+      ansible.builtin.command: fallocate -l 2G /swapfile
+      args:
+        creates: /swapfile
+      register: swapfile
+
+    - name: Swapfile permissions
+      ansible.builtin.file:
+        path: /swapfile
+        mode: "0600"
+
+    - name: Swapfile formatted
+      ansible.builtin.command: mkswap /swapfile
+      when: swapfile is changed
+
+    - name: Swapfile in fstab
+      ansible.posix.mount:
+        src: /swapfile
+        path: none
+        fstype: swap
+        opts: sw
+        state: present
+
+    - name: Swap active
+      ansible.builtin.command: swapon -a
+      when: swapfile is changed
+
+    # ----- the deploy user --------------------------------------------------
+    - name: Deploy user
+      ansible.builtin.user:
+        name: deploy
+        shell: /bin/bash
+
+    - name: Deploy user ssh key
+      ansible.posix.authorized_key:
+        user: deploy
+        key: "{{ deploy_ssh_public_key }}"
+
+    # The deploy user may restart the three units and nothing else.
+    # deploy.sh depends on this.
+    - name: Sudoers rule for deploy
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/deploy
+        content: |
+          deploy ALL=NOPASSWD: /usr/bin/systemctl restart doelab-api, /usr/bin/systemctl restart doelab-engine, /usr/bin/systemctl restart doelab-dersim
+        mode: "0440"
+        validate: visudo -cf %s
+
+    # ----- ssh and firewall -------------------------------------------------
+    - name: Harden sshd
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "^#?{{ item.key }} "
+        line: "{{ item.key }} {{ item.value }}"
+      loop:
+        - { key: PasswordAuthentication, value: "no" }
+        - { key: PermitRootLogin, value: prohibit-password }
+      notify: Reload ssh
+
+    - name: Firewall allows ssh
+      community.general.ufw:
+        rule: allow
+        name: OpenSSH
+
+    - name: Firewall allows http and https
+      community.general.ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - "80"
+        - "443"
+
+    # Ports 3100 (the API) and 9464 (its metrics) stay closed: both bind
+    # 127.0.0.1 anyway, so they are unreachable twice over.
+    - name: Firewall on, default deny
+      community.general.ufw:
+        state: enabled
+        policy: deny
+
+    # ----- postgres with timescaledb ----------------------------------------
+    # PGDG rather than the Ubuntu archive, which carries an older major.
+    - name: Postgresql-common (ships the PGDG repo installer)
+      ansible.builtin.apt:
+        name: postgresql-common
+        state: present
+
+    - name: PGDG apt repo
+      ansible.builtin.command: /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+      args:
+        creates: /etc/apt/sources.list.d/pgdg.sources
+
+    - name: TimescaleDB apt repo
+      ansible.builtin.deb822_repository:
+        name: timescaledb
+        uris: https://packagecloud.io/timescale/timescaledb/ubuntu/
+        suites: "{{ ansible_distribution_release }}"
+        components: main
+        signed_by: https://packagecloud.io/timescale/timescaledb/gpgkey
+      register: timescale_repo
+
+    - name: Apt cache after the repo change
+      ansible.builtin.apt:
+        update_cache: true
+      when: timescale_repo.changed
+
+    - name: Postgres 17 with TimescaleDB
+      ansible.builtin.apt:
+        name:
+          - postgresql-17
+          - timescaledb-2-postgresql-17
+          - python3-psycopg2 # for the postgresql_* modules below
+        state: present
+        update_cache: true
+
+    # TimescaleDB must be loaded when the server starts. A file of its own in
+    # conf.d, so that the packaged postgresql.conf stays as it was shipped.
+    # Postgres listens on localhost only by default, which is right and stays.
+    - name: TimescaleDB preloaded
+      ansible.builtin.copy:
+        dest: /etc/postgresql/17/main/conf.d/timescaledb.conf
+        content: |
+          shared_preload_libraries = 'timescaledb'
+          timescaledb.telemetry_level = off
+        mode: "0644"
+      notify: Restart postgres
+
+    - name: Postgres restarted before the database is used
+      ansible.builtin.meta: flush_handlers
+
+    - name: Database role
+      become_user: postgres
+      community.postgresql.postgresql_user:
+        name: doelab
+        password: "{{ doelab_db_password }}"
+
+    - name: Database
+      become_user: postgres
+      community.postgresql.postgresql_db:
+        name: doelab
+        owner: doelab
+
+    # The first migration says CREATE EXTENSION IF NOT EXISTS timescaledb,
+    # but timescaledb is not a trusted extension: the doelab role may not
+    # create it. It is created here, by the superuser, and the migration then
+    # finds it in place.
+    - name: TimescaleDB extension
+      become_user: postgres
+      community.postgresql.postgresql_ext:
+        name: timescaledb
+        db: doelab
+
+    # The retention job prunes the audit log, which a trigger keeps
+    # append-only. The prune lifts that trigger for its own transaction with
+    # SET LOCAL session_replication_role, which a plain role may only set
+    # when it has been granted (PostgreSQL 15 and later). Without this grant
+    # every retention sweep fails, and the database grows until the disk is
+    # full.
+    - name: The doelab role may lift the audit log's guard in its own transaction
+      become_user: postgres
+      community.postgresql.postgresql_query:
+        db: doelab
+        query: GRANT SET ON PARAMETER session_replication_role TO doelab
+      changed_when: false
+
+    # No backup job. Nearly everything in the database can be rebuilt: the
+    # feeder and the profiles by the import, and the envelopes, the readings
+    # and the alerts by letting the engine and the devices run. What cannot
+    # is the history of config versions that an operator has saved; see
+    # ../README.md.
+
+    # ----- caddy ------------------------------------------------------------
+    - name: Caddy apt repo
+      ansible.builtin.deb822_repository:
+        name: caddy-stable
+        uris: https://dl.cloudsmith.io/public/caddy/stable/deb/debian
+        suites: any-version
+        components: main
+        signed_by: https://dl.cloudsmith.io/public/caddy/stable/gpg.key
+      register: caddy_repo
+
+    - name: Apt cache after the Caddy repo change
+      ansible.builtin.apt:
+        update_cache: true
+      when: caddy_repo.changed
+
+    - name: Caddy
+      ansible.builtin.apt:
+        name: caddy
+        state: present
+
+    - name: Caddyfile
+      ansible.builtin.template:
+        src: Caddyfile.j2
+        dest: /etc/caddy/Caddyfile
+        mode: "0644"
+        validate: caddy validate --adapter caddyfile --config %s
+      notify: Reload caddy
+
+    # ----- the app ----------------------------------------------------------
+    - name: Release directory
+      ansible.builtin.file:
+        path: /srv/doelab/releases
+        state: directory
+        owner: deploy
+        group: deploy
+        mode: "0755"
+
+    # Where the raw datasets are copied for the import (../README.md).
+    - name: Data directory
+      ansible.builtin.file:
+        path: /srv/doelab/data
+        state: directory
+        owner: deploy
+        group: deploy
+        mode: "0755"
+
+    - name: Config directory
+      ansible.builtin.file:
+        path: /etc/doelab
+        state: directory
+        mode: "0755"
+
+    # Group-readable by deploy because deploy.sh sources it to run migrations.
+    - name: Environment
+      ansible.builtin.template:
+        src: doelab.env.j2
+        dest: /etc/doelab/doelab.env
+        owner: root
+        group: deploy
+        mode: "0640"
+        backup: true
+
+    # Enabled but not started: a fresh box has no release yet, and deploy.sh
+    # restarts all three on every deploy.
+    - name: Systemd units
+      ansible.builtin.copy:
+        src: "{{ item }}.service"
+        dest: "/etc/systemd/system/{{ item }}.service"
+        mode: "0644"
+      loop:
+        - doelab-api
+        - doelab-engine
+        - doelab-dersim
+
+    - name: Units enabled
+      ansible.builtin.systemd_service:
+        name: "{{ item }}"
+        enabled: true
+        daemon_reload: true
+      loop:
+        - doelab-api
+        - doelab-engine
+        - doelab-dersim

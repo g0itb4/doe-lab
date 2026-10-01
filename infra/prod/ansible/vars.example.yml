@@ -1,0 +1,46 @@
+# Copy to vars.yml (gitignored) and fill in. vars.yml is the canonical source
+# of the server's configuration: the playbook renders doelab.env and the
+# Caddyfile from it, so change values here and re-run rather than editing
+# files on the server.
+---
+# DNS must point here before the first playbook run, or Caddy cannot obtain a
+# certificate.
+doelab_domain: doelab.example.com
+
+# The public key that may deploy.
+deploy_ssh_public_key: ssh-ed25519 AAAA... you@laptop
+
+# Postgres password for the doelab role. Localhost only, but pick a real one.
+doelab_db_password: CHANGE_ME
+
+# One for each scope, each at least 24 characters, all different:
+# `openssl rand -hex 32`. The operator token is what the Operations and
+# Config pages ask for; without it a visitor can look and cannot change.
+engine_token: CHANGE_ME
+operator_token: CHANGE_ME
+device_token_secret: CHANGE_ME
+
+# The demo clock. 60 means a day on the feeder passes in 24 minutes. The
+# anchor is the instant at which feeder time equals the wall clock: set it to
+# the day of the first deploy and then leave it alone (see "The clock" in
+# ../README.md).
+demo_clock_speed: 60
+demo_clock_anchor: "2026-10-05T00:00:00Z"
+
+# Days of feeder time that are kept. At a clock speed of 60, on LV10, 14 days
+# of readings are about 250 MB and 30 days of envelopes about 700 MB.
+retention_readings_days: 14
+retention_envelopes_days: 30
+retention_alerts_days: 90
+
+# DigitalOcean Spaces (or any S3). The bucket must exist.
+s3_endpoint: https://syd1.digitaloceanspaces.com
+s3_region: syd1
+s3_bucket: CHANGE_ME
+s3_access_key_id: CHANGE_ME
+s3_secret_access_key: CHANGE_ME
+
+# Optional. An OTLP/HTTP collector for traces, and the key of the assistant.
+# Empty turns each off.
+otlp_endpoint: ""
+anthropic_api_key: ""

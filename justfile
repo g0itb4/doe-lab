@@ -50,6 +50,14 @@ obs:
     @echo "Grafana:    http://localhost:3300/d/doelab"
     @echo "Prometheus: http://localhost:9290"
 
+# Builds here, ships with rsync, migrates, switches the release and checks its
+# health; rolls back by itself when the check fails. The server is set up
+# once with the playbook in infra/prod/ansible. See infra/prod/README.md.
+#
+# deploy a release: just deploy deploy@example.com
+deploy host:
+    bash scripts/deploy.sh {{host}}
+
 # psql into the dev database
 psql *args:
     {{compose}} exec postgres psql -U doelab -d doelab "$@"

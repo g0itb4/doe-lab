@@ -1,0 +1,30 @@
+# The engine under systemd: a run now, and another every two intervals of
+# feeder time. It is a client of the API and nothing else; it never opens the
+# database.
+
+[Unit]
+Description=doe-lab engine
+After=doelab-api.service
+Wants=doelab-api.service
+
+[Service]
+DynamicUser=yes
+EnvironmentFile=/etc/doelab/doelab.env
+EnvironmentFile=-/srv/doelab/current/version.env
+ExecStart=/srv/doelab/current/engine -feeder LV10
+# Always: the engine exits when it cannot reach the API at start, and the
+# API may be a moment behind it after a deploy.
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

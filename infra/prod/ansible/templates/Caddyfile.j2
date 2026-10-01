@@ -1,0 +1,80 @@
+# The edge: TLS, the static web app, and the proxy to the API.
+#
+# Installed to /etc/caddy/Caddyfile by the playbook, which fills in
+# doelab_domain from vars.yml and reloads Caddy on change.
+
+# Naming a domain is what turns on automatic Let's Encrypt TLS; DNS must
+# already point at this server.
+{{ doelab_domain }} {
+	# Compress text-like responses by content type, never gRPC: gRPC carries
+	# its own framing and compression flag, and the API already compresses
+	# Connect responses over 1 kB itself. The static files ship .br and .gz
+	# beside them (see file_server below); this is for what cannot be
+	# compressed ahead of time, chiefly Connect JSON.
+	encode zstd gzip {
+		match {
+			header Content-Type text/*
+			header Content-Type application/json*
+			header Content-Type application/javascript*
+			header Content-Type image/svg+xml*
+		}
+	}
+
+	# The headers that a <meta http-equiv> CSP cannot carry. The CSP itself is
+	# in apps/web/svelte.config.js, because only SvelteKit knows the hash of
+	# the script it inlines into each page.
+	header {
+		Strict-Transport-Security "max-age=15552000; includeSubDomains"
+		X-Frame-Options "DENY"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# gRPC stubs compute /package.Service/Method with no prefix, so they are
+	# matched on Content-Type, not on path. The web app's Connect client uses
+	# the /rpc prefix; the health service is at its own root path, so that an
+	# uptime checker speaking plain JSON can reach it.
+	@grpc header Content-Type application/grpc*
+	@rpc path /rpc/* /grpc.health.v1.Health/*
+
+	# h2c:// keeps HTTP/2 on the hop to the API, which gRPC requires; TLS ends
+	# here. flush_interval -1 turns response buffering off: without it a server
+	# stream (an envelope subscription, the fleet's live figures) would arrive
+	# all at once, at its end.
+	handle @grpc {
+		reverse_proxy h2c://127.0.0.1:3100 {
+			flush_interval -1
+		}
+	}
+	handle @rpc {
+		reverse_proxy h2c://127.0.0.1:3100 {
+			flush_interval -1
+		}
+	}
+
+	# /metrics is not here on purpose: the API serves it on another port, on
+	# loopback only.
+
+	# Everything else is the static build, shipped by scripts/deploy.sh.
+	handle {
+		root * /srv/doelab/current/web
+
+		# Content-hashed assets never change.
+		@hashed path /_app/immutable/*
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+
+		# A page must revalidate, or a browser pins itself to an old bundle
+		# whose hashed chunks no longer exist.
+		@page not path /_app/*
+		header @page Cache-Control "no-cache"
+
+		# A prerendered page first (/sites is sites.html), then the fallback
+		# shell for the one route that is not prerendered, /sites/<nmi>.
+		try_files {path} {path}.html {path}/ /200.html
+		# The .br and .gz files that the build writes beside each file.
+		file_server {
+			precompressed br gzip
+		}
+	}
+}
