@@ -1,9 +1,11 @@
 <script lang="ts">
   import "../app.css";
-  import type { Snippet } from "svelte";
+  import type { Component, Snippet } from "svelte";
   import { browser } from "$app/environment";
   import { page } from "$app/state";
+  import { assistant } from "$lib/assistant.svelte.ts";
   import { clock } from "$lib/clock.svelte.ts";
+  import Icon from "$lib/components/Icon.svelte";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
   import Toasts from "$lib/components/Toasts.svelte";
   import { ensureFeeder, feeder } from "$lib/feeder.svelte.ts";
@@ -19,7 +21,23 @@
     theme.init();
     void clock.start();
     ensureFeeder();
+    void assistant.check();
   }
+
+  // The drawer is fetched when it is first opened: most visits never ask.
+  type DrawerProps = { open: boolean; feederCode: string; nmi?: string };
+  let Drawer = $state<Component<DrawerProps, object, "open">>();
+  let asking = $state(false);
+  async function openAssistant() {
+    Drawer ??= (await import("$lib/components/AssistantDrawer.svelte")).default;
+    asking = true;
+  }
+  // Shown only when the server has an assistant: a button that leads nowhere
+  // is worse than none.
+  const canAsk = $derived(
+    (assistant.availability === "available" || assistant.availability === "spent") &&
+      feeder.data !== undefined,
+  );
 
   const links = [
     { href: "/", label: "Overview" },
@@ -81,7 +99,7 @@
   {@render children()}
 </main>
 
-<footer class="text-muted mx-auto max-w-6xl px-4 pt-4 pb-8 text-xs">
+<footer class="text-muted mx-auto max-w-6xl px-4 pt-4 pb-20 text-xs">
   <p>
     A simulation, not a real network. Feeder model: "Realistic Australian Medium Voltage Feeder with
     Associated Low Voltage Feeders", CSIRO Data Access Portal, © GridQube 2025, CC BY-NC-SA 4.0.
@@ -89,5 +107,21 @@
     homes and connection points is synthetic, and so are the NMIs.
   </p>
 </footer>
+
+{#if canAsk}
+  <!-- Fixed, so it appears without moving anything. The footer leaves room
+       under the last line of the page. -->
+  <button
+    type="button"
+    class="btn btn-primary fixed right-4 bottom-4 z-40 shadow-lg"
+    aria-haspopup="dialog"
+    onclick={openAssistant}
+  >
+    <Icon name="ask" /> Ask
+  </button>
+{/if}
+{#if Drawer && feeder.data}
+  <Drawer bind:open={asking} feederCode={feeder.data.code} nmi={page.params.nmi} />
+{/if}
 
 <Toasts />

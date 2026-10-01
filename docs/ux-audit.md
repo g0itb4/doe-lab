@@ -22,7 +22,7 @@ from a look at the screen.
 | Rule | Check | Result |
 | ---- | ----- | ------ |
 | Text contrast at least 4.5:1; chart lines and control borders at least 3:1; in both themes | `tokens.svelte.test.ts` computes the WCAG contrast of every pair of design tokens that is used together, in the light and the dark theme: 20 pairs, 40 assertions | pass |
-| No WCAG 2.2 AA violation | `e2e/app.spec.ts` runs axe-core (tags wcag2a, wcag2aa, wcag21a, wcag21aa, wcag22aa) on the five pages, in both themes, at both widths: 20 runs | 0 violations |
+| No WCAG 2.2 AA violation | `e2e/app.spec.ts` runs axe-core (tags wcag2a, wcag2aa, wcag21a, wcag21aa, wcag22aa) on the five pages and on the open assistant drawer, in both themes, at both widths: 24 runs | 0 violations |
 | Every control works by keyboard, with a visible focus ring | One e2e test reaches the backstop control with Tab alone, checks a focus ring of at least 2 px on every stop, then triggers and clears a backstop from the keyboard | pass |
 | Pointer targets at least 24 by 24 px | An e2e test measures every link, button and field on every page (links inside a sentence are exempt, as in WCAG 2.5.8) | pass |
 | Semantic HTML; one `<h1>` per page | The e2e smoke test counts the `<h1>` on each page; the pages use `<nav>`, `<main>`, `<table>` with `<caption>` and `scope`, `<button>`, `<label for>` | pass |
@@ -90,6 +90,17 @@ from a look at the screen.
 | The time range, the zoom, the alert filter and the site search live in the address | `query.test.ts`, `series.test.ts`; e2e tests open a view from its address |
 | The current page is marked with `aria-current`; a skip link | e2e smoke test; e2e skip-link test |
 
+### The assistant drawer
+
+| Rule | Check |
+| ---- | ----- |
+| It says what writes the answers, and that a figure should be checked | `AssistantDrawer` test: the sentence is on screen before any question |
+| A modal dialog: the focus is held inside, Escape closes it, and the focus goes back to the button that opened it | `AssistantDrawer` test (`:modal`, the focus in the question); the keyboard-only e2e test opens it, asks, and closes it |
+| The answer is announced once, when it is whole, not piece by piece | The answer is an `aria-live="polite"` region that is `aria-busy` while it streams; component test |
+| Every state is designed | Component tests: empty (questions to start from), working ("Looking things up…", with a Stop button), an answer that ended badly (a note that says how), an error (plain words, "Ask again", nothing of the server's message), and a spent budget (the field disabled, and when it is back) |
+| The lookups behind an answer are shown | Component and e2e tests: "What limits XDLAB000022 at 12:30 on 10 Nov" |
+| No dead control | With no assistant on the server there is no button: e2e test. The button is fixed, so its arrival moves nothing |
+
 ## Lighthouse
 
 Lighthouse 13, mobile profile (simulated slow 4G, 4× CPU slowdown), on the
@@ -135,15 +146,16 @@ is 120 kB and `just build-web` fails above it.
 
 | Page                            | First load |
 | ------------------------------- | ---------- |
-| `/`                             | 96.2 kB    |
-| `/sites`                        | 87.0 kB    |
-| `/sites/[nmi]` (fallback shell) | 83.6 kB    |
-| `/operations`                   | 92.3 kB    |
-| `/config`                       | 90.7 kB    |
+| `/`                             | 98.8 kB    |
+| `/sites`                        | 89.6 kB    |
+| `/sites/[nmi]` (fallback shell) | 86.3 kB    |
+| `/operations`                   | 95.0 kB    |
+| `/config`                       | 93.4 kB    |
 
 The browser's generated client leaves out the protovalidate rules (they
 were more than half of the generated JavaScript), and uPlot is not part of
-any first load.
+any first load. Neither is the assistant drawer: it is fetched when it is
+first opened.
 
 ## What the automated checks do not cover
 

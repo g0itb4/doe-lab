@@ -48,6 +48,11 @@ export const NMI = { enrolled: SITES[0]!.nmi, breaching: SITES[1]!.nmi, passive:
 const iso = (ms: number) => new Date(ms).toISOString();
 const HALF_HOUR = 1800_000;
 
+type Row = Record<string, unknown>;
+// The JSON of a request: whatever the page sent.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Message = any;
+
 export type Mock = {
   // The calls that changed something, in order: "Service/Method".
   writes: string[];
@@ -55,15 +60,20 @@ export type Mock = {
   streamsDown: boolean;
   // Extra milliseconds before every answer.
   delayMs: number;
+  // Whether the server has an assistant.
+  assistant: "available" | "off";
+  // Every question the assistant was asked.
+  asked: Message[];
 };
 
-type Row = Record<string, unknown>;
-// The JSON of a request: whatever the page sent.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Message = any;
-
 export async function mockApi(page: Page): Promise<Mock> {
-  const mock: Mock = { writes: [], streamsDown: false, delayMs: 0 };
+  const mock: Mock = {
+    writes: [],
+    streamsDown: false,
+    delayMs: 0,
+    assistant: "available",
+    asked: [],
+  };
   const start = Math.floor(Date.now() / HALF_HOUR) * HALF_HOUR;
 
   let backstop: Row | undefined;
@@ -316,6 +326,10 @@ export async function mockApi(page: Page): Promise<Mock> {
       backstop = undefined;
       return { backstopEvent: cleared };
     },
+    "AssistantService/GetAssistantStatus": () =>
+      mock.assistant === "available"
+        ? { available: true, maxQuestionChars: 500 }
+        : { unavailable: "ASSISTANT_UNAVAILABLE_OFF", maxQuestionChars: 500 },
     "EnvelopeConfigService/ListEnvelopeConfigs": () => ({
       envelopeConfigs: [...configs].reverse(),
     }),
@@ -349,6 +363,34 @@ export async function mockApi(page: Page): Promise<Mock> {
         status: 200,
         contentType: "application/connect+json",
         body: Buffer.concat([frame(0, { summary: summary() }), frame(2, {})]),
+      });
+    }
+
+    // An answer: two lookups, the text in two pieces, and the end. The
+    // question arrives as one frame of a stream.
+    if (procedure === "AssistantService/Ask") {
+      const question = JSON.parse(request.postDataBuffer()!.subarray(5).toString("utf8"));
+      mock.asked.push(question);
+      const site = question.nmi ?? NMI.enrolled;
+      return route.fulfill({
+        status: 200,
+        contentType: "application/connect+json",
+        body: Buffer.concat([
+          frame(0, {
+            lookup: {
+              tool: "ASSISTANT_TOOL_GET_BINDING_CONSTRAINT",
+              subject: `${site} at 12:30 on 10 Nov`,
+              found: true,
+            },
+          }),
+          frame(0, {
+            lookup: { tool: "ASSISTANT_TOOL_GET_CONFIG", subject: "config version 1", found: true },
+          }),
+          frame(0, { text: `${site} is limited to 1.5 kW by voltage ` }),
+          frame(0, { text: "at XDLAB000022, which would pass 253 V." }),
+          frame(0, { end: "ANSWER_END_COMPLETE" }),
+          frame(2, {}),
+        ]),
       });
     }
 

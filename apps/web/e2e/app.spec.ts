@@ -482,3 +482,79 @@ test("a page keeps its layout while it loads", async ({ page, api }) => {
   const cls = await page.evaluate(() => (window as unknown as { __cls?: number }).__cls ?? 0);
   expect(cls, "cumulative layout shift").toBeLessThan(0.1);
 });
+
+test("the assistant answers a question about the site on screen, from the keyboard", async ({
+  page,
+  api,
+  errors,
+}) => {
+  await open(page, `/sites/${NMI.breaching}`, "Envelope, forecast and telemetry");
+  const ask = page.getByRole("button", { name: "Ask", exact: true });
+  await ask.focus();
+  await page.keyboard.press("Enter");
+
+  // A modal dialog, with the focus in the question.
+  const drawer = page.getByRole("dialog", { name: "Ask about LV10" });
+  await expect(drawer).toBeVisible();
+  await expect(drawer.getByLabel("Your question")).toBeFocused();
+  await expect(
+    drawer.getByRole("button", { name: `Why is ${NMI.breaching} limited now?` }),
+  ).toBeVisible();
+
+  await page.keyboard.type("Why is this site limited at 12:30?");
+  await page.keyboard.press("Enter");
+  const answer = drawer.getByRole("region", { name: "Answer" });
+  await expect(answer).toContainText(
+    `${NMI.breaching} is limited to 1.5 kW by voltage at XDLAB000022, which would pass 253 V.`,
+  );
+  await expect(answer.getByRole("listitem")).toHaveText([
+    `What limits ${NMI.breaching} at 12:30 on 10 Nov`,
+    "Config version 1",
+  ]);
+  // The question went with the feeder and the site on screen.
+  expect(api.asked).toEqual([
+    { feederCode: "LV10", question: "Why is this site limited at 12:30?", nmi: NMI.breaching },
+  ]);
+  expect(api.writes).toEqual([]);
+
+  // Nothing of it scrolls the page sideways, at either size.
+  const overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
+
+  // Escape closes it, and the focus is back on the button that opened it.
+  await page.keyboard.press("Escape");
+  await expect(drawer).toBeHidden();
+  await expect(ask).toBeFocused();
+  expect(errors).toEqual([]);
+});
+
+for (const scheme of ["light", "dark"] as const) {
+  test(`the assistant drawer has no WCAG 2.2 AA violation in the ${scheme} theme`, async ({
+    page,
+    api,
+  }) => {
+    void api;
+    await page.emulateMedia({ colorScheme: scheme });
+    await open(page, "/", "Export: allowed and measured");
+    await page.getByRole("button", { name: "Ask", exact: true }).click();
+    const drawer = page.getByRole("dialog", { name: "Ask about LV10" });
+    await drawer.getByRole("button", { name: "Which sites are over their limit now?" }).click();
+    await expect(drawer.getByRole("region", { name: "Answer" })).toContainText("253 V");
+    const results = await new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"])
+      .analyze();
+    expect(
+      results.violations.map(
+        (v) => `${v.id}: ${v.nodes.map((n) => n.target.join(" ")).join(", ")}`,
+      ),
+    ).toEqual([]);
+  });
+}
+
+test("a server with no assistant offers no way to ask", async ({ page, api }) => {
+  api.assistant = "off";
+  await open(page, "/", "Export: allowed and measured");
+  await expect(page.getByRole("button", { name: "Ask", exact: true })).toHaveCount(0);
+});

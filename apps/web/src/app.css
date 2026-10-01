@@ -19,6 +19,8 @@
   --color-warn: #8a5300;
   --color-critical: #b3261e;
   --color-critical-text: #ffffff;
+  /* What dims the page behind a dialog; the same in both themes. */
+  --color-scrim: #0b0f1499;
   /* Chart series: told apart by dash pattern as well, never by hue alone. */
   --color-series-1: #0b5cad;
   --color-series-2: #c2410c;

@@ -56,6 +56,7 @@ flowchart LR
 | **Compliance** | A site that exports above its limit for longer than a grace period gets an alert; so does a device that stops reporting. An operator can override every envelope with a **backstop** |
 | **Web UI** (`apps/web`) | Four pages for three readers: an operator (is the feeder safe now?), a planner (why is this site limited?), and a first-time visitor |
 | **Observability** | A trace and a duration for every RPC, metrics for dispatch, runs and alerts, and a Grafana dashboard |
+| **Assistant** (optional) | A drawer that answers a question such as "why is this site limited at 12:30?" in plain words. A language model writes the answer from four read-only lookups; it is off unless the server has a key, and rationed when it is on |
 
 The engine and the devices are clients of the API and nothing else. Neither
 opens the database.
@@ -100,7 +101,7 @@ repo.
 | Go coverage floors | 100 % for the engine, the domain, the services, the server and the proto mapping; no package under 90 % | `apps/api/coverage.json` |
 | Web UI accessibility | No WCAG 2.2 AA violation on five pages, in both themes, at 360 px and 1440 px (axe-core) | [`docs/ux-audit.md`](docs/ux-audit.md) |
 | Web UI, Lighthouse mobile | Performance 98 to 99, accessibility 100, LCP 2.0 to 2.3 s, CLS 0 | [`docs/ux-audit.md`](docs/ux-audit.md) |
-| Web UI first load | 84 to 96 kB gzipped per page; the budget is 120 kB | `just build-web` |
+| Web UI first load | 86 to 99 kB gzipped per page; the budget is 120 kB | `just build-web` |
 
 ## Run it
 
@@ -125,6 +126,8 @@ for the operator token to change anything; in development it is
 `dev-operator-token`.
 
 `just obs` adds Prometheus and Grafana with the dashboard provisioned.
+The assistant needs `ANTHROPIC_API_KEY` in the environment of `just dev`;
+without it the UI shows no way to ask.
 `just` alone lists every recipe.
 
 ## The API

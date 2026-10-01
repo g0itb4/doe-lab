@@ -14,6 +14,8 @@
     table: "M2.5 4.5h15v11h-15v-11Zm0 3.7h15m-15 3.6h15M7.5 4.5v11",
     chart: "M2.5 16.5h15M4 13l4-5 3 3 5-7",
     link: "M7.5 4.5h-3v11h11v-3M10 10l6.5-6.5m0 0H12m4.5 0V8",
+    ask: "M3 4.5h14v9h-7l-4 3.5v-3.5H3v-9Zm4 3.5h6m-6 2.5h4",
+    stop: "M5.5 5.5h9v9h-9v-9Z",
   } as const;
   export type IconName = keyof typeof PATHS;
 </script>

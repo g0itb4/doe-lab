@@ -1,5 +1,6 @@
 import { createClient } from "@connectrpc/connect";
 import { AlertService } from "@doelab/gen/doelab/v1/alert_pb.js";
+import { AssistantService } from "@doelab/gen/doelab/v1/assistant_pb.js";
 import { BackstopService } from "@doelab/gen/doelab/v1/backstop_pb.js";
 import { ClockService } from "@doelab/gen/doelab/v1/clock_pb.js";
 import { DeviceService } from "@doelab/gen/doelab/v1/device_pb.js";
@@ -14,6 +15,7 @@ import { transport } from "./transport.ts";
 // One client per service, all on the shared transport.
 export const api = {
   alerts: createClient(AlertService, transport),
+  assistant: createClient(AssistantService, transport),
   backstops: createClient(BackstopService, transport),
   clock: createClient(ClockService, transport),
   devices: createClient(DeviceService, transport),

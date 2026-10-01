@@ -127,6 +127,7 @@ rolled back.
 | See the metrics | `curl -s 127.0.0.1:9464/metrics` on the server. They are not exposed through Caddy |
 | Change a setting | Edit `vars.yml`, run the playbook, restart the unit |
 | Trigger or clear a backstop | The Operations page, with `operator_token` |
+| Turn the assistant on | Set `anthropic_api_key` in `vars.yml`, and a spending limit on the key itself: the API's daily budget (`assistant_daily_budget_usd`) is counted in memory and starts again when the unit restarts |
 
 ## What this deliberately is not
 
