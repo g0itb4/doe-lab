@@ -110,7 +110,16 @@ You need Go 1.27, [bun](https://bun.sh), [just](https://just.systems),
 `podman compose`).
 
 ```sh
-just setup          # dependencies, generated code, git hooks
+just setup          # once: dependencies, generated code, git hooks
+just demo           # everything, on a fresh database
+```
+
+`just demo` starts the database, downloads the two datasets if they are
+missing, imports LV10, and runs the API, the web UI, the engine and the
+simulated devices until Ctrl-C. It takes about half a minute to come up. The
+same, a piece at a time:
+
+```sh
 just up             # Postgres with TimescaleDB, and an S3 gateway
 just data           # download the two datasets and verify their checksums
 just import         # LV10 and a year of profiles into the database

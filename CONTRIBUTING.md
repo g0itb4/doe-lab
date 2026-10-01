@@ -17,6 +17,7 @@ just lint         # every linter
 just cover-go     # Go unit tier with -race, then the per-package coverage gate
 just cover-web    # web unit and component tests in headless Chromium, with thresholds
 just e2e          # the built web app in Playwright: smoke, keyboard, axe (WCAG 2.2 AA)
+just demo         # the whole stack on a fresh database, until Ctrl-C
 just dev          # the database, the API and the web UI, in watch mode
 just data         # download the raw datasets and verify their checksums
 ```

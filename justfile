@@ -276,6 +276,30 @@ dev: _kill up
     bun run --filter @doelab/web dev &
     wait
 
+# A fresh database every time, on purpose: feeder time is anchored at the
+# start of today (UTC), so what an earlier day wrote would lie in this day's
+# future. Ctrl-C stops everything; the data stays until the next `just demo`
+# or `just nuke`.
+#
+# the whole demo on a fresh database: API, web UI, engine and simulated devices
+demo: nuke up data import
+    #!/usr/bin/env zsh
+    trap 'kill 0' INT TERM EXIT
+    (cd apps/api && {{dev_env}} go run ./cmd/api) &
+    bun run --filter @doelab/web dev &
+    tries=0
+    until curl -sf -X POST -H 'content-type: application/json' -d '{"service":""}' \
+        http://localhost:3100/grpc.health.v1.Health/Check | grep -q '"SERVING_STATUS_SERVING"'; do
+      (( ++tries > 240 )) && { echo "the API did not come up on :3100" >&2; exit 1; }
+      sleep 0.5
+    done
+    # A day of envelopes first, so that no device starts without one.
+    (cd apps/api && {{dev_env}} go run ./cmd/engine -once)
+    (cd apps/api && {{dev_env}} go run ./cmd/engine) &
+    (cd apps/api && {{dev_env}} go run ./cmd/dersim -rogue 0.04 -flaky 0.04) &
+    echo "doe-lab is running: http://localhost:5273 (operator token: dev-operator-token). Ctrl-C stops it."
+    wait
+
 # the production build of the web UI on :4273 (needs the API up)
 preview: build-web
     bun run --filter @doelab/web preview
