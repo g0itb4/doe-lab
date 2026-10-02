@@ -130,6 +130,13 @@ lint-sql:
 lint-go:
     cd apps/api && golangci-lint run
 
+# llm/index.md is loaded into every agent session through CLAUDE.md, so it
+# stays inside a size budget, and every path and recipe it names must exist.
+#
+# check the agent index against the repo
+llm-check:
+    bun scripts/llm-index-check.ts
+
 # ── secrets ──────────────────────────────────────────────────────────────────
 
 [private]

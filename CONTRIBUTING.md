@@ -81,6 +81,7 @@ concerns:
 | Secrets  | pre-commit | `gitleaks` on the staged diff, `detect-private-key`                   |
 | Secrets  | pre-push   | `gitleaks` on the commits being pushed                                |
 | Lint     | pre-commit | `svelte-check` on the web app                                         |
+| Lint     | pre-commit | `just llm-check`: every path and recipe in `llm/index.md` exists      |
 | Coverage | pre-commit | `just cover-go`: Go unit tier, then `covergate` against `apps/api/coverage.json` |
 | Coverage | pre-push   | `just cover-web`: web tests, thresholds in `apps/web/vitest.config.ts` |
 
@@ -102,6 +103,10 @@ Rules:
 - The pre-commit stage must stay under 15 s warm on a Go-only change.
   `just cover-go` prints its duration. A hook that breaks the budget moves to
   pre-push.
+- `llm/index.md` is what a coding agent reads before every task (`CLAUDE.md`
+  imports it). A feature that is new, or whose entry point moves, gets its
+  line there. The index points at this file and never repeats it, and it is
+  held to 80 lines: every line is paid for in every session.
 
 ## Tests
 

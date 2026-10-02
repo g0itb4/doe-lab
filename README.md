@@ -108,6 +108,7 @@ flowchart LR
 | `proto` | The API; [OpenAPI description](docs/openapi/doelab.openapi.yaml) |
 | `infra` | Compose for development; [Ansible and deploy for one server](infra/prod/README.md) |
 | `CONTRIBUTING.md` | [Layering, conventions, hook rules](CONTRIBUTING.md) |
+| `llm` | [The index a coding agent reads first](llm/index.md) |
 
 | | |
 | --- | --- |

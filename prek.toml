@@ -88,6 +88,16 @@ entry = "just typecheck-web"
 files = '^(apps/web/.*\.(ts|js|svelte|json)|proto/.*\.proto)$'
 pass_filenames = false
 
+# On every commit, not only when the index changes: a file renamed anywhere
+# can break a pointer in it.
+[[repos.hooks]]
+id = "llm-index"
+name = "lint: agent index (paths and recipes exist, size budget)"
+language = "system"
+entry = "just llm-check"
+always_run = true
+pass_filenames = false
+
 # ── Secrets ──────────────────────────────────────────────────────────────────
 
 [[repos.hooks]]
