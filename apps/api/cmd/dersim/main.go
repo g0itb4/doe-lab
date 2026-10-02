@@ -22,6 +22,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 	_ "time/tzdata" // the feeder's zone, on a host with no zone database
@@ -41,7 +42,7 @@ func main() {
 }
 
 func run(log *slog.Logger) error {
-	feeder := flag.String("feeder", "LV10", "code of the feeder whose devices to simulate")
+	feeder := flag.String("feeder", allFeeders, "code of the feeder whose devices to simulate, or all of them")
 	rogue := flag.Float64("rogue", 0, "share of the devices that ignore their envelope, 0 to 1")
 	flaky := flag.Float64("flaky", 0, "share of the devices that go silent from time to time, 0 to 1")
 	every := flag.Duration("every", dersim.DefaultEvery, "feeder time between two readings of a device")
@@ -85,21 +86,54 @@ func run(log *slog.Logger) error {
 	// would hand it out.
 	tokens := auth.NewTokens(cfg.EngineToken, cfg.OperatorToken, cfg.DeviceTokenSecret)
 	if *load > 0 {
+		if *feeder == allFeeders {
+			return fmt.Errorf("-load holds subscriptions to the sites of one feeder: name it with -feeder")
+		}
 		return runLoad(ctx, log, api, tokens, *feeder, *load, *rate, *hold, *metrics)
 	}
-	fleet := dersim.NewFleet(api, *feeder, tokens.DeviceToken, log)
-	fleet.Every, fleet.DefaultExportW = *every, *fallback
-	fleet.RogueFraction, fleet.FlakyFraction, fleet.Seed = *rogue, *flaky, *seed
-	if err := fleet.Connect(ctx); err != nil {
-		return err
+	codes := []string{*feeder}
+	if *feeder == allFeeders {
+		if codes, err = api.FeederCodes(ctx); err != nil {
+			return fmt.Errorf("ask %s for its feeders: %w", cfg.APIURL, err)
+		}
+		// Not an idle success: under a supervisor this is tried again, and
+		// the import may have run by then.
+		if len(codes) == 0 {
+			return fmt.Errorf("%s has no feeder to simulate; run the import", cfg.APIURL)
+		}
 	}
-	defer fleet.Close()
-	log.Info("dersim", "api", cfg.APIURL, "feeder", *feeder, "sites", fleet.Units(), "rogue", *rogue, "flaky", *flaky,
-		"every", every.String(), "clock_speed", speed, "feeder_time", clock.Now().Format(time.RFC3339))
 
-	fleet.Run(ctx, clock)
+	// A fleet for each feeder. The shares of rogue and flaky devices are of
+	// all of them together: the fleets make no pick of their own, which would
+	// be at least one device of every feeder.
+	var fleets []*dersim.Fleet
+	for _, code := range codes {
+		fleet := dersim.NewFleet(api, code, tokens.DeviceToken, log.With("feeder", code))
+		fleet.Every, fleet.DefaultExportW, fleet.Seed = *every, *fallback, *seed
+		if err := fleet.Connect(ctx); err != nil {
+			return err
+		}
+		defer fleet.Close()
+		fleets = append(fleets, fleet)
+	}
+	dersim.Misbehave(fleets, *rogue, *flaky)
+	for i, fleet := range fleets {
+		rogues, silent := fleet.Misbehaving()
+		log.Info("dersim", "api", cfg.APIURL, "feeder", codes[i], "sites", fleet.Units(), "rogue", rogues, "flaky", silent,
+			"every", every.String(), "clock_speed", speed, "feeder_time", clock.Now().Format(time.RFC3339))
+	}
+
+	// Each on its own steps of feeder time.
+	var running sync.WaitGroup
+	for _, fleet := range fleets {
+		running.Go(func() { fleet.Run(ctx, clock) })
+	}
+	running.Wait()
 	return nil
 }
+
+// allFeeders is what -feeder says to simulate every feeder that the API has.
+const allFeeders = "all"
 
 // client returns the HTTP client of the fleet. It has no timeout of its own:
 // a subscription and a stream of readings stay open, and the fleet bounds

@@ -22,11 +22,12 @@ from a look at the screen.
 | Rule | Check | Result |
 | ---- | ----- | ------ |
 | Text contrast at least 4.5:1; chart lines and control borders at least 3:1; in both themes | `tokens.svelte.test.ts` computes the WCAG contrast of every pair of design tokens that is used together, in the light and the dark theme: 20 pairs, 40 assertions | pass |
-| No WCAG 2.2 AA violation | `e2e/app.spec.ts` runs axe-core (tags wcag2a, wcag2aa, wcag21a, wcag21aa, wcag22aa) on the five pages and on the open assistant drawer, in both themes, at both widths: 24 runs | 0 violations |
+| No WCAG 2.2 AA violation | `e2e/app.spec.ts` runs axe-core (tags wcag2a, wcag2aa, wcag21a, wcag21aa, wcag22aa) on the seven pages and on the open assistant drawer, in both themes, at both widths: 32 runs | 0 violations |
 | Every control works by keyboard, with a visible focus ring | One e2e test reaches the backstop control with Tab alone, checks a focus ring of at least 2 px on every stop, then triggers and clears a backstop from the keyboard | pass |
 | Pointer targets at least 24 by 24 px | An e2e test measures every link, button and field on every page (links inside a sentence are exempt, as in WCAG 2.5.8) | pass |
 | Semantic HTML; one `<h1>` per page | The e2e smoke test counts the `<h1>` on each page; the pages use `<nav>`, `<main>`, `<table>` with `<caption>` and `scope`, `<button>`, `<label for>` | pass |
-| Colour is never the only signal | `StatusBadge` tests check an icon and a word for every level; `Chart` tests check that every series has its own dash pattern; a breach on a chart is shaded, hatched and labelled | pass |
+| Colour is never the only signal | `StatusBadge` tests check an icon and a word for every level; `Chart` tests check that every series has its own dash pattern; a breach on a chart is shaded, hatched and labelled; `FleetMap` tests check the status shape on a mark and a dash pattern for each feeder's lines | pass |
+| A map and a drawing have a text path | Every site of the map is a row of the table under it, and every bus or line near a limit a row of the table under the drawing; e2e tests select a site and a line from those tables with the keyboard alone. A substation on the map is a button a keyboard reaches | pass |
 | Each chart has a text summary and a table | `Chart` tests compare the table with the series, value by value; `overview.test.ts` and `site.test.ts` check the summary sentences; the canvas is `aria-hidden` | pass |
 | Live updates are announced politely, a new breach at once | The overview speaks its figures through one `aria-live="polite"` sentence at most every 15 s, and a new alert through `role="alert"`; `StaleBanner` and `Toasts` tests check their roles | pass |
 
@@ -87,7 +88,8 @@ from a look at the screen.
 
 | Rule | Check |
 | ---- | ----- |
-| The time range, the zoom, the alert filter and the site search live in the address | `query.test.ts`, `series.test.ts`; e2e tests open a view from its address |
+| The time range, the zoom, the alert filter, the site search, the map's region and selection, and the network's operating point and instant live in the address | `query.test.ts`, `series.test.ts`; e2e tests open a view from its address |
+| The feeder on show is chosen in the header, kept across pages, and can be named in the address (`?feeder=`) | `feeder.svelte.test.ts`; an e2e test chooses a feeder and finds it kept on another page |
 | The current page is marked with `aria-current`; a skip link | e2e smoke test; e2e skip-link test |
 
 ### The assistant drawer

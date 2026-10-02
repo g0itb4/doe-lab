@@ -2,14 +2,16 @@
   import "../app.css";
   import type { Component, Snippet } from "svelte";
   import { browser } from "$app/environment";
+  import { goto } from "$app/navigation";
   import { page } from "$app/state";
   import { assistant } from "$lib/assistant.svelte.ts";
   import { clock } from "$lib/clock.svelte.ts";
   import Icon from "$lib/components/Icon.svelte";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
   import Toasts from "$lib/components/Toasts.svelte";
-  import { ensureFeeder, feeder } from "$lib/feeder.svelte.ts";
+  import { chooseFeeder, feeder, feeders } from "$lib/feeder.svelte.ts";
   import { clockTime, zoneName } from "$lib/format.ts";
+  import { queryParam, withQuery } from "$lib/query.ts";
   import { theme } from "$lib/theme.svelte.ts";
 
   let { children }: { children: Snippet } = $props();
@@ -20,8 +22,15 @@
   if (browser) {
     theme.init();
     void clock.start();
-    ensureFeeder();
+    void feeders.load();
     void assistant.check();
+  }
+  // The feeder that the address names, or else the one last chosen.
+  $effect(() => {
+    if (browser) chooseFeeder(queryParam(page.url, "feeder"));
+  });
+  function pickFeeder(code: string) {
+    void goto(withQuery(page.url, { feeder: code }), { keepFocus: true, noScroll: true });
   }
 
   // The drawer is fetched when it is first opened: most visits never ask.
@@ -41,6 +50,8 @@
 
   const links = [
     { href: "/", label: "Overview" },
+    { href: "/map", label: "Map" },
+    { href: "/network", label: "Network" },
     { href: "/sites", label: "Sites" },
     { href: "/operations", label: "Operations" },
     { href: "/config", label: "Config" },
@@ -80,6 +91,21 @@
       </ul>
     </nav>
     <div class="ml-auto flex items-center gap-3">
+      <!-- Only where there is a choice to make. -->
+      {#if (feeders.data?.length ?? 0) > 1}
+        <label class="flex items-center gap-2 text-sm">
+          <span class="text-muted">Feeder</span>
+          <select
+            class="field w-auto"
+            value={feeder.data?.code}
+            onchange={(e) => pickFeeder(e.currentTarget.value)}
+          >
+            {#each feeders.data ?? [] as f (f.id)}
+              <option value={f.code}>{f.code}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
       <!-- A fixed width, and a dash until the API has said how feeder time
            runs: the clock arrives without moving anything. -->
       <p class="tabular text-muted min-w-40 text-right text-xs leading-tight">

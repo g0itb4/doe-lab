@@ -19,10 +19,12 @@ import (
 // Run runs the whole suite. newStore returns an empty store for one test.
 func Run(t *testing.T, newStore func(t *testing.T) service.Store) {
 	tests := map[string]func(*testing.T, service.Store){
+		"Substations":     testSubstations,
 		"Feeders":         testFeeders,
 		"FeederTree":      testFeederTree,
 		"FeederLines":     testFeederLines,
 		"Sites":           testSites,
+		"LocatedSites":    testLocatedSites,
 		"SiteSoftDelete":  testSiteSoftDelete,
 		"Devices":         testDevices,
 		"EnvelopeConfigs": testEnvelopeConfigs,
@@ -31,6 +33,7 @@ func Run(t *testing.T, newStore func(t *testing.T) service.Store) {
 		"Envelopes":       testEnvelopes,
 		"IdempotencyKeys": testIdempotencyKeys,
 		"RunIntervals":    testRunIntervals,
+		"FeederStates":    testFeederStates,
 		"Readings":        testReadings,
 		"Alerts":          testAlerts,
 		"Backstops":       testBackstops,
@@ -58,6 +61,68 @@ func noErr(t *testing.T, what string, err error) {
 	if err != nil {
 		t.Fatalf("%s: %v", what, err)
 	}
+}
+
+func testSubstations(t *testing.T, s service.Store) {
+	ctx := Ctx()
+	var created []domain.Substation
+	for _, code := range []string{"SUB-003", "SUB-001", "SUB-002"} {
+		sub, err := s.CreateSubstation(ctx, NewSubstation(code))
+		noErr(t, "create "+code, err)
+		if sub.ID == uuid.Nil || sub.CreatedAt.IsZero() || !sub.UpdatedAt.Equal(sub.CreatedAt) {
+			t.Errorf("server-set fields of %s: %+v", code, sub)
+		}
+		created = append(created, sub)
+	}
+
+	got, err := s.GetSubstation(ctx, created[1].ID)
+	noErr(t, "get", err)
+	if got != created[1] {
+		t.Errorf("get = %+v, want %+v", got, created[1])
+	}
+	byCode, err := s.GetSubstationByCode(ctx, "SUB-002")
+	noErr(t, "get by code", err)
+	if byCode.ID != created[2].ID {
+		t.Errorf("get by code returned %s", byCode.Code)
+	}
+	_, err = s.GetSubstation(ctx, uuid.New())
+	wantErr(t, "get an unknown id", err, domain.ErrNotFound)
+	_, err = s.GetSubstationByCode(ctx, "NOPE")
+	wantErr(t, "get an unknown code", err, domain.ErrNotFound)
+
+	_, err = s.CreateSubstation(ctx, NewSubstation("SUB-001"))
+	wantErr(t, "create a duplicate code", err, domain.ErrAlreadyExists)
+	nowhere := NewSubstation("SUB-009")
+	nowhere.LatitudeDeg = -91
+	_, err = s.CreateSubstation(ctx, nowhere)
+	wantErr(t, "a latitude off the globe", err, domain.ErrInvalid)
+
+	// Two pages, in code order.
+	page1, next, err := s.ListSubstations(ctx, domain.Page{Size: 2})
+	noErr(t, "list page 1", err)
+	if len(page1) != 2 || page1[0].Code != "SUB-001" || page1[1].Code != "SUB-002" || next == "" {
+		t.Fatalf("page 1 = %d substations, next %q", len(page1), next)
+	}
+	page2, next, err := s.ListSubstations(ctx, domain.Page{Size: 2, Token: next})
+	noErr(t, "list page 2", err)
+	if len(page2) != 1 || page2[0].Code != "SUB-003" || next != "" {
+		t.Errorf("page 2 = %d substations, next %q", len(page2), next)
+	}
+
+	// A feeder hangs from a substation that exists, or from none.
+	placed := NewFeeder("LV10")
+	placed.SubstationID = &created[1].ID
+	feeder, err := s.CreateFeeder(ctx, placed)
+	noErr(t, "create a feeder below a substation", err)
+	read, err := s.GetFeeder(ctx, feeder.ID)
+	noErr(t, "get the feeder", err)
+	if read.SubstationID == nil || *read.SubstationID != created[1].ID {
+		t.Errorf("the feeder's substation = %v, want %s", read.SubstationID, created[1].ID)
+	}
+	lost := NewFeeder("LV20")
+	lost.SubstationID = Ptr(uuid.New())
+	_, err = s.CreateFeeder(ctx, lost)
+	wantErr(t, "a feeder below an unknown substation", err, domain.ErrFailedPrecondition)
 }
 
 func testFeeders(t *testing.T, s service.Store) {
@@ -319,6 +384,65 @@ func testSites(t *testing.T, s service.Store) {
 	}
 	_, err = s.UpdateSite(ctx, domain.Site{ID: uuid.New()})
 	wantErr(t, "update an unknown site", err, domain.ErrNotFound)
+}
+
+func testLocatedSites(t *testing.T, s service.Store) {
+	ctx := Ctx()
+	f := Seed(t, s, "LV10", 1)
+	other := Seed(t, s, "LV20", 11)
+
+	// The fixture's sites have no place: nothing is listed.
+	none, next, err := s.ListLocatedSites(ctx, domain.Page{Size: 10})
+	noErr(t, "list with no located site", err)
+	if len(none) != 0 || next != "" {
+		t.Errorf("%d located sites before any has a place, next %q", len(none), next)
+	}
+
+	site := func(serial int, feeder Fixture, name string) domain.Site {
+		return domain.Site{
+			NMI: NMI(t, serial), FeederID: feeder.Feeder.ID, NodeID: feeder.HouseA.ID, Name: name, Phase: 1,
+			LatitudeDeg: Ptr(-33.85 - float64(serial)/1000), LongitudeDeg: Ptr(151.06),
+		}
+	}
+	var placed []domain.Site
+	for _, in := range []domain.Site{site(23, other, "Ld23"), site(21, f, "Ld21"), site(22, f, "Ld22")} {
+		created, err := s.CreateSite(ctx, in)
+		noErr(t, "create "+in.Name, err)
+		if created.LatitudeDeg == nil || *created.LatitudeDeg != *in.LatitudeDeg || *created.LongitudeDeg != 151.06 {
+			t.Errorf("%s is at %v, %v", in.Name, created.LatitudeDeg, created.LongitudeDeg)
+		}
+		placed = append(placed, created)
+	}
+
+	// Every feeder's, in NMI order, two pages.
+	page1, next, err := s.ListLocatedSites(ctx, domain.Page{Size: 2})
+	noErr(t, "list page 1", err)
+	if len(page1) != 2 || page1[0].ID != placed[1].ID || page1[1].ID != placed[2].ID || next == "" {
+		t.Fatalf("page 1 = %d sites, next %q", len(page1), next)
+	}
+	page2, next, err := s.ListLocatedSites(ctx, domain.Page{Size: 2, Token: next})
+	noErr(t, "list page 2", err)
+	if len(page2) != 1 || page2[0].ID != placed[0].ID || next != "" {
+		t.Errorf("page 2 = %d sites, next %q", len(page2), next)
+	}
+
+	// A deleted site leaves the map.
+	noErr(t, "delete", s.SoftDeleteSite(ctx, placed[1].ID))
+	left, _, err := s.ListLocatedSites(ctx, domain.Page{Size: 10})
+	noErr(t, "list after a delete", err)
+	if len(left) != 2 || left[0].ID != placed[2].ID {
+		t.Errorf("%d located sites after a delete, want 2", len(left))
+	}
+
+	// What the schema refuses.
+	half := site(24, f, "Ld24")
+	half.LongitudeDeg = nil
+	_, err = s.CreateSite(ctx, half)
+	wantErr(t, "a latitude with no longitude", err, domain.ErrInvalid)
+	far := site(25, f, "Ld25")
+	far.LongitudeDeg = Ptr(181.0)
+	_, err = s.CreateSite(ctx, far)
+	wantErr(t, "a longitude off the globe", err, domain.ErrInvalid)
 }
 
 func testSiteSoftDelete(t *testing.T, s service.Store) {
@@ -1341,6 +1465,165 @@ func testBackstops(t *testing.T, s service.Store) {
 	}
 }
 
+// NodeState returns the state of a node for the half hour that starts slot
+// half hours into the profile day, with the forecast voltage of phase 1 as
+// given.
+func NodeState(nodeID, runID uuid.UUID, slot int, vPU float64) domain.FeederNodeState {
+	from := Day.Add(time.Duration(slot) * 30 * time.Minute)
+	return domain.FeederNodeState{
+		NodeID: nodeID, EnvelopeRunID: runID, ValidFrom: from, ValidTo: from.Add(30 * time.Minute),
+		ForecastVPU: []float64{vPU, 1.04, 1.04}, EnvelopeVPU: []float64{vPU + 0.03, 1.04, 1.04}, StaticVPU: []float64{vPU + 0.06, 1.04, 1.04},
+	}
+}
+
+// LineState returns the state of a line for the same half hour, carrying the
+// given power in the forecast.
+func LineState(lineID, runID uuid.UUID, slot int, powerW float64) domain.FeederLineState {
+	from := Day.Add(time.Duration(slot) * 30 * time.Minute)
+	return domain.FeederLineState{
+		LineID: lineID, EnvelopeRunID: runID, ValidFrom: from, ValidTo: from.Add(30 * time.Minute),
+		ForecastCurrentA: []float64{10, 0, 0, 10}, EnvelopeCurrentA: []float64{20, 0, 0, 20}, StaticCurrentA: []float64{30, 0, 0, 30},
+		ForecastPowerW: powerW, EnvelopePowerW: -2 * powerW, StaticPowerW: -3 * powerW,
+	}
+}
+
+func testFeederStates(t *testing.T, s service.Store) {
+	ctx := Ctx()
+	f := Seed(t, s, "LV10", 1)
+	other := Seed(t, s, "LV20", 11)
+	config, err := s.CreateEnvelopeConfig(ctx, Config(f.Feeder.ID))
+	noErr(t, "config", err)
+	first, _, err := s.CreateEnvelopeRun(ctx, NewRun(f.Feeder.ID, config.ID, "run-0001"))
+	noErr(t, "first run", err)
+	second, _, err := s.CreateEnvelopeRun(ctx, NewRun(f.Feeder.ID, config.ID, "run-0002"))
+	noErr(t, "second run", err)
+	main, service := f.Lines[0], f.Lines[1]
+	at := func(slot int, minutes int) time.Time {
+		return Day.Add(time.Duration(slot)*30*time.Minute + time.Duration(minutes)*time.Minute)
+	}
+
+	// Nothing is stored: nothing is listed.
+	none, err := s.ListFeederNodeStates(ctx, f.Feeder.ID, at(0, 10))
+	noErr(t, "list before any state", err)
+	if len(none) != 0 {
+		t.Errorf("%d node states before any was stored", len(none))
+	}
+
+	// The first run solves two half hours.
+	noErr(t, "replace", s.ReplaceFeederStates(ctx, f.Feeder.ID,
+		[]domain.FeederNodeState{
+			NodeState(f.Root.ID, first.ID, 0, 1.05), NodeState(f.HouseA.ID, first.ID, 0, 1.08),
+			NodeState(f.Root.ID, first.ID, 1, 1.06), NodeState(f.HouseA.ID, first.ID, 1, 1.09),
+		},
+		[]domain.FeederLineState{
+			LineState(main.ID, first.ID, 0, 1500), LineState(service.ID, first.ID, 0, 700),
+			LineState(main.ID, first.ID, 1, 1600),
+		}))
+
+	nodes, err := s.ListFeederNodeStates(ctx, f.Feeder.ID, at(0, 10))
+	noErr(t, "list nodes", err)
+	if len(nodes) != 2 {
+		t.Fatalf("%d node states in the first half hour, want 2", len(nodes))
+	}
+	// In node order, each as it was stored.
+	if bytes.Compare(nodes[0].NodeID[:], nodes[1].NodeID[:]) >= 0 {
+		t.Errorf("node states are not in node order: %s then %s", nodes[0].NodeID, nodes[1].NodeID)
+	}
+	for _, n := range nodes {
+		want := 1.05
+		if n.NodeID == f.HouseA.ID {
+			want = 1.08
+		}
+		if n.FeederID != f.Feeder.ID || n.EnvelopeRunID != first.ID || !n.ValidFrom.Equal(at(0, 0)) || !n.ValidTo.Equal(at(1, 0)) ||
+			!slices.Equal(n.ForecastVPU, []float64{want, 1.04, 1.04}) || n.EnvelopeVPU[0] != want+0.03 || n.StaticVPU[0] != want+0.06 {
+			t.Errorf("node state = %+v", n)
+		}
+	}
+	lines, err := s.ListFeederLineStates(ctx, f.Feeder.ID, at(0, 10))
+	noErr(t, "list lines", err)
+	if len(lines) != 2 {
+		t.Fatalf("%d line states in the first half hour, want 2", len(lines))
+	}
+	for _, l := range lines {
+		want := 1500.0
+		if l.LineID == service.ID {
+			want = 700
+		}
+		if l.FeederID != f.Feeder.ID || l.ForecastPowerW != want || l.EnvelopePowerW != -2*want || l.StaticPowerW != -3*want ||
+			!slices.Equal(l.ForecastCurrentA, []float64{10, 0, 0, 10}) || l.StaticCurrentA[3] != 30 {
+			t.Errorf("line state = %+v", l)
+		}
+	}
+
+	// The interval that holds the instant: its start is inside, its end is
+	// not. Past the last interval there is nothing.
+	for _, tt := range []struct {
+		what  string
+		at    time.Time
+		nodes int
+		lines int
+	}{
+		{"at the start of the second half hour", at(1, 0), 2, 1},
+		{"at the end of the second half hour", at(2, 0), 0, 0},
+		{"before the first half hour", at(0, -1), 0, 0},
+	} {
+		gotNodes, err := s.ListFeederNodeStates(ctx, f.Feeder.ID, tt.at)
+		noErr(t, tt.what, err)
+		gotLines, err := s.ListFeederLineStates(ctx, f.Feeder.ID, tt.at)
+		noErr(t, tt.what, err)
+		if len(gotNodes) != tt.nodes || len(gotLines) != tt.lines {
+			t.Errorf("%s: %d node and %d line states, want %d and %d", tt.what, len(gotNodes), len(gotLines), tt.nodes, tt.lines)
+		}
+	}
+	elsewhere, err := s.ListFeederNodeStates(ctx, other.Feeder.ID, at(0, 10))
+	noErr(t, "list the other feeder", err)
+	if len(elsewhere) != 0 {
+		t.Errorf("the other feeder has %d node states", len(elsewhere))
+	}
+
+	// A later run replaces the half hour it covers, whole: the node it does
+	// not name is gone, and the other half hour stays as it was.
+	noErr(t, "replace again", s.ReplaceFeederStates(ctx, f.Feeder.ID,
+		[]domain.FeederNodeState{NodeState(f.HouseA.ID, second.ID, 0, 1.10)}, nil))
+	nodes, err = s.ListFeederNodeStates(ctx, f.Feeder.ID, at(0, 10))
+	noErr(t, "list after a second run", err)
+	if len(nodes) != 1 || nodes[0].EnvelopeRunID != second.ID || nodes[0].ForecastVPU[0] != 1.10 {
+		t.Errorf("after the second run: %+v", nodes)
+	}
+	nodes, err = s.ListFeederNodeStates(ctx, f.Feeder.ID, at(1, 10))
+	noErr(t, "list the half hour the second run left alone", err)
+	lines, err = s.ListFeederLineStates(ctx, f.Feeder.ID, at(0, 10))
+	noErr(t, "list the lines the second run left alone", err)
+	if len(nodes) != 2 || nodes[0].EnvelopeRunID != first.ID || len(lines) != 2 {
+		t.Errorf("what the second run did not name: %d node states and %d line states", len(nodes), len(lines))
+	}
+
+	// What the schema refuses, with nothing written.
+	refused := func(what string, want error, nodes []domain.FeederNodeState, lines []domain.FeederLineState) {
+		t.Helper()
+		wantErr(t, what, s.ReplaceFeederStates(ctx, f.Feeder.ID, nodes, lines), want)
+	}
+	refused("a node of another feeder", domain.ErrFailedPrecondition,
+		[]domain.FeederNodeState{NodeState(other.Root.ID, first.ID, 2, 1)}, nil)
+	refused("a node state of an unknown run", domain.ErrFailedPrecondition,
+		[]domain.FeederNodeState{NodeState(f.Root.ID, uuid.New(), 2, 1)}, nil)
+	twoPhases := NodeState(f.Root.ID, first.ID, 2, 1)
+	twoPhases.EnvelopeVPU = []float64{1, 1}
+	refused("two phases", domain.ErrInvalid, []domain.FeederNodeState{twoPhases}, nil)
+	refused("a line of another feeder", domain.ErrFailedPrecondition,
+		nil, []domain.FeederLineState{LineState(other.Lines[0].ID, first.ID, 2, 1)})
+	refused("a line state of an unknown run", domain.ErrFailedPrecondition,
+		nil, []domain.FeederLineState{LineState(main.ID, uuid.New(), 2, 1)})
+	threeConductors := LineState(main.ID, first.ID, 2, 1)
+	threeConductors.StaticCurrentA = []float64{1, 1, 1}
+	refused("three conductors", domain.ErrInvalid, nil, []domain.FeederLineState{threeConductors})
+	nodes, err = s.ListFeederNodeStates(ctx, f.Feeder.ID, at(2, 10))
+	noErr(t, "list the half hour of the refused states", err)
+	if len(nodes) != 0 {
+		t.Errorf("a refused replace left %d node states", len(nodes))
+	}
+}
+
 // Old history goes, and what is recent, open or active stays.
 func testRetention(t *testing.T, s service.Store) {
 	ctx := Ctx()
@@ -1366,6 +1649,9 @@ func testRetention(t *testing.T, s service.Store) {
 	_, _, err = s.ReplaceEnvelopes(ctx, []domain.Envelope{Envelope(a, old.ID, 0, 1000), recentEnvelope})
 	noErr(t, "envelopes", err)
 	noErr(t, "interval", s.CreateEnvelopeRunIntervals(ctx, []domain.EnvelopeRunInterval{Interval(old.ID, f.Feeder.ID, 0, 1)}))
+	noErr(t, "states", s.ReplaceFeederStates(ctx, f.Feeder.ID,
+		[]domain.FeederNodeState{NodeState(f.Root.ID, old.ID, 0, 1.05)},
+		[]domain.FeederLineState{LineState(f.Lines[0].ID, old.ID, 0, 1500)}))
 	_, _, err = s.ClaimIdempotencyKey(ctx, domain.IdempotencyKey{Scope: "publish_envelopes", Key: "batch-old-0001", RequestHash: bytes.Repeat([]byte{7}, 32), EnvelopeRunID: &old.ID})
 	noErr(t, "key", err)
 
@@ -1440,6 +1726,14 @@ func testRetention(t *testing.T, s service.Store) {
 	noErr(t, "intervals", err)
 	if len(intervals) != 0 {
 		t.Errorf("the old run left %d intervals", len(intervals))
+	}
+	// So did what it solved, bus by bus.
+	nodeStates, err := s.ListFeederNodeStates(ctx, f.Feeder.ID, Day.Add(10*time.Minute))
+	noErr(t, "node states", err)
+	lineStates, err := s.ListFeederLineStates(ctx, f.Feeder.ID, Day.Add(10*time.Minute))
+	noErr(t, "line states", err)
+	if len(nodeStates) != 0 || len(lineStates) != 0 {
+		t.Errorf("the old run left %d node states and %d line states", len(nodeStates), len(lineStates))
 	}
 	// Its key went with it: the same key can be claimed again.
 	_, claimed, err := s.ClaimIdempotencyKey(ctx, domain.IdempotencyKey{Scope: "publish_envelopes", Key: "batch-old-0001", RequestHash: bytes.Repeat([]byte{7}, 32), EnvelopeRunID: &recent.ID})

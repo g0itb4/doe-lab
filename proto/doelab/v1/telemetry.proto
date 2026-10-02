@@ -3,7 +3,10 @@ syntax = "proto3";
 package doelab.v1;
 
 import "buf/validate/validate.proto";
+import "doelab/v1/alert.proto";
 import "doelab/v1/common.proto";
+import "doelab/v1/envelope.proto";
+import "doelab/v1/envelope_run.proto";
 import "google/protobuf/timestamp.proto";
 
 // TelemetryService takes readings from devices, and shows what the fleet and
@@ -24,6 +27,16 @@ service TelemetryService {
   }
   // GetFleetSummary, sent again whenever a moment of feeder time has passed.
   rpc WatchFleet(WatchFleetRequest) returns (stream WatchFleetResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // Every feeder now, and each site that has a place on the map: what a map
+  // of the fleet draws.
+  rpc GetFleetState(GetFleetStateRequest) returns (GetFleetStateResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // One feeder at an instant, bus by bus and line by line: what a drawing of
+  // the network shows.
+  rpc GetFeederState(GetFeederStateRequest) returns (GetFeederStateResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
   }
   // The feeder through time: what the engine forecast for each interval, what
@@ -156,6 +169,55 @@ message WatchFleetRequest {
 
 message WatchFleetResponse {
   FleetSummary summary = 1;
+}
+
+// One site at an instant: the envelope in force, and what its devices last
+// said.
+message SiteState {
+  string site_id = 1;
+  // The envelope in force. Unset for a site that has none.
+  optional Envelope envelope = 2;
+  // A device of the site was heard within the offline period.
+  bool reporting = 3;
+  // Net flow at the connection point as the site last reported it, in watts:
+  // positive is export. Unset for a site that is not reporting.
+  optional double net_export_w = 4;
+  // The net flow is above the export limit in force.
+  bool over_limit = 5;
+  // The open alert of the site that matters most. Unset when it has none.
+  optional Alert open_alert = 6;
+}
+
+message GetFleetStateRequest {}
+
+message GetFleetStateResponse {
+  // Feeder time of the state.
+  google.protobuf.Timestamp at = 1;
+  // The summary of each feeder, in code order.
+  repeated FleetSummary feeders = 2;
+  // The state of every site that has a location.
+  repeated SiteState sites = 3;
+}
+
+message GetFeederStateRequest {
+  string feeder_id = 1 [(buf.validate.field).string.uuid = true];
+  // The instant, in feeder time. Unset is now.
+  optional google.protobuf.Timestamp at = 2;
+}
+
+message GetFeederStateResponse {
+  // Feeder time of the state.
+  google.protobuf.Timestamp at = 1;
+  // The voltage at each bus and the flow in each line, for the interval that
+  // holds `at`. Empty when the engine has solved no interval that holds it.
+  repeated FeederNodeState nodes = 2;
+  repeated FeederLineState lines = 3;
+  // The limits the state is judged against, from the active config. Zero for
+  // a feeder that has none.
+  double v_min_pu = 4;
+  double v_max_pu = 5;
+  double line_limit_pct = 6;
+  double transformer_limit_pct = 7;
 }
 
 // One interval of the feeder: forecast, allowed and measured.

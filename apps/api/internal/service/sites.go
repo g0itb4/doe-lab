@@ -39,6 +39,12 @@ func (s *Sites) List(ctx context.Context, feederID uuid.UUID, phase *int16, p do
 	return s.store.ListSites(ctx, feederID, phase, page(p))
 }
 
+// ListLocated returns a page of the sites that have a location, of every
+// feeder, in NMI order.
+func (s *Sites) ListLocated(ctx context.Context, p domain.Page) ([]domain.Site, string, error) {
+	return s.store.ListLocatedSites(ctx, page(p))
+}
+
 // checkSite applies the rules about a site's own content that the wire format
 // cannot express.
 func checkSite(site domain.Site) error {

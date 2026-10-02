@@ -29,6 +29,13 @@ service EnvelopeRunService {
   // the envelopes were computed against. Once per run. Needs the engine
   // scope.
   rpc CreateEnvelopeRunIntervals(CreateEnvelopeRunIntervalsRequest) returns (CreateEnvelopeRunIntervalsResponse);
+  // Records what a run solved bus by bus and line by line, for whole
+  // intervals: the states of each interval named replace everything stored
+  // for it, by this run or an earlier one. The engine sends a run's intervals
+  // a few at a time. Needs the engine scope.
+  rpc RecordFeederStates(RecordFeederStatesRequest) returns (RecordFeederStatesResponse) {
+    option idempotency_level = IDEMPOTENT;
+  }
   // The intervals of a run, in time order.
   rpc ListEnvelopeRunIntervals(ListEnvelopeRunIntervalsRequest) returns (ListEnvelopeRunIntervalsResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
@@ -217,6 +224,101 @@ message EnvelopeRunInterval {
     message: "forecast_v_min_pu must not be above forecast_v_max_pu"
     expression: "this.forecast_v_min_pu <= this.forecast_v_max_pu"
   };
+}
+
+// The voltage at a bus for one interval, as the latest run that covered the
+// interval solved it. Mirrors the feeder_node_states table. Each list holds
+// phases 1 to 3, phase to neutral, per unit of the nominal voltage.
+message FeederNodeState {
+  // Set by the server, from the run.
+  string feeder_id = 1 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  string node_id = 2 [(buf.validate.field).string.uuid = true];
+  google.protobuf.Timestamp valid_from = 3 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp valid_to = 4 [(buf.validate.field).required = true];
+  // Set by the server, from the request.
+  string envelope_run_id = 5 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // With every site at its forecast.
+  repeated double forecast_v_pu = 6 [(buf.validate.field).repeated = {
+    min_items: 3
+    max_items: 3
+  }];
+  // With every enrolled site exporting at its envelope.
+  repeated double envelope_v_pu = 7 [(buf.validate.field).repeated = {
+    min_items: 3
+    max_items: 3
+  }];
+  // With every enrolled site exporting at the fixed limit.
+  repeated double static_v_pu = 8 [(buf.validate.field).repeated = {
+    min_items: 3
+    max_items: 3
+  }];
+
+  option (buf.validate.message).cel = {
+    id: "feeder_node_state.period"
+    message: "valid_to must be after valid_from"
+    expression: "this.valid_to > this.valid_from"
+  };
+}
+
+// The flow in a line for one interval, as the latest run that covered the
+// interval solved it. Mirrors the feeder_line_states table. Each list of
+// currents holds phases 1 to 3 and then the neutral, in amperes.
+message FeederLineState {
+  // Set by the server, from the run.
+  string feeder_id = 1 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  string line_id = 2 [(buf.validate.field).string.uuid = true];
+  google.protobuf.Timestamp valid_from = 3 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp valid_to = 4 [(buf.validate.field).required = true];
+  // Set by the server, from the request.
+  string envelope_run_id = 5 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  repeated double forecast_current_a = 6 [(buf.validate.field).repeated = {
+    min_items: 4
+    max_items: 4
+  }];
+  repeated double envelope_current_a = 7 [(buf.validate.field).repeated = {
+    min_items: 4
+    max_items: 4
+  }];
+  repeated double static_current_a = 8 [(buf.validate.field).repeated = {
+    min_items: 4
+    max_items: 4
+  }];
+  // Power the line carries towards its far end, in watts. Negative is power
+  // flowing back towards the transformer.
+  double forecast_power_w = 9;
+  double envelope_power_w = 10;
+  double static_power_w = 11;
+
+  option (buf.validate.message).cel = {
+    id: "feeder_line_state.period"
+    message: "valid_to must be after valid_from"
+    expression: "this.valid_to > this.valid_from"
+  };
+}
+
+message RecordFeederStatesRequest {
+  string envelope_run_id = 1 [(buf.validate.field).string.uuid = true];
+  // Whole intervals: every node state of each interval named.
+  repeated FeederNodeState nodes = 2 [(buf.validate.field).repeated.max_items = 8000];
+  // Whole intervals: every line state of each interval named.
+  repeated FeederLineState lines = 3 [(buf.validate.field).repeated.max_items = 8000];
+}
+
+message RecordFeederStatesResponse {
+  int32 nodes = 1;
+  int32 lines = 2;
 }
 
 message CreateEnvelopeRunIntervalsRequest {

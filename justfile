@@ -240,19 +240,19 @@ bench:
 
 # Needs the raw data (`just data`) and the tools venv with OpenDSSDirect.py.
 #
-# regenerate the engine fixtures: the LV10 network and the OpenDSS reference voltages
+# regenerate the engine fixtures: the networks and the OpenDSS reference voltages
 fixtures:
-    cd apps/api && go test ./internal/engine/dss -run TestLV10Network -update
+    cd apps/api && go test ./internal/engine/dss -run 'TestLV10Network|TestTemplateNetworks' -update
     .venv-tools/bin/python tools/opendss_snapshots.py
 
 # ── demo data ────────────────────────────────────────────────────────────────
 
 # Needs `just up` and `just data`. Safe to run again: it changes nothing.
 #
-# load the LV10 feeder and a year of Ausgrid profiles into the dev database
+# load the fleet of data/fleet and a year of Ausgrid profiles into the dev database
 import *args:
     cd apps/api && DOELAB_ENV=development go run ./cmd/import \
-      -feeder ../../data/raw/csiro/LV/LV10_223bus \
+      -fleet ../../data/fleet -feeders ../../data/raw/csiro/LV \
       -ausgrid ../../data/raw/ausgrid/Ausgrid_solar_home_data.zip "$@"
 
 # ── run ──────────────────────────────────────────────────────────────────────
@@ -278,7 +278,9 @@ web:
 # the database, the API and the web UI
 dev: _kill up
     #!/usr/bin/env zsh
-    trap 'kill 0' INT TERM EXIT
+    # The trap is taken off first: `kill 0` signals this shell too, and would
+    # run the trap again, for ever.
+    trap 'trap - INT TERM EXIT; kill 0' INT TERM EXIT
     (cd apps/api && {{dev_env}} go tool wgo run ./cmd/api) &
     bun run --filter @doelab/web dev &
     wait
@@ -291,7 +293,9 @@ dev: _kill up
 # the whole demo on a fresh database: API, web UI, engine and simulated devices
 demo: nuke up data import
     #!/usr/bin/env zsh
-    trap 'kill 0' INT TERM EXIT
+    # The trap is taken off first: `kill 0` signals this shell too, and would
+    # run the trap again, for ever.
+    trap 'trap - INT TERM EXIT; kill 0' INT TERM EXIT
     (cd apps/api && {{dev_env}} go run ./cmd/api) &
     bun run --filter @doelab/web dev &
     tries=0

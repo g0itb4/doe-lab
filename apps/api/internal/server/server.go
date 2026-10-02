@@ -29,6 +29,7 @@ type Pinger interface {
 
 // Deps is everything the server mounts or calls.
 type Deps struct {
+	Substations     doelabv1connect.SubstationServiceHandler
 	Feeders         doelabv1connect.FeederServiceHandler
 	Sites           doelabv1connect.SiteServiceHandler
 	Devices         doelabv1connect.DeviceServiceHandler
@@ -54,6 +55,7 @@ type Deps struct {
 
 // services names every service the server mounts, for health and reflection.
 var services = []string{
+	doelabv1connect.SubstationServiceName,
 	doelabv1connect.FeederServiceName,
 	doelabv1connect.SiteServiceName,
 	doelabv1connect.DeviceServiceName,
@@ -118,6 +120,7 @@ func Handler(cfg config.Config, log *slog.Logger, deps Deps) http.Handler {
 		mux.Handle(path, h)
 		mux.Handle("/rpc"+path, http.StripPrefix("/rpc", h))
 	}
+	mount(doelabv1connect.NewSubstationServiceHandler(deps.Substations, opts...))
 	mount(doelabv1connect.NewFeederServiceHandler(deps.Feeders, opts...))
 	mount(doelabv1connect.NewSiteServiceHandler(deps.Sites, opts...))
 	mount(doelabv1connect.NewDeviceServiceHandler(deps.Devices, opts...))

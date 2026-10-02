@@ -40,6 +40,10 @@ func (a *api) envelopes(token string) doelabv1connect.EnvelopeServiceClient {
 	return doelabv1connect.NewEnvelopeServiceClient(a.HTTP, a.URL, as(token))
 }
 
+func (a *api) substations(token string) doelabv1connect.SubstationServiceClient {
+	return doelabv1connect.NewSubstationServiceClient(a.HTTP, a.URL, as(token))
+}
+
 func (a *api) feeders(token string) doelabv1connect.FeederServiceClient {
 	return doelabv1connect.NewFeederServiceClient(a.HTTP, a.URL, as(token))
 }

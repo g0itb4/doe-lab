@@ -9,6 +9,7 @@ import { EnvelopeService } from "@doelab/gen/doelab/v1/envelope_pb.js";
 import { EnvelopeRunService } from "@doelab/gen/doelab/v1/envelope_run_pb.js";
 import { FeederService } from "@doelab/gen/doelab/v1/feeder_pb.js";
 import { SiteService } from "@doelab/gen/doelab/v1/site_pb.js";
+import { SubstationService } from "@doelab/gen/doelab/v1/substation_pb.js";
 import { TelemetryService } from "@doelab/gen/doelab/v1/telemetry_pb.js";
 import { transport } from "./transport.ts";
 
@@ -24,6 +25,7 @@ export const api = {
   runs: createClient(EnvelopeRunService, transport),
   feeders: createClient(FeederService, transport),
   sites: createClient(SiteService, transport),
+  substations: createClient(SubstationService, transport),
   telemetry: createClient(TelemetryService, transport),
 };
 

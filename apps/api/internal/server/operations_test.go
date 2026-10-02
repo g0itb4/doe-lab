@@ -217,6 +217,154 @@ func TestFleetSummaryAndWatch(t *testing.T) {
 	wantCode(t, "watching an unknown feeder", unknown.Err(), connect.CodeNotFound)
 }
 
+func TestFleetState(t *testing.T) {
+	t.Parallel()
+	p := prepare(t)
+	// A site with a place on the map, a device, an envelope, a reading over
+	// the limit and an alert; and one with a place and nothing else.
+	place := func(serial int, name string) domain.Site {
+		site, err := p.Store.CreateSite(repotest.Ctx(), domain.Site{
+			NMI: repotest.NMI(t, serial), FeederID: p.fixture.Feeder.ID, NodeID: p.fixture.HouseA.ID, Name: name, Phase: 1,
+			ExportCapW: 5000, ImportCapW: 14000, LatitudeDeg: repotest.Ptr(-33.85), LongitudeDeg: repotest.Ptr(151.06),
+		})
+		noErr(t, "site", err)
+		return site
+	}
+	busy, quiet := place(30, "Ld30"), place(31, "Ld31")
+	solar := p.device(t, busy, domain.DERSolar)
+	_, err := p.publish(engineToken, p.runID, "batch-0001", envelope(busy.ID.String(), 0, 1000))
+	noErr(t, "publish", err)
+	_, err = p.ingest(p.Tokens.DeviceToken(busy.NMI), busy.NMI, []*doelabv1.Reading{reading(solar, 0, 2500)})
+	noErr(t, "ingest", err)
+	_, _, err = p.Store.OpenAlert(repotest.Ctx(), domain.Alert{
+		SiteID: busy.ID, FeederID: p.fixture.Feeder.ID, Kind: domain.AlertConstraintBreach, Severity: domain.SeverityWarning,
+		OpenedAt: repotest.Day, LimitW: repotest.Ptr(1000.0), PeakW: repotest.Ptr(2500.0),
+	})
+	noErr(t, "alert", err)
+
+	res, err := p.telemetry("").GetFleetState(ctx, req(&doelabv1.GetFleetStateRequest{}))
+	noErr(t, "fleet state", err)
+	state := res.Msg
+	if !state.GetAt().AsTime().Equal(repotest.Day) || len(state.GetFeeders()) != 1 ||
+		state.GetFeeders()[0].GetFeederId() != p.fixture.Feeder.ID.String() || state.GetFeeders()[0].GetSitesOverLimit() != 1 ||
+		state.GetFeeders()[0].GetLatestRunId() != p.runID {
+		t.Errorf("the feeders = %v", state.GetFeeders())
+	}
+	if len(state.GetSites()) != 2 {
+		t.Fatalf("%d sites, want the two with a place", len(state.GetSites()))
+	}
+	b, q := state.GetSites()[0], state.GetSites()[1]
+	if b.GetSiteId() != busy.ID.String() || !b.GetReporting() || b.GetNetExportW() != 2500 || !b.GetOverLimit() ||
+		b.GetEnvelope().GetExportLimitW() != 1000 || b.GetOpenAlert().GetKind() != doelabv1.AlertKind_ALERT_KIND_CONSTRAINT_BREACH ||
+		b.GetOpenAlert().GetPeakW() != 2500 {
+		t.Errorf("the busy site = %v", b)
+	}
+	if q.GetSiteId() != quiet.ID.String() || q.GetReporting() || q.NetExportW != nil || q.GetOverLimit() || q.Envelope != nil || q.OpenAlert != nil {
+		t.Errorf("the quiet site = %v", q)
+	}
+}
+
+func TestFeederStatesOverTheWire(t *testing.T) {
+	t.Parallel()
+	p := prepare(t)
+	feederID := p.fixture.Feeder.ID.String()
+	node := func(id string, slot int, vPU float64) *doelabv1.FeederNodeState {
+		from := repotest.Day.Add(time.Duration(slot) * 30 * time.Minute)
+		return &doelabv1.FeederNodeState{
+			NodeId: id, ValidFrom: timestamppb.New(from), ValidTo: timestamppb.New(from.Add(30 * time.Minute)),
+			ForecastVPu: []float64{vPU, 1.04, 1.04}, EnvelopeVPu: []float64{vPU + 0.03, 1.04, 1.04}, StaticVPu: []float64{vPU + 0.06, 1.04, 1.04},
+		}
+	}
+	line := func(id string, slot int, powerW float64) *doelabv1.FeederLineState {
+		from := repotest.Day.Add(time.Duration(slot) * 30 * time.Minute)
+		return &doelabv1.FeederLineState{
+			LineId: id, ValidFrom: timestamppb.New(from), ValidTo: timestamppb.New(from.Add(30 * time.Minute)),
+			ForecastCurrentA: []float64{10, 0, 0, 10}, EnvelopeCurrentA: []float64{20, 0, 0, 20}, StaticCurrentA: []float64{30, 0, 0, 30},
+			ForecastPowerW: powerW, EnvelopePowerW: -powerW, StaticPowerW: -2 * powerW,
+		}
+	}
+	record := func(token, runID string, nodes []*doelabv1.FeederNodeState, lines []*doelabv1.FeederLineState) (*doelabv1.RecordFeederStatesResponse, error) {
+		res, err := p.runs(token).RecordFeederStates(ctx, req(&doelabv1.RecordFeederStatesRequest{EnvelopeRunId: runID, Nodes: nodes, Lines: lines}))
+		if err != nil {
+			return nil, err
+		}
+		return res.Msg, nil
+	}
+	root, house, main := p.fixture.Root.ID.String(), p.fixture.HouseA.ID.String(), p.fixture.Lines[0].ID.String()
+
+	got, err := record(engineToken, p.runID,
+		[]*doelabv1.FeederNodeState{node(root, 0, 1.05), node(house, 0, 1.08), node(house, 1, 1.09)},
+		[]*doelabv1.FeederLineState{line(main, 0, 1500)})
+	noErr(t, "record", err)
+	if got.GetNodes() != 3 || got.GetLines() != 1 {
+		t.Errorf("recorded %d node states and %d line states", got.GetNodes(), got.GetLines())
+	}
+
+	// Now is the first half hour of the profile day.
+	state, err := p.telemetry("").GetFeederState(ctx, req(&doelabv1.GetFeederStateRequest{FeederId: feederID}))
+	noErr(t, "state now", err)
+	s := state.Msg
+	if !s.GetAt().AsTime().Equal(repotest.Day) || len(s.GetNodes()) != 2 || len(s.GetLines()) != 1 ||
+		s.GetVMinPu() != 0.94 || s.GetVMaxPu() != 1.10 || s.GetLineLimitPct() != 100 || s.GetTransformerLimitPct() != 100 {
+		t.Fatalf("the state now = %v", s)
+	}
+	l := s.GetLines()[0]
+	if l.GetLineId() != main || l.GetFeederId() != feederID || l.GetEnvelopeRunId() != p.runID || l.GetForecastPowerW() != 1500 ||
+		l.GetStaticPowerW() != -3000 || len(l.GetEnvelopeCurrentA()) != 4 || l.GetEnvelopeCurrentA()[3] != 20 {
+		t.Errorf("the line state = %v", l)
+	}
+	for _, n := range s.GetNodes() {
+		if n.GetFeederId() != feederID || n.GetEnvelopeRunId() != p.runID || len(n.GetForecastVPu()) != 3 || n.GetValidFrom() == nil {
+			t.Errorf("a node state = %v", n)
+		}
+	}
+	// At an instant that is named: the second half hour.
+	later, err := p.telemetry("").GetFeederState(ctx, req(&doelabv1.GetFeederStateRequest{FeederId: feederID, At: day(40 * 60)}))
+	noErr(t, "state later", err)
+	if len(later.Msg.GetNodes()) != 1 || later.Msg.GetNodes()[0].GetForecastVPu()[0] != 1.09 || len(later.Msg.GetLines()) != 0 ||
+		!later.Msg.GetAt().AsTime().Equal(repotest.Day.Add(40*time.Minute)) {
+		t.Errorf("the state forty minutes on = %v", later.Msg)
+	}
+	_, err = p.telemetry("").GetFeederState(ctx, req(&doelabv1.GetFeederStateRequest{FeederId: unknownID}))
+	wantCode(t, "an unknown feeder", err, connect.CodeNotFound)
+	_, err = p.telemetry("").GetFeederState(ctx, req(&doelabv1.GetFeederStateRequest{FeederId: "not-a-uuid"}))
+	wantViolation(t, "a malformed feeder id", err, "feeder_id")
+
+	// Shape, refused by the validation interceptor.
+	twoPhases := node(root, 2, 1)
+	twoPhases.StaticVPu = []float64{1, 1}
+	_, err = record(engineToken, p.runID, []*doelabv1.FeederNodeState{twoPhases}, nil)
+	wantViolation(t, "two phases", err, "static_v_pu")
+	threeConductors := line(main, 2, 1)
+	threeConductors.ForecastCurrentA = []float64{1, 1, 1}
+	_, err = record(engineToken, p.runID, nil, []*doelabv1.FeederLineState{threeConductors})
+	wantViolation(t, "three conductors", err, "forecast_current_a")
+	backwards := node(root, 2, 1)
+	backwards.ValidTo = backwards.GetValidFrom()
+	_, err = record(engineToken, p.runID, []*doelabv1.FeederNodeState{backwards}, nil)
+	wantViolation(t, "an interval that ends where it starts", err, "valid_to must be after valid_from")
+	backwardsLine := line(main, 2, 1)
+	backwardsLine.ValidTo = backwardsLine.GetValidFrom()
+	_, err = record(engineToken, p.runID, nil, []*doelabv1.FeederLineState{backwardsLine})
+	wantViolation(t, "a line interval that ends where it starts", err, "valid_to must be after valid_from")
+	_, err = record(engineToken, "not-a-uuid", nil, nil)
+	wantViolation(t, "a malformed run id", err, "envelope_run_id")
+
+	// Meaning, refused by the service.
+	_, err = record(engineToken, unknownID, []*doelabv1.FeederNodeState{node(root, 2, 1)}, nil)
+	wantCode(t, "an unknown run", err, connect.CodeFailedPrecondition)
+	_, err = record(engineToken, p.runID, []*doelabv1.FeederNodeState{node(root, 48, 1)}, nil)
+	wantCode(t, "an interval outside the horizon", err, connect.CodeInvalidArgument)
+	_, err = record(engineToken, p.runID, []*doelabv1.FeederNodeState{node(unknownID, 2, 1)}, nil)
+	wantCode(t, "a node that is not the feeder's", err, connect.CodeFailedPrecondition)
+
+	// Only the engine records.
+	_, err = record("", p.runID, []*doelabv1.FeederNodeState{node(root, 2, 1)}, nil)
+	wantCode(t, "anonymous", err, connect.CodeUnauthenticated)
+	_, err = record(operatorToken, p.runID, []*doelabv1.FeederNodeState{node(root, 2, 1)}, nil)
+	wantCode(t, "an operator", err, connect.CodePermissionDenied)
+}
+
 // interval is the message for the half hour that starts slot half hours into
 // the profile day.
 func interval(slot int, netLoadW float64) *doelabv1.EnvelopeRunInterval {

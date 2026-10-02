@@ -50,20 +50,23 @@ at 512 MB, and the engine and the devices at 256 MB each. The playbook adds
 4. **Deploy**, from the laptop: `just deploy deploy@<domain>`. The first run
    applies every migration to the empty database and starts the API. The
    engine and the devices start, find no feeder, and wait.
-5. **Import the feeder**, once. The raw data is not in the repo; fetch it
-   here, copy the two inputs over, and run the import on the server:
+5. **Import the fleet**, once. The raw data is not in the repo; fetch it
+   here, copy the inputs over, and run the import on the server:
 
    ```sh
    just data
-   rsync -az data/raw/csiro/LV/LV10_223bus data/raw/ausgrid/Ausgrid_solar_home_data.zip \
+   rsync -az data/fleet data/raw/csiro/LV data/raw/ausgrid/Ausgrid_solar_home_data.zip \
      deploy@<domain>:/srv/doelab/data/
    ssh deploy@<domain> 'set -a; . /etc/doelab/doelab.env; set +a;
-     /srv/doelab/current/import -feeder /srv/doelab/data/LV10_223bus \
+     /srv/doelab/current/import -fleet /srv/doelab/data/fleet -feeders /srv/doelab/data/LV \
        -ausgrid /srv/doelab/data/Ausgrid_solar_home_data.zip'
    ssh deploy@<domain> 'sudo systemctl restart doelab-engine; sudo systemctl restart doelab-dersim'
    ```
 
-   The import is safe to run again: it changes nothing the second time.
+   The import is safe to run again: it changes nothing the second time. That
+   includes a feeder that is already there: a server that was set up with
+   LV10 alone keeps that LV10, with the sites it had and no place on the map.
+   To move such a server to the fleet, start from an empty database.
 6. **Verify.**
 
    ```sh
@@ -95,8 +98,9 @@ A speed of 1 has neither limit: feeder time is then the wall clock.
 ## What is kept
 
 The API removes old history every ten minutes, in feeder time
-(`retention_*_days` in `vars.yml`). At a clock speed of 60 on LV10 the
-defaults hold the database at about 1.5 GB.
+(`retention_*_days` in `vars.yml`). At a clock speed of 60 on LV10 alone
+the defaults held the database at about 1.5 GB; the fleet has not been
+measured.
 
 There is no backup job, on purpose: the feeder and its profiles are rebuilt
 by the import, and the envelopes, readings and alerts by letting the engine

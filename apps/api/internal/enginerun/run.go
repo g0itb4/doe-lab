@@ -31,14 +31,20 @@ type Runner struct {
 	Workers int
 	// MaxBatch is the largest number of envelopes in one publish.
 	MaxBatch int
-	Log      *slog.Logger
+	// MaxStates is the largest number of node states, and of line states, in
+	// one record of what the run solved.
+	MaxStates int
+	Log       *slog.Logger
 	// now is the wall clock, replaceable in tests.
 	now func() time.Time
 }
 
 // NewRunner builds a runner with the defaults.
 func NewRunner(api *API, feederCode, version string, log *slog.Logger) *Runner {
-	return &Runner{API: api, FeederCode: feederCode, Version: version, Workers: 4, MaxBatch: defaultMaxBatch, Log: log, now: time.Now}
+	return &Runner{
+		API: api, FeederCode: feederCode, Version: version, Workers: 4,
+		MaxBatch: defaultMaxBatch, MaxStates: defaultMaxStates, Log: log, now: time.Now,
+	}
 }
 
 // loadPowerFactor is the power factor assumed for household load. The
@@ -48,6 +54,11 @@ const loadPowerFactor = 0.95
 // defaultMaxBatch is the largest number of envelopes in one publish. The API
 // takes 5000.
 const defaultMaxBatch = 4000
+
+// defaultMaxStates is the largest number of node states, and of line states,
+// in one record. The API takes 8000 of each, and a request of 4 MiB: a state
+// is some 200 bytes.
+const defaultMaxStates = 4000
 
 // Summary is what a run did.
 type Summary struct {
@@ -103,9 +114,12 @@ func (r *Runner) Run(ctx context.Context, from time.Time, suffix string) (Summar
 		return summary, nil
 	}
 
-	batches, intervals, err := r.compute(ctx, model, from, interval, &summary)
+	batches, intervals, states, err := r.compute(ctx, model, from, interval, &summary)
 	if err == nil {
 		err = r.record(ctx, run.GetId(), intervals)
+	}
+	if err == nil {
+		err = r.recordStates(ctx, run.GetId(), states)
 	}
 	if err == nil {
 		err = r.publish(ctx, run.GetId(), key, batches, &summary)
@@ -136,14 +150,22 @@ func truncate(s string, n int) string {
 	return s[:n]
 }
 
+// intervalStates is what a run solved for one interval, bus by bus and line
+// by line.
+type intervalStates struct {
+	nodes []*doelabv1.FeederNodeState
+	lines []*doelabv1.FeederLineState
+}
+
 // compute solves every interval of the horizon. It returns the envelopes in
 // batches, in time order, and for each interval the state of the feeder that
-// the envelopes were computed against.
-func (r *Runner) compute(ctx context.Context, model feederModel, from time.Time, interval time.Duration, summary *Summary) ([][]*doelabv1.Envelope, []*doelabv1.EnvelopeRunInterval, error) {
-	net, siteIDs, err := topology.ToNetwork(model.feeder, model.nodes, model.lines, model.sites)
+// the envelopes were computed against: as a whole, and bus by bus.
+func (r *Runner) compute(ctx context.Context, model feederModel, from time.Time, interval time.Duration, summary *Summary) ([][]*doelabv1.Envelope, []*doelabv1.EnvelopeRunInterval, []intervalStates, error) {
+	net, order, err := topology.ToNetwork(model.feeder, model.nodes, model.lines, model.sites)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
+	siteIDs := order.Sites
 	config := model.config
 	policy := engine.Equal
 	if config.Policy == domain.PolicyProportional {
@@ -158,7 +180,7 @@ func (r *Runner) compute(ctx context.Context, model feederModel, from time.Time,
 		},
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	// The sites in the engine's order, with their caps.
@@ -177,7 +199,7 @@ func (r *Runner) compute(ctx context.Context, model feederModel, from time.Time,
 	intervals := summary.Intervals
 	points, err := r.API.forecast(ctx, model.feeder.ID, from, from.Add(time.Duration(intervals)*interval))
 	if err != nil {
-		return nil, nil, fmt.Errorf("forecast: %w", err)
+		return nil, nil, nil, fmt.Errorf("forecast: %w", err)
 	}
 
 	// Each interval is independent of the others, so they are solved in
@@ -230,7 +252,7 @@ func (r *Runner) compute(ctx context.Context, model feederModel, from time.Time,
 	}
 	wg.Wait()
 	if err := errors.Join(errs...); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	binding := func(b engine.Binding) (doelabv1.BindingConstraint, string) {
@@ -240,6 +262,7 @@ func (r *Runner) compute(ctx context.Context, model feederModel, from time.Time,
 	var batches [][]*doelabv1.Envelope
 	var batch []*doelabv1.Envelope
 	states := make([]*doelabv1.EnvelopeRunInterval, intervals)
+	solved := make([]intervalStates, intervals)
 	for k, result := range results {
 		start := from.Add(time.Duration(k) * interval)
 		exportBinding, exportElement := binding(result.Export)
@@ -255,6 +278,7 @@ func (r *Runner) compute(ctx context.Context, model feederModel, from time.Time,
 			EnvelopeVMaxPu: &report.Envelope.VMaxPU,
 		}
 		states[k] = state
+		solved[k] = busStates(order, report, state.GetValidFrom(), state.GetValidTo())
 		for i, site := range sites {
 			if site.ExportCapW == 0 && site.ImportCapW == 0 {
 				continue // passive: forecast, not controlled
@@ -287,7 +311,59 @@ func (r *Runner) compute(ctx context.Context, model feederModel, from time.Time,
 	if math.IsInf(summary.MinExportW, 1) {
 		summary.MinExportW = 0
 	}
-	return batches, states, nil
+	return batches, states, solved, nil
+}
+
+// busStates lays the three operating points of an interval out bus by bus:
+// the voltage at each node, and the flow in the line into each node but the
+// first.
+func busStates(order topology.Order, report engine.Report, from, to *timestamppb.Timestamp) intervalStates {
+	var out intervalStates
+	for i, node := range order.Nodes {
+		f, e, s := report.Forecast, report.Envelope, report.Static
+		out.nodes = append(out.nodes, &doelabv1.FeederNodeState{
+			NodeId: node.String(), ValidFrom: from, ValidTo: to,
+			ForecastVPu: f.BusVPU[i][:], EnvelopeVPu: e.BusVPU[i][:], StaticVPu: s.BusVPU[i][:],
+		})
+		if i == 0 {
+			continue
+		}
+		out.lines = append(out.lines, &doelabv1.FeederLineState{
+			LineId: order.Lines[i].String(), ValidFrom: from, ValidTo: to,
+			ForecastCurrentA: f.LineA[i][:], EnvelopeCurrentA: e.LineA[i][:], StaticCurrentA: s.LineA[i][:],
+			ForecastPowerW: f.LineW[i], EnvelopePowerW: e.LineW[i], StaticPowerW: s.LineW[i],
+		})
+	}
+	return out
+}
+
+// recordStates stores what the run solved bus by bus, a few whole intervals
+// at a time. A record replaces what is stored for its intervals, so a run
+// that was interrupted and is run again sends them all once more.
+func (r *Runner) recordStates(ctx context.Context, runID string, states []intervalStates) error {
+	req := &doelabv1.RecordFeederStatesRequest{EnvelopeRunId: runID}
+	send := func() error {
+		if len(req.GetNodes()) == 0 {
+			return nil
+		}
+		if _, err := r.API.Runs.RecordFeederStates(ctx, connect.NewRequest(req)); err != nil {
+			return fmt.Errorf("record states: %w", err)
+		}
+		req = &doelabv1.RecordFeederStatesRequest{EnvelopeRunId: runID}
+		return nil
+	}
+	for _, interval := range states {
+		// Whole intervals in a record: a record replaces the intervals it
+		// names.
+		if len(req.GetNodes())+len(interval.nodes) > r.MaxStates {
+			if err := send(); err != nil {
+				return err
+			}
+		}
+		req.Nodes = append(req.Nodes, interval.nodes...)
+		req.Lines = append(req.Lines, interval.lines...)
+	}
+	return send()
 }
 
 // record stores the state of the feeder for each interval of the run. A run

@@ -84,6 +84,20 @@ func (r faultyRepos) GetCurrentEnvelope(ctx context.Context, siteID uuid.UUID, a
 	return r.Repos.GetCurrentEnvelope(ctx, siteID, at)
 }
 
+func (r faultyRepos) ListFeederNodeStates(ctx context.Context, feederID uuid.UUID, at time.Time) ([]domain.FeederNodeState, error) {
+	if err := r.plan.down("ListFeederNodeStates"); err != nil {
+		return nil, err
+	}
+	return r.Repos.ListFeederNodeStates(ctx, feederID, at)
+}
+
+func (r faultyRepos) ListFeederLineStates(ctx context.Context, feederID uuid.UUID, at time.Time) ([]domain.FeederLineState, error) {
+	if err := r.plan.down("ListFeederLineStates"); err != nil {
+		return nil, err
+	}
+	return r.Repos.ListFeederLineStates(ctx, feederID, at)
+}
+
 func (r faultyRepos) GetFeeder(ctx context.Context, id uuid.UUID) (domain.Feeder, error) {
 	if err := r.plan.down("GetFeeder"); err != nil {
 		return domain.Feeder{}, err

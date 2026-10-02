@@ -268,9 +268,13 @@ func approx(t *testing.T, what string, got, want float64) {
 	}
 }
 
-// rawLV10 is the CSIRO feeder as downloaded by `just data`. The raw files are
-// not in the repository, so tests that read them skip when they are absent.
-const rawLV10 = "../../../../../data/raw/csiro/LV/LV10_223bus"
+// rawFeeders holds the CSIRO feeders as downloaded by `just data`, and
+// rawLV10 the one the demo started with. The raw files are not in the
+// repository, so tests that read them skip when they are absent.
+const (
+	rawFeeders = "../../../../../data/raw/csiro/LV"
+	rawLV10    = rawFeeders + "/LV10_223bus"
+)
 
 func readLV10(t *testing.T) *Circuit {
 	t.Helper()

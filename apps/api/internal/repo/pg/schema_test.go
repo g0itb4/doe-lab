@@ -191,6 +191,40 @@ func TestSchemaSitesAndDevices(t *testing.T) {
 	}
 }
 
+func TestSchemaSubstationsAndLocations(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t)
+	substation := `INSERT INTO substations (code, name, dnsp, state, latitude_deg, longitude_deg) VALUES ($1, $2, $3, $4, $5, $6)`
+	w.exec(t, substation, "SUB-001", "Lidcombe Zone", "Ausgrid", "NSW", -33.8524, 151.0621)
+
+	w.refuse(t, "a duplicate substation code", unique, "substations_code_key",
+		substation, "SUB-001", "Again", "Ausgrid", "NSW", -33.8, 151.0)
+	w.refuse(t, "a lower-case substation code", check, "substations_code_format",
+		substation, "sub-2", "Lower", "Ausgrid", "NSW", -33.8, 151.0)
+	w.refuse(t, "a substation with no name", check, "substations_name_present",
+		substation, "SUB-002", "", "Ausgrid", "NSW", -33.8, 151.0)
+	w.refuse(t, "a substation with no owner", check, "substations_dnsp_present",
+		substation, "SUB-002", "Name", "", "NSW", -33.8, 151.0)
+	w.refuse(t, "a state written out", check, "substations_state_format",
+		substation, "SUB-002", "Name", "Ausgrid", "New South Wales", -33.8, 151.0)
+	w.refuse(t, "a latitude off the globe", check, "substations_location_range",
+		substation, "SUB-002", "Name", "Ausgrid", "NSW", -90.5, 151.0)
+	w.refuse(t, "a longitude off the globe", check, "substations_location_range",
+		substation, "SUB-002", "Name", "Ausgrid", "NSW", -33.8, 180.5)
+
+	w.refuse(t, "a feeder below a substation that does not exist", foreign, "feeders_substation_fkey",
+		`UPDATE feeders SET substation_id = $2 WHERE id = $1`, w.f.Feeder.ID, uuid.New())
+	w.exec(t, `UPDATE feeders SET substation_id = (SELECT id FROM substations WHERE code = 'SUB-001') WHERE id = $1`, w.f.Feeder.ID)
+	w.refuse(t, "deleting a substation that has feeders", foreign, "feeders_substation_fkey",
+		`DELETE FROM substations WHERE code = 'SUB-001'`)
+
+	w.refuse(t, "a latitude with no longitude", check, "sites_location_complete",
+		`UPDATE sites SET latitude_deg = -33.85 WHERE id = $1`, w.f.SiteA.ID)
+	w.refuse(t, "a site off the globe", check, "sites_location_range",
+		`UPDATE sites SET latitude_deg = -33.85, longitude_deg = 181 WHERE id = $1`, w.f.SiteA.ID)
+	w.exec(t, `UPDATE sites SET latitude_deg = -33.850025, longitude_deg = 151.078926 WHERE id = $1`, w.f.SiteA.ID)
+}
+
 func TestSchemaAuditTrail(t *testing.T) {
 	t.Parallel()
 	w := newWorld(t)

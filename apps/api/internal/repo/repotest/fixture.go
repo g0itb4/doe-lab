@@ -62,6 +62,15 @@ func NMI(t testing.TB, serial int) string {
 	return nmi
 }
 
+// NewSubstation returns a substation ready to create, with the given code, at
+// Lidcombe.
+func NewSubstation(code string) domain.Substation {
+	return domain.Substation{
+		Code: code, Name: "Substation " + code, DNSP: "Ausgrid", State: "NSW",
+		LatitudeDeg: -33.8524, LongitudeDeg: 151.0621,
+	}
+}
+
 // NewFeeder returns a feeder ready to create, with the given code.
 func NewFeeder(code string) domain.Feeder {
 	return domain.Feeder{

@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package doelab.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+// SubstationService reads the zone substations: where on the map the feeders
+// are. A substation is created by the import, and nothing changes it.
+service SubstationService {
+  rpc GetSubstation(GetSubstationRequest) returns (GetSubstationResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+  // The substations, in code order.
+  rpc ListSubstations(ListSubstationsRequest) returns (ListSubstationsResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
+}
+
+// A zone substation: the place that the feeders below it are drawn from. It
+// is not part of the power flow. Mirrors the substations table.
+message Substation {
+  string id = 1 [
+    (buf.validate.field).string.uuid = true,
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // Short stable identifier, for example SUB-001.
+  string code = 2 [
+    (buf.validate.field).string.pattern = "^[A-Z0-9][A-Z0-9_-]{0,31}$",
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  string name = 3 [(buf.validate.field).string.max_len = 200];
+  // The distribution network service provider that owns the substation.
+  string dnsp = 4 [(buf.validate.field).string.max_len = 200];
+  // The Australian state or territory, as its abbreviation: NSW, VIC, SA.
+  string state = 5 [
+    (buf.validate.field).string.pattern = "^[A-Z]{2,3}$",
+    (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE
+  ];
+  // WGS 84, in degrees. South and west are negative.
+  double latitude_deg = 6 [(buf.validate.field).double = {
+    gte: -90
+    lte: 90
+  }];
+  double longitude_deg = 7 [(buf.validate.field).double = {
+    gte: -180
+    lte: 180
+  }];
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+message GetSubstationRequest {
+  // The substation's id or its code: exactly one.
+  oneof key {
+    option (buf.validate.oneof).required = true;
+    string id = 1 [(buf.validate.field).string.uuid = true];
+    string code = 2 [(buf.validate.field).string.pattern = "^[A-Z0-9][A-Z0-9_-]{0,31}$"];
+  }
+}
+
+message GetSubstationResponse {
+  Substation substation = 1;
+}
+
+message ListSubstationsRequest {
+  // At most this many substations. 0 means the default, 100.
+  int32 page_size = 1 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 500
+  }];
+  // next_page_token of the previous page. Empty for the first page.
+  string page_token = 2 [(buf.validate.field).string.max_len = 1024];
+}
+
+message ListSubstationsResponse {
+  repeated Substation substations = 1;
+  // Empty when there are no more pages.
+  string next_page_token = 2;
+}

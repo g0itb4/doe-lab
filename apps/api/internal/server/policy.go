@@ -20,6 +20,9 @@ func Policy() interceptor.Policy {
 		device   = auth.ScopeDevice
 	)
 	return interceptor.Policy{
+		doelabv1connect.SubstationServiceGetSubstationProcedure:   public,
+		doelabv1connect.SubstationServiceListSubstationsProcedure: public,
+
 		doelabv1connect.FeederServiceGetFeederProcedure:        public,
 		doelabv1connect.FeederServiceListFeedersProcedure:      public,
 		doelabv1connect.FeederServiceUpdateFeederProcedure:     operator,
@@ -31,6 +34,7 @@ func Policy() interceptor.Policy {
 
 		doelabv1connect.SiteServiceGetSiteProcedure:          public,
 		doelabv1connect.SiteServiceListSitesProcedure:        public,
+		doelabv1connect.SiteServiceListLocatedSitesProcedure: public,
 		doelabv1connect.SiteServiceCreateSiteProcedure:       operator,
 		doelabv1connect.SiteServiceUpdateSiteProcedure:       operator,
 		doelabv1connect.SiteServiceDeleteSiteProcedure:       operator,
@@ -66,11 +70,14 @@ func Policy() interceptor.Policy {
 
 		doelabv1connect.EnvelopeRunServiceCreateEnvelopeRunIntervalsProcedure: engine,
 		doelabv1connect.EnvelopeRunServiceListEnvelopeRunIntervalsProcedure:   public,
+		doelabv1connect.EnvelopeRunServiceRecordFeederStatesProcedure:         engine,
 
 		doelabv1connect.TelemetryServiceListReadingsProcedure:    public,
 		doelabv1connect.TelemetryServiceIngestReadingsProcedure:  device,
 		doelabv1connect.TelemetryServiceGetFleetSummaryProcedure: public,
 		doelabv1connect.TelemetryServiceWatchFleetProcedure:      public,
+		doelabv1connect.TelemetryServiceGetFleetStateProcedure:   public,
+		doelabv1connect.TelemetryServiceGetFeederStateProcedure:  public,
 		doelabv1connect.TelemetryServiceGetFeederSeriesProcedure: public,
 		doelabv1connect.TelemetryServiceGetSiteSeriesProcedure:   public,
 		doelabv1connect.TelemetryServiceGetDailyReportProcedure:  public,

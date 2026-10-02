@@ -45,12 +45,27 @@ func (r *repos) ListAllSites(ctx context.Context, feederID uuid.UUID) ([]domain.
 	return many(rows, err, siteFromRow)
 }
 
+func (r *repos) ListLocatedSites(ctx context.Context, page domain.Page) ([]domain.Site, string, error) {
+	after, err := pagetoken.Decode(page.Token, 1)
+	if err != nil {
+		return nil, "", err
+	}
+	rows, err := r.q.ListLocatedSites(ctx, gen.ListLocatedSitesParams{AfterNmi: after[0], PageSize: page.Size + 1})
+	out, err := many(rows, err, siteFromRow)
+	if err != nil {
+		return nil, "", err
+	}
+	out, next := pagetoken.Next(out, page.Size, func(s domain.Site) []string { return []string{s.NMI} })
+	return out, next, nil
+}
+
 func (r *repos) CreateSite(ctx context.Context, s domain.Site) (domain.Site, error) {
 	row, err := r.q.CreateSite(ctx, gen.CreateSiteParams{
 		Nmi: s.NMI, FeederID: s.FeederID, NodeID: s.NodeID, Name: s.Name, Phase: s.Phase,
 		PvKw: s.PVKW, InverterKva: s.InverterKVA, ExportCapW: s.ExportCapW, ImportCapW: s.ImportCapW,
 		HasBattery: s.HasBattery, BatteryKwh: s.BatteryKWh, HasEv: s.HasEV,
 		ProfileCustomer: s.ProfileCustomer,
+		LatitudeDeg:     s.LatitudeDeg, LongitudeDeg: s.LongitudeDeg,
 	})
 	return one(row, err, siteFromRow)
 }

@@ -569,6 +569,9 @@ func (r *repos) PurgeBefore(_ context.Context, readingsBefore, envelopesBefore, 
 		if run.HorizonTo.Before(envelopesBefore) && !runs[id] {
 			delete(st.runs, id)
 			st.intervals = slices.DeleteFunc(st.intervals, func(i domain.EnvelopeRunInterval) bool { return i.EnvelopeRunID == id })
+			// The states a run solved go with it.
+			maps.DeleteFunc(st.nodeStates, func(_ stateKey, s domain.FeederNodeState) bool { return s.EnvelopeRunID == id })
+			maps.DeleteFunc(st.lineStates, func(_ stateKey, s domain.FeederLineState) bool { return s.EnvelopeRunID == id })
 			maps.DeleteFunc(st.keys, func(_ [2]string, k domain.IdempotencyKey) bool {
 				return k.EnvelopeRunID != nil && *k.EnvelopeRunID == id
 			})

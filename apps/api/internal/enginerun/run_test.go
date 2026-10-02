@@ -120,7 +120,7 @@ func newWorld(t *testing.T, profiles bool) *world {
 			}
 			series[int(*site.ProfileCustomer)] = rows
 		}
-		if err := importer.ImportProfiles(ctx, imported.Sites, series); err != nil {
+		if err := importer.ImportProfiles(ctx, imported.Sites, series, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -285,6 +285,53 @@ func TestRun(t *testing.T) {
 		t.Errorf("%d of %d intervals forecast reverse flow: want some, not all", reverse, n)
 	}
 
+	// What the run solved is there bus by bus, for every interval: a voltage
+	// at each of the 223 buses and a flow in each of the 222 lines, at the
+	// three operating points. The feeder's highest customer voltage is at
+	// one of those buses.
+	for i, row := range intervals {
+		at := row.ValidFrom.Add(10 * time.Minute)
+		nodes, err := w.Store.ListFeederNodeStates(ctx, w.feeder.ID, at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines, err := w.Store.ListFeederLineStates(ctx, w.feeder.ID, at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(nodes) != 223 || len(lines) != 222 {
+			t.Fatalf("interval %d has %d node states and %d line states, want 223 and 222", i, len(nodes), len(lines))
+		}
+		highest := 0.0
+		for _, n := range nodes {
+			if n.EnvelopeRunID != run.ID || !n.ValidFrom.Equal(row.ValidFrom) || !n.ValidTo.Equal(row.ValidTo) ||
+				len(n.ForecastVPU) != 3 || len(n.EnvelopeVPU) != 3 || len(n.StaticVPU) != 3 {
+				t.Fatalf("interval %d: node state %+v", i, n)
+			}
+			for _, pu := range n.ForecastVPU {
+				if pu < 0.8 || pu > 1.3 {
+					t.Fatalf("interval %d: %.3f pu at node %s", i, pu, n.NodeID)
+				}
+				highest = max(highest, pu)
+			}
+		}
+		if highest < row.ForecastVMaxPU-1e-9 {
+			t.Fatalf("interval %d: the highest bus voltage is %.4f pu, below the highest customer voltage %.4f", i, highest, row.ForecastVMaxPU)
+		}
+		// The line out of the transformer carries what the feeder draws,
+		// less the transformer's own loss: the same sign, and nearly as much.
+		outOfTransformer := 0.0
+		for _, l := range lines {
+			if len(l.ForecastCurrentA) != 4 || l.EnvelopeRunID != run.ID {
+				t.Fatalf("interval %d: line state %+v", i, l)
+			}
+			outOfTransformer = max(outOfTransformer, math.Abs(l.ForecastPowerW))
+		}
+		if math.Abs(row.ForecastNetLoadW) > 2000 && (outOfTransformer < 0.9*math.Abs(row.ForecastNetLoadW) || outOfTransformer > 1.1*math.Abs(row.ForecastNetLoadW)) {
+			t.Fatalf("interval %d: the busiest line carries %.0f W, and the transformer %.0f W", i, outOfTransformer, row.ForecastNetLoadW)
+		}
+	}
+
 	// The same horizon again: the run had finished, so nothing is computed.
 	again, err := w.runner.Run(ctx, w.SimClock.Now(), "")
 	if err != nil || !again.Skipped || again.RunID != summary.RunID || again.Published != 0 {
@@ -387,6 +434,8 @@ type flaky struct {
 	failPublish  atomic.Int32 // fail the publish with this index, once
 	failComplete atomic.Bool
 	failRecord   atomic.Bool
+	failStates   atomic.Int32 // fail the record of states with this index, counted from 1
+	stateRecords atomic.Int32
 	cancel       context.CancelFunc
 	longError    string // fail every publish with this message
 }
@@ -413,6 +462,13 @@ func (f *flaky) CreateEnvelopeRunIntervals(ctx context.Context, req *connect.Req
 		return nil, connect.NewError(connect.CodeUnavailable, errors.New("connection reset"))
 	}
 	return f.EnvelopeRunServiceClient.CreateEnvelopeRunIntervals(ctx, req)
+}
+
+func (f *flaky) RecordFeederStates(ctx context.Context, req *connect.Request[doelabv1.RecordFeederStatesRequest]) (*connect.Response[doelabv1.RecordFeederStatesResponse], error) {
+	if f.stateRecords.Add(1) == f.failStates.Load() {
+		return nil, connect.NewError(connect.CodeUnavailable, errors.New("connection reset"))
+	}
+	return f.EnvelopeRunServiceClient.RecordFeederStates(ctx, req)
 }
 
 func (f *flaky) GetFeederForecast(ctx context.Context, req *connect.Request[doelabv1.GetFeederForecastRequest]) (*connect.Response[doelabv1.GetFeederForecastResponse], error) {
@@ -525,6 +581,49 @@ func TestFailedRunIsRecorded(t *testing.T) {
 		}
 	})
 
+	t.Run("recording the states fails", func(t *testing.T) {
+		t.Parallel()
+		w := newWorld(t, true)
+		// Two intervals to a record, so the run sends several, and the
+		// second fails.
+		w.runner.MaxStates = 2 * 223
+		faults := w.inject()
+		faults.failStates.Store(2)
+		summary, err := w.runner.Run(ctx, w.SimClock.Now(), "")
+		if err == nil || !strings.Contains(err.Error(), "record states") {
+			t.Fatalf("error = %v", err)
+		}
+		run := w.run(t, summary.RunID)
+		if run.Status != domain.RunFailed || !strings.Contains(*run.Error, "connection reset") || run.EnvelopeCount != 0 {
+			t.Errorf("run = %+v", run)
+		}
+		// The first record was stored: two intervals of it.
+		if nodes, err := w.Store.ListFeederNodeStates(ctx, w.feeder.ID, summary.From.Add(40*time.Minute)); err != nil || len(nodes) != 223 {
+			t.Errorf("%d node states of the second interval, %v", len(nodes), err)
+		}
+		if nodes, err := w.Store.ListFeederNodeStates(ctx, w.feeder.ID, summary.From.Add(70*time.Minute)); err != nil || len(nodes) != 0 {
+			t.Errorf("%d node states of the third interval, %v", len(nodes), err)
+		}
+	})
+
+	t.Run("an interval larger than a record is still sent whole", func(t *testing.T) {
+		t.Parallel()
+		w := newWorld(t, true)
+		w.runner.MaxStates = 1
+		faults := w.inject()
+		summary, err := w.runner.Run(ctx, w.SimClock.Now(), "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := int(faults.stateRecords.Load()); got != summary.Intervals {
+			t.Errorf("%d records of states for %d intervals", got, summary.Intervals)
+		}
+		last := summary.To.Add(-10 * time.Minute)
+		if nodes, err := w.Store.ListFeederNodeStates(ctx, w.feeder.ID, last); err != nil || len(nodes) != 223 {
+			t.Errorf("%d node states of the last interval, %v", len(nodes), err)
+		}
+	})
+
 	t.Run("cancelled while computing", func(t *testing.T) {
 		t.Parallel()
 		w := newWorld(t, true)
@@ -618,6 +717,20 @@ func TestClockSettings(t *testing.T) {
 	w.Close()
 	if _, _, err := w.runner.API.ClockSettings(context.Background()); err == nil {
 		t.Error("the clock of a stopped API")
+	}
+}
+
+func TestFeederCodes(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, false)
+	repotest.Seed(t, w.Store, "SUB-002-LV1", 500)
+	codes, err := w.runner.API.FeederCodes(context.Background())
+	if err != nil || len(codes) != 2 || codes[0] != "LV10" || codes[1] != "SUB-002-LV1" {
+		t.Errorf("feeder codes = %v, %v", codes, err)
+	}
+	w.Close()
+	if _, err := w.runner.API.FeederCodes(context.Background()); err == nil {
+		t.Error("the feeders of a stopped API")
 	}
 }
 

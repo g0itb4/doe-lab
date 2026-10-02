@@ -246,21 +246,77 @@ func (f *Fleet) newUnit(site domain.Site, devices []domain.Device) *unit {
 	return u
 }
 
-// misbehave picks the rogue and the flaky devices.
+// misbehave picks the rogue and the flaky devices that the fractions ask for.
 func (f *Fleet) misbehave() {
-	rng := rand.New(rand.NewPCG(f.Seed, 0)) //nolint:gosec // G404: a simulation, not a secret
 	share := func(fraction float64) int {
-		return max(0, min(len(f.units), int(math.Ceil(fraction*float64(len(f.units))))))
+		return max(0, int(math.Ceil(fraction*float64(len(f.units)))))
 	}
-	rogues, flaky := share(f.RogueFraction), share(f.FlakyFraction)
+	f.Misbehave(share(f.RogueFraction), share(f.FlakyFraction))
+}
+
+// Misbehave picks which devices ignore their envelope and which go silent
+// from time to time: that many of each, or as many as the fleet has. It
+// replaces the pick before it.
+//
+// Connect makes the pick that RogueFraction and FlakyFraction ask for, which
+// is at least one device of this fleet for any fraction above zero. A caller
+// that runs several fleets and wants a share of all their devices makes its
+// own, after Connect and before the first Tick.
+func (f *Fleet) Misbehave(rogues, flaky int) {
+	rng := rand.New(rand.NewPCG(f.Seed, 0)) //nolint:gosec // G404: a simulation, not a secret
 	for i, k := range rng.Perm(len(f.units)) {
 		u := f.units[k]
+		u.rogue, u.flaky, u.silentFrom = false, false, 0
 		switch {
 		case i < rogues:
 			u.rogue = true
 		case i < rogues+flaky:
 			u.flaky, u.silentFrom = true, time.Duration(rng.Int64N(int64(flakyPeriod)))
 		}
+	}
+}
+
+// Misbehaving counts the devices that Misbehave picked.
+func (f *Fleet) Misbehaving() (rogues, flaky int) {
+	for _, u := range f.units {
+		if u.rogue {
+			rogues++
+		}
+		if u.flaky {
+			flaky++
+		}
+	}
+	return rogues, flaky
+}
+
+// Misbehave picks the rogue and the flaky devices of several fleets together:
+// the shares are of all their devices, at least one for any share above zero,
+// handed out to the fleets one device at a time and in turn, so that they are
+// spread over the feeders. A fleet is passed over once every one of its
+// devices misbehaves.
+func Misbehave(fleets []*Fleet, rogueFraction, flakyFraction float64) {
+	total := 0
+	for _, f := range fleets {
+		total += len(f.units)
+	}
+	type pick struct{ rogues, flaky int }
+	picks := make([]pick, len(fleets))
+	next := 0
+	hand := func(fraction float64, to func(*pick)) {
+		n := int(math.Ceil(fraction * float64(total)))
+		for full := 0; n > 0 && full < len(fleets); next = (next + 1) % len(fleets) {
+			if picks[next].rogues+picks[next].flaky >= len(fleets[next].units) {
+				full++
+				continue
+			}
+			to(&picks[next])
+			n, full = n-1, 0
+		}
+	}
+	hand(rogueFraction, func(p *pick) { p.rogues++ })
+	hand(flakyFraction, func(p *pick) { p.flaky++ })
+	for i, f := range fleets {
+		f.Misbehave(picks[i].rogues, picks[i].flaky)
 	}
 }
 

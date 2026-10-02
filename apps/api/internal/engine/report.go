@@ -20,6 +20,19 @@ type State struct {
 	// Worst is the limit that the operating point breaks by the widest
 	// margin. Its constraint is ConstraintNone when it keeps every limit.
 	Worst Binding
+
+	// The same operating point bus by bus, in the network's bus order: what
+	// a drawing of the feeder shows.
+	//
+	// BusVPU is the phase-to-neutral voltage of each phase of each bus, per
+	// unit of 230 V.
+	BusVPU [][Neutral]float64
+	// LineA is the current in each conductor of the line into each bus, in
+	// amperes, and LineW the power that line carries towards the bus, in
+	// watts: negative is power flowing back towards the transformer. Both
+	// are zero for the first bus, which has no line.
+	LineA [][Conductors]float64
+	LineW []float64
 }
 
 // state reads a State from a solved operating point.
@@ -35,6 +48,17 @@ func (e *Engine) state(sol *Solution) State {
 	s.SourceVA = e.pf.SourcePower(sol)
 	s.LoadingPU = cmplx.Abs(s.SourceVA) / (e.net.Source.KVA * 1000)
 	s.Worst, _ = e.worst(sol)
+
+	n := len(e.net.Buses)
+	s.BusVPU, s.LineA, s.LineW = make([][Neutral]float64, n), make([][Conductors]float64, n), make([]float64, n)
+	for i := range e.net.Buses {
+		for ph, volts := range e.pf.BusVoltage(sol, i) {
+			s.BusVPU[i][ph] = volts / NominalVoltage
+		}
+		if i > 0 {
+			s.LineA[i], s.LineW[i] = e.pf.LineCurrent(sol, i), real(e.pf.LinePower(sol, i))
+		}
+	}
 	return s
 }
 

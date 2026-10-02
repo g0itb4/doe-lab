@@ -6,6 +6,20 @@ import (
 	"github.com/google/uuid"
 )
 
+// Substation mirrors the substations table: where on the map a group of
+// feeders is.
+type Substation struct {
+	ID           uuid.UUID `db:"id"`
+	Code         string    `db:"code"`
+	Name         string    `db:"name"`
+	DNSP         string    `db:"dnsp"`
+	State        string    `db:"state"`
+	LatitudeDeg  float64   `db:"latitude_deg"`
+	LongitudeDeg float64   `db:"longitude_deg"`
+	CreatedAt    time.Time `db:"created_at"`
+	UpdatedAt    time.Time `db:"updated_at"`
+}
+
 // Feeder mirrors the feeders table.
 type Feeder struct {
 	ID              uuid.UUID `db:"id"`
@@ -22,6 +36,8 @@ type Feeder struct {
 	Attribution     string    `db:"attribution"`
 	CreatedAt       time.Time `db:"created_at"`
 	UpdatedAt       time.Time `db:"updated_at"`
+	// SubstationID is nil for a feeder that has not been placed.
+	SubstationID *uuid.UUID `db:"substation_id"`
 }
 
 // FeederNode mirrors the feeder_nodes table.
@@ -75,6 +91,10 @@ type Site struct {
 	CreatedAt       time.Time  `db:"created_at"`
 	UpdatedAt       time.Time  `db:"updated_at"`
 	DeletedAt       *time.Time `db:"deleted_at"`
+	// LatitudeDeg and LongitudeDeg are set together, and nil for a site with
+	// no place on the map.
+	LatitudeDeg  *float64 `db:"latitude_deg"`
+	LongitudeDeg *float64 `db:"longitude_deg"`
 }
 
 // Device mirrors the devices table.
@@ -258,6 +278,37 @@ type EnvelopeRunInterval struct {
 	CreatedAt            time.Time         `db:"created_at"`
 	// EnvelopeVMaxPU is nil for a row from before the engine recorded it.
 	EnvelopeVMaxPU *float64 `db:"envelope_v_max_pu"`
+}
+
+// FeederNodeState mirrors the feeder_node_states table: the voltage at a bus
+// for one interval, as the latest run solved it. Each slice holds phases 1 to
+// 3, per unit of the nominal voltage.
+type FeederNodeState struct {
+	FeederID      uuid.UUID `db:"feeder_id"`
+	NodeID        uuid.UUID `db:"node_id"`
+	ValidFrom     time.Time `db:"valid_from"`
+	ValidTo       time.Time `db:"valid_to"`
+	EnvelopeRunID uuid.UUID `db:"envelope_run_id"`
+	ForecastVPU   []float64 `db:"forecast_v_pu"`
+	EnvelopeVPU   []float64 `db:"envelope_v_pu"`
+	StaticVPU     []float64 `db:"static_v_pu"`
+}
+
+// FeederLineState mirrors the feeder_line_states table: the flow in a line
+// for one interval, as the latest run solved it. Each slice of currents holds
+// phases 1 to 3 and then the neutral.
+type FeederLineState struct {
+	FeederID         uuid.UUID `db:"feeder_id"`
+	LineID           uuid.UUID `db:"line_id"`
+	ValidFrom        time.Time `db:"valid_from"`
+	ValidTo          time.Time `db:"valid_to"`
+	EnvelopeRunID    uuid.UUID `db:"envelope_run_id"`
+	ForecastCurrentA []float64 `db:"forecast_current_a"`
+	EnvelopeCurrentA []float64 `db:"envelope_current_a"`
+	StaticCurrentA   []float64 `db:"static_current_a"`
+	ForecastPowerW   float64   `db:"forecast_power_w"`
+	EnvelopePowerW   float64   `db:"envelope_power_w"`
+	StaticPowerW     float64   `db:"static_power_w"`
 }
 
 // SitePower mirrors the site_power_1m continuous aggregate: one minute of a

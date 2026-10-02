@@ -1,20 +1,21 @@
 # doe-lab
 
-Dynamic operating envelopes (DOEs) on a real Australian low-voltage feeder,
+Dynamic operating envelopes (DOEs) on real Australian low-voltage feeders,
 end to end:
 
 - an **engine** computes how much each home may export and import in each
   half hour without pushing the street past its limits
 - an **API** stores those limits and streams them to devices
 - **simulated inverters** obey them, and a few are made not to
-- a **web UI** shows an operator what is happening
+- a **web UI** shows an operator what is happening, on a map of the fleet
+  and on a drawing of each feeder
 
-![The feeder overview: status, live figures of the fleet, and three charts](docs/img/overview.png)
+![A tour of the operator UI at midday: the overview of a feeder, the map from Sydney down to one site at Crows Nest, that site's feeder as forecast, at the envelopes and at one fixed limit, then alerts and engine runs](docs/img/tour.gif)
 
-A home with solar usually gets one fixed export limit, often 5 kW. On this
-feeder that limit would push voltage past the upper limit in every interval
-of the day if every participating home used it. The envelopes hold the
-highest voltage at the limit, and still let most of the solar out.
+A home with solar usually gets one fixed export limit, often 5 kW. On several
+of these feeders that limit would push voltage past the upper limit in most
+half hours of the day if every participating site used it. The envelopes hold
+the highest voltage at the limit, and still let most of the solar out.
 
 A simulation, not a real network. Not affiliated with CSIRO, GridQube,
 Ausgrid or any network operator. The NMIs are synthetic; there is no customer
@@ -46,7 +47,7 @@ Open <http://localhost:5273>.
 just demo           # everything below, on a fresh database
 just up             # Postgres with TimescaleDB, and an S3 gateway
 just data           # download the datasets and verify their checksums
-just import         # LV10 and a year of profiles into the database
+just import         # the fleet of data/fleet and a year of profiles into the database
 just dev            # API on :3100, web UI on :5273, both in watch mode
 just engine-loop    # the engine: a run now, then one every two intervals
 just dersim         # the simulated devices
@@ -96,7 +97,12 @@ flowchart LR
   resources mirror the tables, and a test fails when they drift.
 - Envelopes are immutable. A publish is idempotent and all or nothing.
 - A site over its limit, or a silent device, raises an alert. An operator
-  **backstop** overrides every envelope at once.
+  **backstop** overrides every envelope of a feeder at once.
+- The engine records what it solved bus by bus: the voltage at each bus and
+  the flow in each line, for the forecast, for every site at its envelope and
+  for every site at one fixed limit. The network page draws it.
+- The map's streets are OpenStreetMap tiles: the one thing the browser
+  fetches from another host.
 - The assistant is a language model with four read-only lookups, a rate
   limit and a daily budget.
 
@@ -112,13 +118,20 @@ flowchart LR
 
 | | |
 | --- | --- |
+| ![The map: a substation, its sites with DER and what each is doing against its limit](docs/img/map.jpg) | ![The network: a feeder at one fixed limit, every bus past the voltage band](docs/img/network.png) |
 | ![A site: its envelope, forecast, telemetry and a marked breach](docs/img/site.png) | ![Operations: the backstop control, alerts and engine runs](docs/img/operations.png) |
 
 ## The model
 
-Feeder **LV10** of CSIRO's realistic Australian feeder set: 223 buses, 94
-single-phase customers, one 500 kVA transformer, four wires. Load and solar
-are a year of half-hourly measurements from Ausgrid's solar home data.
+Sixteen feeders below seven zone substations in Sydney, Adelaide and
+Melbourne. One is feeder **LV10** of CSIRO's realistic Australian feeder set:
+223 buses, 94 single-phase customers, one 500 kVA transformer, four wires. The
+others are built from five smaller feeders of the same set. 76 sites have
+solar, a battery or an EV charger, and take part in envelopes; the other 237
+customers are load the envelopes work around. Load and solar are a year of
+half-hourly measurements from Ausgrid's solar home data. Which feeder hangs
+from which substation, and where each site is, is made up
+([`data/fleet`](data/fleet)).
 
 The forecast is the measured profile, so there is no forecast error. The
 limits use CSIP-AUS names (`opModExpLimW`); the transport is ConnectRPC, not
@@ -131,7 +144,7 @@ Each number comes from a test, a benchmark or a document in this repo.
 
 | What | Result | Where |
 | ---- | ------ | ----- |
-| Power flow against OpenDSS | Within 0.34 mV (1.5 × 10⁻⁶ pu) | `internal/engine/golden_test.go` |
+| Power flow against OpenDSS, on six feeders | Within 0.34 mV (1.5 × 10⁻⁶ pu) | `internal/engine/golden_test.go` |
 | A day of envelopes, 94 sites, one thread | 0.24 s | `just bench` |
 | Dispatch at 10,000 subscriptions, one laptop | p99 739 ms, none failed | [`docs/load-test.md`](docs/load-test.md) |
 | Go coverage floors | 100 % for engine, domain, services, server; none under 90 % | `apps/api/coverage.json` |
@@ -150,6 +163,7 @@ commercial one.
 | ---- | ------ | ------- |
 | The feeder | "Realistic Australian Medium Voltage Feeder with Associated Low Voltage Feeders", CSIRO Data Access Portal, DOI [10.25919/ghnz-bk28](https://doi.org/10.25919/ghnz-bk28). © GridQube 2025 | CC BY-NC-SA 4.0 |
 | Load and solar | Solar home electricity data © Ausgrid. Archive copy provided by Pierre Haessig | CC BY 3.0 AU |
+| Map tiles | © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, fetched by the browser from `tile.openstreetmap.org` | ODbL |
 
 The raw data is not in the repo; `just data` downloads it. Files derived from
 the CSIRO feeder keep its licence: see

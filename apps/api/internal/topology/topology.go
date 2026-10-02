@@ -100,14 +100,25 @@ func unflatten(what string, values []float64) (engine.Matrix, error) {
 	return m, nil
 }
 
+// Order says which row each element of a network was built from: the engine
+// works by index, the API by id.
+type Order struct {
+	// Sites[i] is the id of the network's site i.
+	Sites []uuid.UUID
+	// Nodes[i] is the id of the network's bus i, and Lines[i] the id of the
+	// line into it: the nil UUID for the first bus, which has none.
+	Nodes []uuid.UUID
+	Lines []uuid.UUID
+}
+
 // ToNetwork rebuilds the engine's network from stored rows. The rows may come
 // in any order; buses are ordered breadth-first from the root, and the
 // children of a bus by name, so the result is the same whatever order the
-// rows arrived in.
+// rows arrived in. Sites are in NMI order.
 //
-// The second result gives, for each site of the network, the id of its row:
-// the engine works by index, the API by id. Sites are in NMI order.
-func ToNetwork(feeder domain.Feeder, nodes []domain.FeederNode, lines []domain.FeederLine, sites []domain.Site) (*engine.Network, []uuid.UUID, error) {
+// The second result gives the row of each element of the network.
+func ToNetwork(feeder domain.Feeder, nodes []domain.FeederNode, lines []domain.FeederLine, sites []domain.Site) (*engine.Network, Order, error) {
+	var order Order
 	net := &engine.Network{
 		Name: feeder.Name,
 		Source: engine.Source{
@@ -133,7 +144,7 @@ func ToNetwork(feeder domain.Feeder, nodes []domain.FeederNode, lines []domain.F
 		children[*n.ParentNodeID] = append(children[*n.ParentNodeID], n)
 	}
 	if len(roots) != 1 {
-		return nil, nil, fmt.Errorf("feeder %s has %d root nodes, want 1", feeder.Code, len(roots))
+		return nil, Order{}, fmt.Errorf("feeder %s has %d root nodes, want 1", feeder.Code, len(roots))
 	}
 
 	index := map[uuid.UUID]int{}
@@ -149,18 +160,18 @@ func ToNetwork(feeder domain.Feeder, nodes []domain.FeederNode, lines []domain.F
 			bus.Parent = index[*node.ParentNodeID]
 			l, ok := lineInto[node.ID]
 			if !ok {
-				return nil, nil, fmt.Errorf("node %s has no line from its parent", node.Name)
+				return nil, Order{}, fmt.Errorf("node %s has no line from its parent", node.Name)
 			}
 			line := &engine.Line{Name: l.Name, Linecode: l.Linecode, LengthKm: l.LengthM / 1000, Switch: l.IsSwitch}
 			var err error
 			if line.ROhm, err = unflatten(l.Name+".r_ohm", l.ROhm); err != nil {
-				return nil, nil, err
+				return nil, Order{}, err
 			}
 			if line.XOhm, err = unflatten(l.Name+".x_ohm", l.XOhm); err != nil {
-				return nil, nil, err
+				return nil, Order{}, err
 			}
 			if line.BS, err = unflatten(l.Name+".b_s", l.BS); err != nil {
-				return nil, nil, err
+				return nil, Order{}, err
 			}
 			if l.AmpacityA != nil {
 				line.AmpacityA = *l.AmpacityA
@@ -169,28 +180,31 @@ func ToNetwork(feeder domain.Feeder, nodes []domain.FeederNode, lines []domain.F
 		}
 		index[node.ID] = len(net.Buses)
 		net.Buses = append(net.Buses, bus)
+		order.Nodes = append(order.Nodes, node.ID)
+		// The nil UUID for the root, which no line enters.
+		order.Lines = append(order.Lines, lineInto[node.ID].ID)
 
 		next := children[node.ID]
 		sort.Slice(next, func(i, j int) bool { return next[i].Name < next[j].Name })
 		queue = append(queue, next...)
 	}
 	if len(net.Buses) != len(nodes) {
-		return nil, nil, fmt.Errorf("feeder %s: %d of %d nodes are not reachable from the root", feeder.Code, len(nodes)-len(net.Buses), len(nodes))
+		return nil, Order{}, fmt.Errorf("feeder %s: %d of %d nodes are not reachable from the root", feeder.Code, len(nodes)-len(net.Buses), len(nodes))
 	}
 
 	ordered := append([]domain.Site(nil), sites...)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].NMI < ordered[j].NMI })
-	ids := make([]uuid.UUID, len(ordered))
+	order.Sites = make([]uuid.UUID, len(ordered))
 	for i, s := range ordered {
 		bus, ok := index[s.NodeID]
 		if !ok {
-			return nil, nil, fmt.Errorf("site %s is on a node that is not in the feeder", s.NMI)
+			return nil, Order{}, fmt.Errorf("site %s is on a node that is not in the feeder", s.NMI)
 		}
 		net.Sites = append(net.Sites, engine.Site{Name: s.NMI, Bus: bus, Phase: int(s.Phase)})
-		ids[i] = s.ID
+		order.Sites[i] = s.ID
 	}
 	if err := net.Validate(); err != nil {
-		return nil, nil, err
+		return nil, Order{}, err
 	}
-	return net, ids, nil
+	return net, order, nil
 }

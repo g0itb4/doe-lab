@@ -195,11 +195,11 @@
     >
       <p class="min-w-0 flex-1 text-sm">
         <strong>What you are looking at.</strong> A model of a real Australian low-voltage feeder:
-        94 homes with rooftop solar behind one transformer. For every interval an engine solves the
-        network and gives each participating home an <em>operating envelope</em>: the most it may
-        export without pushing the street's voltage or the transformer past their limits. Simulated
-        inverters obey the envelopes, and a few do not, so you can see the alerts. This is a
-        simulation, not a real network.
+        homes behind one transformer, many with rooftop solar. For every interval an engine solves
+        the network and gives each participating site an <em>operating envelope</em>: the most it
+        may export without pushing the street's voltage or the transformer past their limits.
+        Simulated inverters obey the envelopes, and a few do not, so you can see the alerts. This is
+        a simulation, not a real network.
         {#if REPO_URL}<a class="link" href={REPO_URL}>Read how it works</a>.{/if}
       </p>
       <button type="button" class="btn" onclick={dismissIntro}>Got it</button>

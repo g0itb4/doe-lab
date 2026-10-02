@@ -29,6 +29,7 @@ type Store interface {
 // Repos is every repository. A list method returns one page and the token of
 // the next; the token is empty on the last page.
 type Repos interface {
+	SubstationRepo
 	FeederRepo
 	SiteRepo
 	DeviceRepo
@@ -37,10 +38,21 @@ type Repos interface {
 	EnvelopeRepo
 	IdempotencyRepo
 	RunIntervalRepo
+	FeederStateRepo
 	TelemetryRepo
 	AlertRepo
 	BackstopRepo
 	RetentionRepo
+}
+
+// SubstationRepo stores the substations. There is no update and no delete:
+// the import creates them.
+type SubstationRepo interface {
+	GetSubstation(ctx context.Context, id uuid.UUID) (domain.Substation, error)
+	GetSubstationByCode(ctx context.Context, code string) (domain.Substation, error)
+	// ListSubstations returns the substations in code order.
+	ListSubstations(ctx context.Context, page domain.Page) ([]domain.Substation, string, error)
+	CreateSubstation(ctx context.Context, s domain.Substation) (domain.Substation, error)
 }
 
 // FeederRepo stores the network model.
@@ -77,6 +89,9 @@ type SiteRepo interface {
 	ListSites(ctx context.Context, feederID uuid.UUID, phase *int16, page domain.Page) ([]domain.Site, string, error)
 	// ListAllSites returns every site of the feeder, in NMI order.
 	ListAllSites(ctx context.Context, feederID uuid.UUID) ([]domain.Site, error)
+	// ListLocatedSites returns the sites that have a location, of every
+	// feeder, in NMI order.
+	ListLocatedSites(ctx context.Context, page domain.Page) ([]domain.Site, string, error)
 	CreateSite(ctx context.Context, s domain.Site) (domain.Site, error)
 	// UpdateSite writes the mutable columns: the DER fields and the caps.
 	UpdateSite(ctx context.Context, s domain.Site) (domain.Site, error)
@@ -192,6 +207,23 @@ type RunIntervalRepo interface {
 	// ListFeederIntervals returns, for each interval of a feeder that starts
 	// in [from, to), the row of the latest run that covered it.
 	ListFeederIntervals(ctx context.Context, feederID uuid.UUID, from, to time.Time) ([]domain.EnvelopeRunInterval, error)
+}
+
+// FeederStateRepo stores the latest solved state of a feeder, bus by bus and
+// line by line, per interval.
+type FeederStateRepo interface {
+	// ReplaceFeederStates stores the states of a feeder for the intervals
+	// they name, in place of everything that was stored for those intervals.
+	// A state of a node or line that is not the feeder's, or of a run that
+	// does not exist, is domain.ErrFailedPrecondition.
+	ReplaceFeederStates(ctx context.Context, feederID uuid.UUID, nodes []domain.FeederNodeState, lines []domain.FeederLineState) error
+	// ListFeederNodeStates returns the node states of the interval of a
+	// feeder that holds the instant, in node order; none when no stored
+	// interval holds it.
+	ListFeederNodeStates(ctx context.Context, feederID uuid.UUID, at time.Time) ([]domain.FeederNodeState, error)
+	// ListFeederLineStates returns the line states of the same interval, in
+	// line order.
+	ListFeederLineStates(ctx context.Context, feederID uuid.UUID, at time.Time) ([]domain.FeederLineState, error)
 }
 
 // TelemetryRepo stores readings and the rollups over them.

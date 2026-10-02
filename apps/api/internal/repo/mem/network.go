@@ -11,6 +11,60 @@ import (
 	"doelab/api/internal/repo/pagetoken"
 )
 
+func (r *repos) GetSubstation(_ context.Context, id uuid.UUID) (domain.Substation, error) {
+	defer r.lock()()
+	s, ok := r.s.st.substations[id]
+	if !ok {
+		return domain.Substation{}, notFound("substation", id)
+	}
+	return s, nil
+}
+
+func (r *repos) GetSubstationByCode(_ context.Context, code string) (domain.Substation, error) {
+	defer r.lock()()
+	for _, s := range r.s.st.substations {
+		if s.Code == code {
+			return s, nil
+		}
+	}
+	return domain.Substation{}, notFound("substation", code)
+}
+
+func (r *repos) ListSubstations(_ context.Context, page domain.Page) ([]domain.Substation, string, error) {
+	defer r.lock()()
+	after, err := pagetoken.Decode(page.Token, 1)
+	if err != nil {
+		return nil, "", err
+	}
+	rows := sorted(r.s.st.substations,
+		func(s domain.Substation) bool { return s.Code > after[0] },
+		func(a, b domain.Substation) int { return cmp.Compare(a.Code, b.Code) })
+	rows, next := pagetoken.Next(limit(rows, page.Size+1), page.Size, func(s domain.Substation) []string { return []string{s.Code} })
+	return rows, next, nil
+}
+
+// located reports whether a latitude and a longitude are on the globe.
+func located(latitudeDeg, longitudeDeg float64) bool {
+	return latitudeDeg >= -90 && latitudeDeg <= 90 && longitudeDeg >= -180 && longitudeDeg <= 180
+}
+
+func (r *repos) CreateSubstation(_ context.Context, s domain.Substation) (domain.Substation, error) {
+	defer r.lock()()
+	for _, other := range r.s.st.substations {
+		if other.Code == s.Code {
+			return domain.Substation{}, fmt.Errorf("substations_code_key: %w", domain.ErrAlreadyExists)
+		}
+	}
+	if !located(s.LatitudeDeg, s.LongitudeDeg) {
+		return domain.Substation{}, fmt.Errorf("substations_location_range: %w", domain.ErrInvalid)
+	}
+	s.ID = uuid.Must(uuid.NewV7())
+	s.CreatedAt = r.now()
+	s.UpdatedAt = s.CreatedAt
+	r.s.st.substations[s.ID] = s
+	return s, nil
+}
+
 func (r *repos) GetFeeder(_ context.Context, id uuid.UUID) (domain.Feeder, error) {
 	defer r.lock()()
 	f, ok := r.s.st.feeders[id]
@@ -48,6 +102,11 @@ func (r *repos) CreateFeeder(_ context.Context, f domain.Feeder) (domain.Feeder,
 	for _, other := range r.s.st.feeders {
 		if other.Code == f.Code {
 			return domain.Feeder{}, fmt.Errorf("feeders_code_key: %w", domain.ErrAlreadyExists)
+		}
+	}
+	if f.SubstationID != nil {
+		if _, ok := r.s.st.substations[*f.SubstationID]; !ok {
+			return domain.Feeder{}, fmt.Errorf("feeders_substation_fkey: %w", domain.ErrFailedPrecondition)
 		}
 	}
 	f.ID = uuid.Must(uuid.NewV7())

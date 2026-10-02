@@ -24,6 +24,7 @@
     "doelab/api/internal/repo/mem": 99,
     "doelab/api/internal/ausgrid": 100,
     "doelab/api/internal/profile": 100,
+    "doelab/api/internal/fleet": 100,
     "doelab/api/internal/topology": 100,
     "doelab/api/internal/repo/bus": 100,
     "doelab/api/internal/simclock": 100,

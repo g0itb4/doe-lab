@@ -1,9 +1,14 @@
-// Command import loads the demo's data: the CSIRO LV10 feeder and the Ausgrid
-// homes that its sites replay.
+// Command import loads the demo's data: the CSIRO feeders and the Ausgrid
+// homes that their sites replay.
 //
+//	import -fleet data/fleet -feeders data/raw/csiro/LV -ausgrid data/raw/ausgrid/Ausgrid_solar_home_data.zip
 //	import -feeder data/raw/csiro/LV/LV10_223bus -ausgrid data/raw/ausgrid/Ausgrid_solar_home_data.zip
 //
-// It parses the OpenDSS model into the engine's network, writes the feeder,
+// The first form loads a fleet: the substations, the feeders below each and
+// the sites with DER that the fleet's files name. The second loads one feeder
+// on its own, with DER drawn at random.
+//
+// It parses each OpenDSS model into the engine's network, writes the feeder,
 // its sites and their devices, stores a year of half-hourly load and PV for
 // every site, and keeps the raw files in the object store. Running it again
 // changes nothing.
@@ -31,7 +36,9 @@ import (
 	"doelab/api/internal/auth"
 	"doelab/api/internal/config"
 	"doelab/api/internal/domain"
+	"doelab/api/internal/engine"
 	"doelab/api/internal/engine/dss"
+	"doelab/api/internal/fleet"
 	"doelab/api/internal/profile"
 	"doelab/api/internal/repo/objstore"
 	"doelab/api/internal/repo/pg"
@@ -57,18 +64,21 @@ func main() {
 }
 
 func run(log *slog.Logger) error {
-	feederDir := flag.String("feeder", "", "directory of the OpenDSS feeder (holds Master.dss)")
+	feederDir := flag.String("feeder", "", "directory of one OpenDSS feeder (holds Master.dss)")
+	fleetDir := flag.String("fleet", "", "directory of a fleet (substations.csv, feeders.csv, sites.csv)")
+	feedersDir := flag.String("feeders", "", "with -fleet: the directory that holds the fleet's OpenDSS feeders")
 	archive := flag.String("ausgrid", "", "the Ausgrid solar home archive (zip)")
 	opts := service.ImportOptions{Attribution: attribution}
-	flag.StringVar(&opts.Code, "code", "LV10", "code of the feeder")
+	flag.StringVar(&opts.Code, "code", "LV10", "with -feeder: code of the feeder")
 	flag.Float64Var(&opts.TapPU, "tap", 0.975, "transformer tap, per unit of the dataset's nominal tap")
-	flag.Float64Var(&opts.PVScale, "pv-scale", 3, "multiplier on the dataset's 2010-2013 PV")
+	flag.Float64Var(&opts.PVScale, "pv-scale", 3, "with -feeder: multiplier on the dataset's 2010-2013 PV")
 	flag.Uint64Var(&opts.Seed, "seed", 20261001, "seed of every random choice")
-	flag.Float64Var(&opts.EnrolledFraction, "enrolled", 0.6, "share of sites that take part in envelopes")
+	flag.Float64Var(&opts.EnrolledFraction, "enrolled", 0.6, "with -feeder: share of sites that take part in envelopes")
 	skipRaw := flag.Bool("skip-raw", false, "do not copy the raw files to the object store")
 	flag.Parse()
-	if *feederDir == "" || *archive == "" {
-		return errors.New("usage: import -feeder <dir> -ausgrid <zip>")
+	one, many := *feederDir != "", *fleetDir != "" && *feedersDir != ""
+	if one == many || *archive == "" {
+		return errors.New("usage: import -fleet <dir> -feeders <dir> -ausgrid <zip>, or import -feeder <dir> -ausgrid <zip>")
 	}
 
 	cfg, err := config.Load()
@@ -85,50 +95,65 @@ func run(log *slog.Logger) error {
 	objects := objstore.New(cfg.S3)
 	importer := service.NewImporter(pg.NewStore(pool), objects)
 
-	// The feeder.
-	circuit, err := dss.Read(os.DirFS(*feederDir), "Master.dss")
-	if err != nil {
-		return err
-	}
-	net, err := circuit.Network()
-	if err != nil {
-		return err
-	}
-
 	zr, err := zip.OpenReader(*archive)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = zr.Close() }()
-
 	customers, err := readCustomers(zr)
 	if err != nil {
 		return err
 	}
-	imported, err := importer.ImportFeeder(ctx, net, customers, opts)
-	if err != nil {
-		return err
-	}
-	log.Info("feeder", "code", imported.Feeder.Code, "created", imported.Created,
-		"buses", len(net.Buses), "sites", len(imported.Sites), "tap", imported.Feeder.TapPU)
 
-	// The profiles.
-	zone, err := time.LoadLocation(imported.Feeder.Timezone)
-	if err != nil {
-		return err
+	// The feeders, and the directory of raw files that each was built from.
+	var imported []service.ImportedFeeder
+	raw := map[string]string{}
+	if one {
+		net, err := readNetwork(*feederDir)
+		if err != nil {
+			return err
+		}
+		feeder, err := importer.ImportFeeder(ctx, net, customers, opts)
+		if err != nil {
+			return err
+		}
+		imported, raw[opts.Code] = []service.ImportedFeeder{feeder}, *feederDir
+	} else {
+		plan, err := fleet.Read(os.DirFS(*fleetDir))
+		if err != nil {
+			return err
+		}
+		load, templates, err := readFleet(plan, *feedersDir)
+		if err != nil {
+			return err
+		}
+		if imported, err = importer.ImportFleet(ctx, load, customers, opts); err != nil {
+			return err
+		}
+		raw = templates
 	}
-	year := profile.Year{Start: profileYearStart, Location: zone}
-	series, err := readSeries(zr, year, imported.Sites)
-	if err != nil {
-		return err
-	}
+
+	// The profiles: each feeder's in its own zone.
 	start := time.Now()
-	if err := importer.ImportProfiles(ctx, imported.Sites, series); err != nil {
-		return err
+	sites := 0
+	for _, feeder := range imported {
+		log.Info("feeder", "code", feeder.Feeder.Code, "created", feeder.Created,
+			"sites", len(feeder.Sites), "seeded", len(feeder.PVFactor), "tap", feeder.Feeder.TapPU)
+		zone, err := time.LoadLocation(feeder.Feeder.Timezone)
+		if err != nil {
+			return err
+		}
+		year := profile.Year{Start: profileYearStart, Location: zone}
+		series, err := readSeries(zr, year, feeder.Sites)
+		if err != nil {
+			return err
+		}
+		if err := importer.ImportProfiles(ctx, feeder.Sites, series, feeder.PVFactor); err != nil {
+			return err
+		}
+		sites += len(feeder.Sites)
 	}
-	log.Info("profiles", "sites", len(imported.Sites), "half_hours_each", year.HalfHours(),
-		"from", year.From().UTC().Format(time.RFC3339), "to", year.To().UTC().Format(time.RFC3339),
-		"took", time.Since(start).Round(time.Millisecond).String())
+	log.Info("profiles", "feeders", len(imported), "sites", sites, "took", time.Since(start).Round(time.Millisecond).String())
 
 	if *skipRaw {
 		return nil
@@ -139,12 +164,59 @@ func run(log *slog.Logger) error {
 			return err
 		}
 	}
-	n, err := storeRaw(ctx, importer, *feederDir, *archive, opts.Code)
+	n, err := storeRaw(ctx, importer, raw, *archive)
 	if err != nil {
 		return err
 	}
 	log.Info("raw files stored", "objects", n, "bucket", cfg.S3.Bucket)
 	return nil
+}
+
+// readNetwork parses the OpenDSS feeder in a directory.
+func readNetwork(dir string) (*engine.Network, error) {
+	circuit, err := dss.Read(os.DirFS(dir), "Master.dss")
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", dir, err)
+	}
+	net, err := circuit.Network()
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", dir, err)
+	}
+	return net, nil
+}
+
+// readFleet turns the files of a fleet into what the importer loads, with the
+// network of each feeder read from its template under feedersDir. It also
+// returns the directory of each template, by its name.
+func readFleet(plan fleet.Fleet, feedersDir string) (service.Fleet, map[string]string, error) {
+	var out service.Fleet
+	for _, s := range plan.Substations {
+		out.Substations = append(out.Substations, domain.Substation{
+			Code: s.Code, Name: s.Name, DNSP: s.DNSP, State: s.State,
+			LatitudeDeg: s.LatitudeDeg, LongitudeDeg: s.LongitudeDeg,
+		})
+	}
+	templates := map[string]string{}
+	for _, f := range plan.Feeders {
+		dir := filepath.Join(feedersDir, f.Template)
+		// Each feeder has a network of its own, even when two share a
+		// template.
+		net, err := readNetwork(dir)
+		if err != nil {
+			return service.Fleet{}, nil, err
+		}
+		templates[f.Template] = dir
+		feeder := service.FleetFeeder{Code: f.Code, Substation: f.Substation, Timezone: f.Timezone, PVScale: f.PVScale, Network: net}
+		for _, s := range plan.SitesOf(f.Code) {
+			solar, battery, ev := s.Kind.Has()
+			feeder.Sites = append(feeder.Sites, service.SeededSite{
+				NMI: s.NMI, Solar: solar, Battery: battery, EV: ev, CapacityKW: s.CapacityKW,
+				LatitudeDeg: s.LatitudeDeg, LongitudeDeg: s.LongitudeDeg,
+			})
+		}
+		out.Feeders = append(out.Feeders, feeder)
+	}
+	return out, templates, nil
 }
 
 // openProfileFile opens the year of the archive that the demo replays.
@@ -212,23 +284,25 @@ func readSeries(zr *zip.ReadCloser, year profile.Year, sites []domain.Site) (map
 	return series, nil
 }
 
-// storeRaw copies the feeder's OpenDSS files and the Ausgrid archive to the
-// object store.
-func storeRaw(ctx context.Context, importer *service.Importer, feederDir, archive, code string) (int, error) {
+// storeRaw copies the OpenDSS files of each feeder directory, under its name,
+// and the Ausgrid archive to the object store.
+func storeRaw(ctx context.Context, importer *service.Importer, dirs map[string]string, archive string) (int, error) {
 	n := 0
-	err := fs.WalkDir(os.DirFS(feederDir), ".", func(name string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
-		}
-		body, err := os.ReadFile(filepath.Join(feederDir, name))
+	for name, dir := range dirs {
+		err := fs.WalkDir(os.DirFS(dir), ".", func(file string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			body, err := os.ReadFile(filepath.Join(dir, file))
+			if err != nil {
+				return err
+			}
+			n++
+			return importer.StoreRaw(ctx, path.Join("csiro", name, file), "text/plain; charset=utf-8", body)
+		})
 		if err != nil {
-			return err
+			return n, err
 		}
-		n++
-		return importer.StoreRaw(ctx, path.Join("csiro", code, name), "text/plain; charset=utf-8", body)
-	})
-	if err != nil {
-		return n, err
 	}
 	body, err := os.ReadFile(archive)
 	if err != nil {

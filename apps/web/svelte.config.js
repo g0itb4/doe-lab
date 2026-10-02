@@ -38,7 +38,9 @@ export default {
         // 'unsafe-inline' is for style attributes: uPlot positions its
         // cursor, legend and selection with them.
         "style-src": ["self", "unsafe-inline"],
-        "img-src": ["self", "data:"],
+        // The street tiles of the fleet map are the one thing the browser
+        // fetches from another host (FleetMap.svelte).
+        "img-src": ["self", "data:", "https://tile.openstreetmap.org"],
         "font-src": ["self"],
         // /rpc is same-origin. The browser calls nothing else.
         "connect-src": ["self"],

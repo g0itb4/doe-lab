@@ -309,6 +309,20 @@ func TestRogueDeviceBreaches(t *testing.T) {
 	if !w.fleet.units[0].rogue || w.fleet.units[0].flaky {
 		t.Fatal("the device is not rogue")
 	}
+	// A caller's own pick replaces the fractions': none, then more than the
+	// fleet has, then the one rogue again.
+	w.fleet.Misbehave(0, 0)
+	if rogues, flaky := w.fleet.Misbehaving(); rogues != 0 || flaky != 0 {
+		t.Errorf("%d rogue and %d flaky devices after a pick of none", rogues, flaky)
+	}
+	w.fleet.Misbehave(0, 5)
+	if rogues, flaky := w.fleet.Misbehaving(); rogues != 0 || flaky != 1 {
+		t.Errorf("%d rogue and %d flaky devices after a pick of five flaky from one", rogues, flaky)
+	}
+	w.fleet.Misbehave(1, 1)
+	if rogues, flaky := w.fleet.Misbehaving(); rogues != 1 || flaky != 0 {
+		t.Errorf("%d rogue and %d flaky devices after a pick of one of each from one", rogues, flaky)
+	}
 
 	// The grace period is a minute: the second reading over the limit opens
 	// the alert.
@@ -702,4 +716,78 @@ func TestClockSettings(t *testing.T) {
 	if _, _, err := w.fleet.API.ClockSettings(ctx); err == nil {
 		t.Error("the clock of an API that is gone")
 	}
+}
+
+func TestFeederCodes(t *testing.T) {
+	t.Parallel()
+	w := newWorld(t, true)
+	codes, err := w.fleet.API.FeederCodes(ctx)
+	if err != nil || len(codes) != 1 || codes[0] != w.fleet.FeederCode {
+		t.Errorf("feeder codes = %v, %v", codes, err)
+	}
+	w.Close()
+	if _, err := w.fleet.API.FeederCodes(ctx); err == nil {
+		t.Error("the feeders of an API that is gone")
+	}
+}
+
+// The shares of several fleets are of all their devices, spread over the
+// fleets in turn.
+func TestMisbehaveAcrossFleets(t *testing.T) {
+	t.Parallel()
+	fleet := func(units int) *Fleet {
+		f := &Fleet{Seed: 1}
+		for range units {
+			f.units = append(f.units, &unit{})
+		}
+		return f
+	}
+	counts := func(fleets []*Fleet) (out [][2]int) {
+		for _, f := range fleets {
+			rogues, flaky := f.Misbehaving()
+			out = append(out, [2]int{rogues, flaky})
+		}
+		return out
+	}
+	same := func(got, want [][2]int) bool {
+		if len(got) != len(want) {
+			return false
+		}
+		for i := range got {
+			if got[i] != want[i] {
+				return false
+			}
+		}
+		return true
+	}
+
+	// 4 % of 76 devices is four of each: not one of each on every feeder.
+	var demo []*Fleet
+	for _, units := range []int{11, 4, 4, 3, 4, 4, 3, 6, 5, 4, 4, 3, 6, 5, 5, 5} {
+		demo = append(demo, fleet(units))
+	}
+	Misbehave(demo, 0.04, 0.04)
+	rogues, flaky := 0, 0
+	for i, c := range counts(demo) {
+		rogues, flaky = rogues+c[0], flaky+c[1]
+		if c[0]+c[1] > 1 {
+			t.Errorf("fleet %d has %d rogue and %d flaky devices: they are not spread", i, c[0], c[1])
+		}
+	}
+	if rogues != 4 || flaky != 4 {
+		t.Errorf("%d rogue and %d flaky devices of 76, want 4 and 4", rogues, flaky)
+	}
+
+	// A fleet with no room is passed over, and the pick stops when none has.
+	small := []*Fleet{fleet(1), fleet(0), fleet(3)}
+	Misbehave(small, 0.5, 1)
+	if got := counts(small); !same(got, [][2]int{{1, 0}, {0, 0}, {1, 2}}) {
+		t.Errorf("half rogue and all flaky of four devices = %v", got)
+	}
+	// None asked for: the pick before is undone.
+	Misbehave(small, 0, 0)
+	if got := counts(small); !same(got, [][2]int{{0, 0}, {0, 0}, {0, 0}}) {
+		t.Errorf("no share = %v", got)
+	}
+	Misbehave(nil, 1, 1)
 }

@@ -40,6 +40,20 @@ func TestHandlersRefuseMalformedIDs(t *testing.T) {
 			_, err := runs.CreateEnvelopeRunIntervals(ctx, connect.NewRequest(&doelabv1.CreateEnvelopeRunIntervalsRequest{EnvelopeRunId: bad}))
 			return err
 		},
+		"GetSubstation": func() error {
+			_, err := NewSubstations(service.NewSubstations(store)).GetSubstation(ctx, connect.NewRequest(&doelabv1.GetSubstationRequest{
+				Key: &doelabv1.GetSubstationRequest_Id{Id: bad},
+			}))
+			return err
+		},
+		"RecordFeederStates": func() error {
+			_, err := runs.RecordFeederStates(ctx, connect.NewRequest(&doelabv1.RecordFeederStatesRequest{EnvelopeRunId: bad}))
+			return err
+		},
+		"GetFeederState": func() error {
+			_, err := telemetry.GetFeederState(ctx, connect.NewRequest(&doelabv1.GetFeederStateRequest{FeederId: bad}))
+			return err
+		},
 		"ListEnvelopeRunIntervals": func() error {
 			_, err := runs.ListEnvelopeRunIntervals(ctx, connect.NewRequest(&doelabv1.ListEnvelopeRunIntervalsRequest{EnvelopeRunId: bad}))
 			return err

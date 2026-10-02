@@ -123,12 +123,30 @@ func TestRoundTripSolvesTheSame(t *testing.T) {
 	reverse(lines)
 	reverse(sites)
 
-	rebuilt, ids, err := ToNetwork(feeder, nodes, lines, sites)
+	rebuilt, order, err := ToNetwork(feeder, nodes, lines, sites)
 	if err != nil {
 		t.Fatal(err)
 	}
+	ids := order.Sites
 	if len(rebuilt.Buses) != 223 || len(rebuilt.Sites) != 94 || len(ids) != 94 || rebuilt.Buses[0].Name != "B1862" {
 		t.Fatalf("rebuilt: %d buses, %d sites, root %s", len(rebuilt.Buses), len(rebuilt.Sites), rebuilt.Buses[0].Name)
+	}
+	// Each bus comes back with the id of its node, and of the line into it:
+	// none for the root.
+	nodeName, lineName := map[uuid.UUID]string{}, map[uuid.UUID]string{}
+	for _, n := range nodes {
+		nodeName[n.ID] = n.Name
+	}
+	for _, l := range lines {
+		lineName[l.ID] = l.Name
+	}
+	if len(order.Nodes) != 223 || len(order.Lines) != 223 || order.Lines[0] != uuid.Nil {
+		t.Fatalf("order: %d nodes, %d lines, the root's line %s", len(order.Nodes), len(order.Lines), order.Lines[0])
+	}
+	for i, bus := range rebuilt.Buses {
+		if nodeName[order.Nodes[i]] != bus.Name || (i > 0 && lineName[order.Lines[i]] != bus.Line.Name) {
+			t.Fatalf("bus %d is %s, with the ids of node %s and line %s", i, bus.Name, nodeName[order.Nodes[i]], lineName[order.Lines[i]])
+		}
 	}
 	// Sites come back in NMI order, with the id of each.
 	byID := map[uuid.UUID]domain.Site{}

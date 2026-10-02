@@ -42,7 +42,25 @@ func TestReport(t *testing.T) {
 		t.Errorf("forecast = %+v, want the idle phase above 240 V and no limit broken", f)
 	}
 
+	// The same operating point, bus by bus: three buses, the first with no
+	// line, the house's phase at 230 V and 10 A in both lines.
+	if len(f.BusVPU) != 3 || len(f.LineA) != 3 || len(f.LineW) != 3 {
+		t.Fatalf("the forecast has %d, %d and %d buses, want 3 of each", len(f.BusVPU), len(f.LineA), len(f.LineW))
+	}
+	if f.LineA[0] != [Conductors]float64{} || f.LineW[0] != 0 {
+		t.Errorf("the first bus has a line: %v, %v", f.LineA[0], f.LineW[0])
+	}
+	near(t, "forecast voltage at the house", f.BusVPU[2][0], 1, 1e-9)
+	near(t, "forecast voltage at the transformer", f.BusVPU[0][0], (239.8-6.0)/230, 1e-9)
+	near(t, "forecast current in the service", f.LineA[2][0], 10, 1e-6)
+	near(t, "forecast neutral current in the main", f.LineA[1][Neutral], 10, 1e-6)
+	near(t, "forecast power into the main", f.LineW[1], 2338, 1e-5)
+
 	s := r.Static
+	near(t, "fixed-limit voltage at the house", s.BusVPU[2][0], 250.0/230, 1e-9)
+	if s.LineW[1] >= 0 || s.LineW[2] >= s.LineW[1] {
+		t.Errorf("at the fixed limit the lines carry %v and %v W, want power flowing back, more of it in the service", s.LineW[1], s.LineW[2])
+	}
 	near(t, "fixed-limit export", r.StaticTotalW, 2500, 0)
 	near(t, "fixed-limit power", real(s.SourceVA), -2400, 1e-6)
 	near(t, "fixed-limit loading", s.LoadingPU, 0.024, 1e-9)

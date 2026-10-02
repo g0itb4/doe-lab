@@ -29,6 +29,7 @@ type resource struct {
 var softDelete = map[string]string{"deleted_at": "a deleted row is not returned, so the field would always be empty"}
 
 var resources = []resource{
+	{table: "substations", domain: domain.Substation{}, proto: (&doelabv1.Substation{}).ProtoReflect().Descriptor()},
 	{table: "feeders", domain: domain.Feeder{}, proto: (&doelabv1.Feeder{}).ProtoReflect().Descriptor()},
 	{table: "feeder_nodes", domain: domain.FeederNode{}, proto: (&doelabv1.FeederNode{}).ProtoReflect().Descriptor()},
 	{table: "feeder_lines", domain: domain.FeederLine{}, proto: (&doelabv1.FeederLine{}).ProtoReflect().Descriptor()},
@@ -41,6 +42,8 @@ var resources = []resource{
 	{table: "idempotency_keys", domain: domain.IdempotencyKey{}},
 	{table: "envelopes", domain: domain.Envelope{}, proto: (&doelabv1.Envelope{}).ProtoReflect().Descriptor()},
 	{table: "envelope_run_intervals", domain: domain.EnvelopeRunInterval{}, proto: (&doelabv1.EnvelopeRunInterval{}).ProtoReflect().Descriptor()},
+	{table: "feeder_node_states", domain: domain.FeederNodeState{}, proto: (&doelabv1.FeederNodeState{}).ProtoReflect().Descriptor()},
+	{table: "feeder_line_states", domain: domain.FeederLineState{}, proto: (&doelabv1.FeederLineState{}).ProtoReflect().Descriptor()},
 	{table: "backstop_events", domain: domain.BackstopEvent{}, proto: (&doelabv1.BackstopEvent{}).ProtoReflect().Descriptor()},
 	{table: "backstop_event_sites", domain: domain.BackstopEventSite{}},
 	{table: "alerts", domain: domain.Alert{}, proto: (&doelabv1.Alert{}).ProtoReflect().Descriptor()},

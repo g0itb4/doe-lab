@@ -436,6 +436,103 @@ func TestFleetSummary(t *testing.T) {
 	}
 }
 
+func TestFleetState(t *testing.T) {
+	t.Parallel()
+	o := newOps(t)
+	ctx := repotest.Ctx()
+	// Two sites with a place on the map, each with a device; the fixture's
+	// own two have none. And a second feeder, with nothing on the map.
+	place := func(serial int, node domain.FeederNode, name string) (domain.Site, domain.Device) {
+		site, err := o.store.CreateSite(ctx, domain.Site{
+			NMI: repotest.NMI(t, serial), FeederID: o.f.Feeder.ID, NodeID: node.ID, Name: name, Phase: 1,
+			ExportCapW: 5000, ImportCapW: 14000, LatitudeDeg: repotest.Ptr(-33.85), LongitudeDeg: repotest.Ptr(151.06),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		device, err := o.store.CreateDevice(ctx, domain.Device{SiteID: site.ID, DERType: domain.DERSolar, RatedW: 5000})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return site, device
+	}
+	north, northSolar := place(30, o.f.HouseA, "Ld30")
+	south, southSolar := place(31, o.f.HouseB, "Ld31")
+	bare := repotest.Seed(t, o.store, "LV20", 11)
+
+	// North exports over its limit; south has an envelope and says nothing.
+	if _, _, err := o.store.ReplaceEnvelopes(ctx, []domain.Envelope{
+		repotest.Envelope(north.ID, o.run.ID, 0, 1000), repotest.Envelope(south.ID, o.run.ID, 0, 2000),
+		repotest.Envelope(south.ID, o.run.ID, 1, 2500),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := o.store.InsertReadings(ctx, []domain.Reading{repotest.Reading(northSolar.ID, 30, 3500)}); err != nil {
+		t.Fatal(err)
+	}
+	// North: a critical breach, opened after an offline note. South: an
+	// offline note opened after a breach warning. Each shows its gravest.
+	open := func(site domain.Site, device *domain.Device, severity domain.AlertSeverity, seconds int) {
+		alert := domain.Alert{
+			SiteID: site.ID, FeederID: o.f.Feeder.ID, Kind: domain.AlertConstraintBreach, Severity: severity, OpenedAt: at(seconds),
+			LimitW: repotest.Ptr(1000.0), PeakW: repotest.Ptr(3500.0),
+		}
+		if device != nil {
+			alert.Kind, alert.DeviceID, alert.LimitW, alert.PeakW = domain.AlertDeviceOffline, &device.ID, nil, nil
+		}
+		if _, _, err := o.store.OpenAlert(ctx, alert); err != nil {
+			t.Fatal(err)
+		}
+	}
+	open(north, &northSolar, domain.SeverityInfo, 0)
+	open(north, nil, domain.SeverityCritical, 20)
+	open(south, nil, domain.SeverityWarning, 0)
+	open(south, &southSolar, domain.SeverityInfo, 20)
+
+	o.clock.set(at(60))
+	got, err := o.telemetry.FleetState(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.At.Equal(at(60)) || len(got.Feeders) != 2 || got.Feeders[0].FeederID != o.f.Feeder.ID || got.Feeders[1].FeederID != bare.Feeder.ID ||
+		got.Feeders[0].SitesOverLimit != 1 || got.Feeders[0].OpenAlerts != 4 || got.Feeders[0].ExportW != 3500 || got.Feeders[1].OpenAlerts != 0 {
+		t.Errorf("the feeders = %+v", got.Feeders)
+	}
+	if len(got.Sites) != 2 || got.Sites[0].SiteID != north.ID || got.Sites[1].SiteID != south.ID {
+		t.Fatalf("the sites = %+v, want the two with a place, in NMI order", got.Sites)
+	}
+	n, s := got.Sites[0], got.Sites[1]
+	if !n.Reporting || n.NetExportW != 3500 || !n.OverLimit || n.Envelope == nil || n.Envelope.ExportLimitW != 1000 ||
+		n.OpenAlert == nil || n.OpenAlert.Kind != domain.AlertConstraintBreach || n.OpenAlert.Severity != domain.SeverityCritical {
+		t.Errorf("north = %+v, alert %+v", n, n.OpenAlert)
+	}
+	if s.Reporting || s.NetExportW != 0 || s.OverLimit || s.Envelope == nil || s.Envelope.ExportLimitW != 2000 ||
+		s.OpenAlert == nil || s.OpenAlert.Kind != domain.AlertConstraintBreach || s.OpenAlert.Severity != domain.SeverityWarning {
+		t.Errorf("south = %+v, alert %+v", s, s.OpenAlert)
+	}
+
+	// With no envelope in force and no alert, a site says so.
+	o.clock.set(at(7200))
+	for _, site := range []domain.Site{north, south} {
+		for _, kind := range []domain.AlertKind{domain.AlertConstraintBreach, domain.AlertDeviceOffline} {
+			if _, err := o.store.ResolveAlert(ctx, site.ID, kind, at(7200)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if got, err = o.telemetry.FleetState(ctx); err != nil || len(got.Sites) != 2 || got.Sites[0].Envelope != nil ||
+		got.Sites[0].OpenAlert != nil || got.Sites[0].Reporting || got.Sites[0].OverLimit {
+		t.Errorf("two hours on: %+v, %v", got.Sites, err)
+	}
+
+	for _, step := range []string{"ListFeeders", "ListAllSites", "ListAlerts"} {
+		o.store.failAt(step)
+		if _, err := o.telemetry.FleetState(ctx); !errors.Is(err, errDown) {
+			t.Errorf("with %s failing: %v", step, err)
+		}
+	}
+}
+
 func TestWatchFleet(t *testing.T) {
 	t.Parallel()
 	o := newOps(t)
@@ -1163,6 +1260,92 @@ func TestRunIntervals(t *testing.T) {
 	}
 	late := []domain.EnvelopeRunInterval{repotest.Interval(o.run.ID, o.f.Feeder.ID, 5, 1)}
 	if _, err := runs.CreateIntervals(ctx, o.run.ID, late); !errors.Is(err, domain.ErrFailedPrecondition) {
+		t.Errorf("a run that has finished: %v", err)
+	}
+}
+
+func TestFeederStates(t *testing.T) {
+	t.Parallel()
+	o := newOps(t)
+	ctx := repotest.Ctx()
+	runs := service.NewEnvelopeRuns(o.store)
+	feeder, main := o.f.Feeder.ID, o.f.Lines[0]
+
+	// Nothing solved yet: the limits of the config, and no state.
+	empty, err := o.telemetry.FeederState(ctx, feeder, nil)
+	if err != nil || len(empty.Nodes) != 0 || len(empty.Lines) != 0 || !empty.At.Equal(at(0)) ||
+		empty.VMinPU != 0.94 || empty.VMaxPU != 1.10 || empty.LineLimitPct != 100 || empty.TransformerLimitPct != 100 {
+		t.Errorf("before any run solved anything: %+v, %v", empty, err)
+	}
+
+	// The run of a state is the one that records it, whatever the state says.
+	nodes := []domain.FeederNodeState{
+		repotest.NodeState(o.f.Root.ID, uuid.New(), 0, 1.05), repotest.NodeState(o.f.HouseA.ID, uuid.New(), 0, 1.08),
+		repotest.NodeState(o.f.HouseA.ID, uuid.New(), 1, 1.09),
+	}
+	lines := []domain.FeederLineState{repotest.LineState(main.ID, uuid.New(), 0, 1500)}
+	if err := runs.RecordStates(ctx, o.run.ID, nodes, lines); err != nil {
+		t.Fatal(err)
+	}
+
+	// Now, which is the first half hour; and an instant in the second.
+	now, err := o.telemetry.FeederState(ctx, feeder, nil)
+	if err != nil || len(now.Nodes) != 2 || len(now.Lines) != 1 || now.Nodes[0].EnvelopeRunID != o.run.ID ||
+		now.Lines[0].ForecastPowerW != 1500 || now.Lines[0].FeederID != feeder {
+		t.Errorf("now: %+v, %v", now, err)
+	}
+	later := at(40 * 60)
+	then, err := o.telemetry.FeederState(ctx, feeder, &later)
+	if err != nil || !then.At.Equal(later) || len(then.Nodes) != 1 || then.Nodes[0].ForecastVPU[0] != 1.09 || len(then.Lines) != 0 {
+		t.Errorf("forty minutes on: %+v, %v", then, err)
+	}
+
+	// A feeder with no config has no limits to give, and one that does not
+	// exist is not found.
+	bare := repotest.Seed(t, o.store, "LV20", 11)
+	if got, err := o.telemetry.FeederState(ctx, bare.Feeder.ID, nil); err != nil || got.VMaxPU != 0 || len(got.Nodes) != 0 {
+		t.Errorf("a bare feeder: %+v, %v", got, err)
+	}
+	if _, err := o.telemetry.FeederState(ctx, uuid.New(), nil); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("an unknown feeder: %v", err)
+	}
+	for _, step := range []string{"ListFeederNodeStates", "ListFeederLineStates", "GetActiveEnvelopeConfig"} {
+		o.store.failAt(step)
+		if _, err := o.telemetry.FeederState(ctx, feeder, nil); !errors.Is(err, errDown) {
+			t.Errorf("with %s failing: %v", step, err)
+		}
+	}
+	o.store.failAt("")
+
+	// What a record may not hold.
+	for what, tt := range map[string]struct {
+		node *domain.FeederNodeState
+		line *domain.FeederLineState
+		want error
+	}{
+		"a node state after the horizon":  {node: repotest.Ptr(repotest.NodeState(o.f.Root.ID, o.run.ID, 48, 1)), want: domain.ErrInvalid},
+		"a line state before the horizon": {line: repotest.Ptr(repotest.LineState(main.ID, o.run.ID, -1, 1)), want: domain.ErrInvalid},
+		"a node of another feeder":        {node: repotest.Ptr(repotest.NodeState(bare.Root.ID, o.run.ID, 2, 1)), want: domain.ErrFailedPrecondition},
+	} {
+		var nodes []domain.FeederNodeState
+		var lines []domain.FeederLineState
+		if tt.node != nil {
+			nodes = append(nodes, *tt.node)
+		}
+		if tt.line != nil {
+			lines = append(lines, *tt.line)
+		}
+		if err := runs.RecordStates(ctx, o.run.ID, nodes, lines); !errors.Is(err, tt.want) {
+			t.Errorf("%s: %v", what, err)
+		}
+	}
+	if err := runs.RecordStates(ctx, uuid.New(), nodes, lines); !errors.Is(err, domain.ErrFailedPrecondition) {
+		t.Errorf("an unknown run: %v", err)
+	}
+	if _, err := runs.Complete(ctx, o.run.ID, service.RunResult{Status: domain.RunCompleted}); err != nil {
+		t.Fatal(err)
+	}
+	if err := runs.RecordStates(ctx, o.run.ID, nodes, lines); !errors.Is(err, domain.ErrFailedPrecondition) {
 		t.Errorf("a run that has finished: %v", err)
 	}
 }

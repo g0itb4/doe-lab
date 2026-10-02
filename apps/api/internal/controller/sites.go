@@ -63,6 +63,17 @@ func (c *Sites) ListSites(ctx context.Context, req *connect.Request[doelabv1.Lis
 	}), nil
 }
 
+// ListLocatedSites returns a page of the sites that have a location.
+func (c *Sites) ListLocatedSites(ctx context.Context, req *connect.Request[doelabv1.ListLocatedSitesRequest]) (*connect.Response[doelabv1.ListLocatedSitesResponse], error) {
+	sites, next, err := c.svc.ListLocated(ctx, page(req.Msg))
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&doelabv1.ListLocatedSitesResponse{
+		Sites: protomap.Slice(sites, protomap.Site), NextPageToken: next,
+	}), nil
+}
+
 // CreateSite creates a site.
 func (c *Sites) CreateSite(ctx context.Context, req *connect.Request[doelabv1.CreateSiteRequest]) (*connect.Response[doelabv1.CreateSiteResponse], error) {
 	site, err := c.svc.Create(ctx, protomap.SiteFromProto(req.Msg.GetSite()))

@@ -26,19 +26,32 @@ SELECT * FROM sites
    AND deleted_at IS NULL
  ORDER BY nmi;
 
+-- The sites that have a place on the map, of every feeder. Served by
+-- sites_located_idx (nmi) WHERE latitude_deg IS NOT NULL AND deleted_at IS
+-- NULL.
+--
+-- name: ListLocatedSites :many
+SELECT * FROM sites
+ WHERE latitude_deg IS NOT NULL
+   AND deleted_at IS NULL
+   AND nmi > sqlc.arg(after_nmi)
+ ORDER BY nmi
+ LIMIT sqlc.arg(page_size);
+
 -- name: CreateSite :one
 INSERT INTO sites (
   nmi, feeder_id, node_id, name, phase, pv_kw, inverter_kva, export_cap_w, import_cap_w,
-  has_battery, battery_kwh, has_ev, profile_customer
+  has_battery, battery_kwh, has_ev, profile_customer, latitude_deg, longitude_deg
 ) VALUES (
   sqlc.arg(nmi), sqlc.arg(feeder_id), sqlc.arg(node_id), sqlc.arg(name), sqlc.arg(phase),
   sqlc.arg(pv_kw), sqlc.arg(inverter_kva), sqlc.arg(export_cap_w), sqlc.arg(import_cap_w),
-  sqlc.arg(has_battery), sqlc.narg(battery_kwh), sqlc.arg(has_ev), sqlc.narg(profile_customer)
+  sqlc.arg(has_battery), sqlc.narg(battery_kwh), sqlc.arg(has_ev), sqlc.narg(profile_customer),
+  sqlc.narg(latitude_deg), sqlc.narg(longitude_deg)
 )
 RETURNING *;
 
--- The DER of a site and its caps. The NMI, the feeder, the node and the phase
--- are where the site IS; they do not change.
+-- The DER of a site and its caps. The NMI, the feeder, the node, the phase
+-- and the location are where the site IS; they do not change.
 --
 -- name: UpdateSite :one
 UPDATE sites

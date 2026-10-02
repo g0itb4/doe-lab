@@ -218,3 +218,67 @@ func TestTreeMatchesDense(t *testing.T) {
 		}
 	}
 }
+
+// templateNetworks are the smaller feeders that the fleet import builds its
+// other feeders from. The parser and the solver were written against LV10;
+// these show that they read five other networks as OpenDSS does.
+var templateNetworks = []string{"lv2", "lv3", "lv13", "lv22", "lv32"}
+
+func TestGoldenTemplates(t *testing.T) {
+	t.Parallel()
+
+	for _, prefix := range templateNetworks {
+		t.Run(prefix, func(t *testing.T) {
+			t.Parallel()
+			var net Network
+			readJSON(t, "testdata/"+prefix+"_network.json", &net)
+			for _, method := range []Method{Tree, Dense} {
+				pf, err := NewPowerFlow(&net, method)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, name := range []string{"peak", "pv_export"} {
+					var snap snapshot
+					readJSON(t, "testdata/"+prefix+"_"+name+".json", &snap)
+					var sol Solution
+					if err := pf.Solve(loadsFor(t, &net, &snap), &sol); err != nil {
+						t.Fatalf("%s: %v", name, err)
+					}
+
+					worstPN, worstCurrent := 0.0, 0.0
+					for i, b := range net.Buses {
+						ref := snap.Voltages[strings.ToLower(b.Name)]
+						refNeutral := complex(ref[Neutral][0], ref[Neutral][1])
+						for c := range Neutral {
+							got := cmplx.Abs(sol.V[i][c] - sol.V[i][Neutral])
+							want := cmplx.Abs(complex(ref[c][0], ref[c][1]) - refNeutral)
+							worstPN = math.Max(worstPN, math.Abs(got-want))
+						}
+						if b.Line == nil {
+							continue
+						}
+						refCurrent := snap.LineCurrentsA[strings.ToLower(b.Line.Name)]
+						got := pf.LineCurrent(&sol, i)
+						for c := range Conductors {
+							worstCurrent = math.Max(worstCurrent, math.Abs(got[c]-refCurrent[c]))
+						}
+					}
+					power := pf.SourcePower(&sol)
+					gap := cmplx.Abs(power - complex(snap.TransformerW, snap.TransformerVar))
+					t.Logf("method %d %-10s phase-neutral %.1e pu, current %.1e A, power %.2f VA",
+						method, name, worstPN/NominalVoltage, worstCurrent, gap)
+
+					if worstPN/NominalVoltage > goldenPhaseNeutralPU {
+						t.Errorf("%s: phase-to-neutral voltage is %.2e pu from OpenDSS, tolerance %.0e", name, worstPN/NominalVoltage, goldenPhaseNeutralPU)
+					}
+					if worstCurrent > goldenCurrentA {
+						t.Errorf("%s: line current is %.2e A from OpenDSS, tolerance %.0e", name, worstCurrent, goldenCurrentA)
+					}
+					if gap > goldenPowerVA {
+						t.Errorf("%s: transformer power is %.2f VA from OpenDSS, tolerance %.0f", name, gap, goldenPowerVA)
+					}
+				}
+			}
+		})
+	}
+}

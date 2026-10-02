@@ -15,11 +15,12 @@ SELECT * FROM feeders
 -- name: CreateFeeder :one
 INSERT INTO feeders (
   code, name, nominal_voltage_v, transformer_kva, source_voltage_v, source_angle_deg,
-  source_r_ohm, source_x_ohm, tap_pu, timezone, attribution
+  source_r_ohm, source_x_ohm, tap_pu, timezone, attribution, substation_id
 ) VALUES (
   sqlc.arg(code), sqlc.arg(name), sqlc.arg(nominal_voltage_v), sqlc.arg(transformer_kva),
   sqlc.arg(source_voltage_v), sqlc.arg(source_angle_deg), sqlc.arg(source_r_ohm),
-  sqlc.arg(source_x_ohm), sqlc.arg(tap_pu), sqlc.arg(timezone), sqlc.arg(attribution)
+  sqlc.arg(source_x_ohm), sqlc.arg(tap_pu), sqlc.arg(timezone), sqlc.arg(attribution),
+  sqlc.narg(substation_id)
 )
 RETURNING *;
 

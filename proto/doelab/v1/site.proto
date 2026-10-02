@@ -14,6 +14,11 @@ service SiteService {
   rpc ListSites(ListSitesRequest) returns (ListSitesResponse) {
     option idempotency_level = NO_SIDE_EFFECTS;
   }
+  // The sites that have a location, of every feeder, in NMI order: what a
+  // map draws.
+  rpc ListLocatedSites(ListLocatedSitesRequest) returns (ListLocatedSitesResponse) {
+    option idempotency_level = NO_SIDE_EFFECTS;
+  }
   // Needs the operator scope.
   rpc CreateSite(CreateSiteRequest) returns (CreateSiteResponse);
   // Mutable fields: pv_kw, inverter_kva, export_cap_w, import_cap_w,
@@ -81,11 +86,27 @@ message Site {
   }];
   google.protobuf.Timestamp created_at = 15;
   google.protobuf.Timestamp updated_at = 16;
+  // Where the connection point is: WGS 84, in degrees, south and west
+  // negative. Set together, and unset for a site with no place on the map.
+  // Synthetic, like the NMI.
+  optional double latitude_deg = 17 [(buf.validate.field).double = {
+    gte: -90
+    lte: 90
+  }];
+  optional double longitude_deg = 18 [(buf.validate.field).double = {
+    gte: -180
+    lte: 180
+  }];
 
   option (buf.validate.message).cel = {
     id: "site.battery_sized"
     message: "battery_kwh must be set exactly when has_battery is true"
     expression: "this.has_battery == has(this.battery_kwh)"
+  };
+  option (buf.validate.message).cel = {
+    id: "site.location_complete"
+    message: "latitude_deg and longitude_deg must be set together"
+    expression: "has(this.latitude_deg) == has(this.longitude_deg)"
   };
 }
 
@@ -130,6 +151,20 @@ message ListSitesRequest {
 }
 
 message ListSitesResponse {
+  repeated Site sites = 1;
+  string next_page_token = 2;
+}
+
+message ListLocatedSitesRequest {
+  // At most this many sites. 0 means the default, 100.
+  int32 page_size = 1 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 500
+  }];
+  string page_token = 2 [(buf.validate.field).string.max_len = 1024];
+}
+
+message ListLocatedSitesResponse {
   repeated Site sites = 1;
   string next_page_token = 2;
 }

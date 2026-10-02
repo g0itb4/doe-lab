@@ -11,7 +11,7 @@ Wants=doelab-api.service
 DynamicUser=yes
 EnvironmentFile=/etc/doelab/doelab.env
 EnvironmentFile=-/srv/doelab/current/version.env
-ExecStart=/srv/doelab/current/engine -feeder LV10
+ExecStart=/srv/doelab/current/engine
 # Always: the engine exits when it cannot reach the API at start, and the
 # API may be a moment behind it after a deploy.
 Restart=always

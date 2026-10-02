@@ -19,6 +19,15 @@ func optionalID(id *uuid.UUID) *string {
 	return &s
 }
 
+// Substation converts a substation to its message.
+func Substation(s domain.Substation) *doelabv1.Substation {
+	return &doelabv1.Substation{
+		Id: s.ID.String(), Code: s.Code, Name: s.Name, Dnsp: s.DNSP, State: s.State,
+		LatitudeDeg: s.LatitudeDeg, LongitudeDeg: s.LongitudeDeg,
+		CreatedAt: timestamppb.New(s.CreatedAt), UpdatedAt: timestamppb.New(s.UpdatedAt),
+	}
+}
+
 // Feeder converts a feeder to its message.
 func Feeder(f domain.Feeder) *doelabv1.Feeder {
 	return &doelabv1.Feeder{
@@ -28,6 +37,7 @@ func Feeder(f domain.Feeder) *doelabv1.Feeder {
 		SourceROhm: f.SourceROhm, SourceXOhm: f.SourceXOhm, TapPu: f.TapPU,
 		Timezone: f.Timezone, Attribution: f.Attribution,
 		CreatedAt: timestamppb.New(f.CreatedAt), UpdatedAt: timestamppb.New(f.UpdatedAt),
+		SubstationId: optionalID(f.SubstationID),
 	}
 }
 
@@ -67,6 +77,7 @@ func Site(s domain.Site) *doelabv1.Site {
 		HasBattery: s.HasBattery, BatteryKwh: s.BatteryKWh, HasEv: s.HasEV,
 		ProfileCustomer: s.ProfileCustomer,
 		CreatedAt:       timestamppb.New(s.CreatedAt), UpdatedAt: timestamppb.New(s.UpdatedAt),
+		LatitudeDeg: s.LatitudeDeg, LongitudeDeg: s.LongitudeDeg,
 	}
 }
 
@@ -81,6 +92,7 @@ func SiteFromProto(p *doelabv1.Site) domain.Site {
 		ExportCapW: p.GetExportCapW(), ImportCapW: p.GetImportCapW(),
 		HasBattery: p.GetHasBattery(), BatteryKWh: p.BatteryKwh, HasEV: p.GetHasEv(),
 		ProfileCustomer: p.ProfileCustomer,
+		LatitudeDeg:     p.LatitudeDeg, LongitudeDeg: p.LongitudeDeg,
 	}
 }
 
@@ -250,6 +262,7 @@ func FeederFromMessage(p *doelabv1.Feeder) domain.Feeder {
 		SourceROhm: p.GetSourceROhm(), SourceXOhm: p.GetSourceXOhm(), TapPU: p.GetTapPu(),
 		Timezone: p.GetTimezone(), Attribution: p.GetAttribution(),
 		CreatedAt: p.GetCreatedAt().AsTime(), UpdatedAt: p.GetUpdatedAt().AsTime(),
+		SubstationID: optionalParsedID(p.SubstationId),
 	}
 }
 
@@ -343,6 +356,46 @@ func EnvelopeRunIntervalFromProto(p *doelabv1.EnvelopeRunInterval) domain.Envelo
 		StaticLimitTotalW: p.GetStaticLimitTotalW(), StaticVMaxPU: p.GetStaticVMaxPu(),
 		StaticBinding: BindingConstraintFromProto(p.GetStaticBinding()), StaticBindingElement: p.GetStaticBindingElement(),
 		EnvelopeVMaxPU: p.EnvelopeVMaxPu,
+	}
+}
+
+// FeederNodeState converts a node state to its message.
+func FeederNodeState(s domain.FeederNodeState) *doelabv1.FeederNodeState {
+	return &doelabv1.FeederNodeState{
+		FeederId: s.FeederID.String(), NodeId: s.NodeID.String(),
+		ValidFrom: timestamppb.New(s.ValidFrom), ValidTo: timestamppb.New(s.ValidTo),
+		EnvelopeRunId: s.EnvelopeRunID.String(),
+		ForecastVPu:   s.ForecastVPU, EnvelopeVPu: s.EnvelopeVPU, StaticVPu: s.StaticVPU,
+	}
+}
+
+// FeederNodeStateFromProto converts the client-set fields of a node state
+// message. The feeder and the run are the server's to set.
+func FeederNodeStateFromProto(p *doelabv1.FeederNodeState) domain.FeederNodeState {
+	return domain.FeederNodeState{
+		NodeID: parseID(p.GetNodeId()), ValidFrom: p.GetValidFrom().AsTime(), ValidTo: p.GetValidTo().AsTime(),
+		ForecastVPU: p.GetForecastVPu(), EnvelopeVPU: p.GetEnvelopeVPu(), StaticVPU: p.GetStaticVPu(),
+	}
+}
+
+// FeederLineState converts a line state to its message.
+func FeederLineState(s domain.FeederLineState) *doelabv1.FeederLineState {
+	return &doelabv1.FeederLineState{
+		FeederId: s.FeederID.String(), LineId: s.LineID.String(),
+		ValidFrom: timestamppb.New(s.ValidFrom), ValidTo: timestamppb.New(s.ValidTo),
+		EnvelopeRunId:    s.EnvelopeRunID.String(),
+		ForecastCurrentA: s.ForecastCurrentA, EnvelopeCurrentA: s.EnvelopeCurrentA, StaticCurrentA: s.StaticCurrentA,
+		ForecastPowerW: s.ForecastPowerW, EnvelopePowerW: s.EnvelopePowerW, StaticPowerW: s.StaticPowerW,
+	}
+}
+
+// FeederLineStateFromProto converts the client-set fields of a line state
+// message. The feeder and the run are the server's to set.
+func FeederLineStateFromProto(p *doelabv1.FeederLineState) domain.FeederLineState {
+	return domain.FeederLineState{
+		LineID: parseID(p.GetLineId()), ValidFrom: p.GetValidFrom().AsTime(), ValidTo: p.GetValidTo().AsTime(),
+		ForecastCurrentA: p.GetForecastCurrentA(), EnvelopeCurrentA: p.GetEnvelopeCurrentA(), StaticCurrentA: p.GetStaticCurrentA(),
+		ForecastPowerW: p.GetForecastPowerW(), EnvelopePowerW: p.GetEnvelopePowerW(), StaticPowerW: p.GetStaticPowerW(),
 	}
 }
 

@@ -158,3 +158,21 @@ func (a *API) ClockSettings(ctx context.Context) (anchor time.Time, speed float6
 	}
 	return res.Msg.GetAnchor().AsTime(), res.Msg.GetSpeed(), nil
 }
+
+// FeederCodes lists the feeders of the API by their codes, in code order: what
+// an engine that is given no feeder runs.
+func (a *API) FeederCodes(ctx context.Context) ([]string, error) {
+	var codes []string
+	for token := ""; ; {
+		res, err := a.Feeders.ListFeeders(ctx, connect.NewRequest(&doelabv1.ListFeedersRequest{PageSize: pageSize, PageToken: token}))
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range res.Msg.GetFeeders() {
+			codes = append(codes, f.GetCode())
+		}
+		if token = res.Msg.GetNextPageToken(); token == "" {
+			return codes, nil
+		}
+	}
+}

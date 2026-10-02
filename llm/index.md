@@ -1,6 +1,6 @@
 # doe-lab: index for agents
 
-Dynamic operating envelopes on one low-voltage feeder. `apps/api` is one Go module: the API, the engine and the device simulator. `apps/web` is the operator UI.
+Dynamic operating envelopes on a fleet of low-voltage feeders, each below a zone substation. `apps/api` is one Go module: the API, the engine and the device simulator. `apps/web` is the operator UI.
 Each entry names where a thing starts. Read those files, and the document named with them, before you edit.
 This directory is documentation for agents. The adapter for the language model is `apps/api/internal/repo/llm/`.
 
@@ -31,12 +31,14 @@ For a Go feature the path is its service or package. Its handlers are in `apps/a
 - **Envelope configs**: engine settings with version history. `apps/api/internal/service/envelope_configs.go`, `apps/web/src/lib/components/ConfigForm.svelte`.
 - **Engine runs, reports, CSV export**: `apps/api/internal/service/envelope_runs.go`, `apps/api/internal/service/report.go`, `apps/api/internal/service/export.go`, `apps/api/internal/repo/objstore/objstore.go`.
 - **Retention**: old history removed on a timer, counted in feeder time. `apps/api/internal/service/retention.go`.
-- **Importer**: the LV10 feeder and the Ausgrid profiles into the database. `apps/api/cmd/import/main.go`, `apps/api/internal/service/importer.go`, `apps/api/internal/ausgrid/ausgrid.go`.
+- **Importer**: the fleet of `data/fleet/` (substations, feeders, sites with DER) and the Ausgrid profiles into the database. `apps/api/cmd/import/main.go`, `apps/api/internal/service/importer.go`, `apps/api/internal/fleet/fleet.go`, `apps/api/internal/ausgrid/ausgrid.go`.
+- **Fleet map**: substations and located sites on a street map, from `GetFleetState`. `apps/web/src/routes/map/+page.svelte`, `apps/web/src/lib/map/fleet.ts`, `apps/web/src/lib/components/FleetMap.svelte`, `apps/api/internal/service/telemetry.go`. Verify: `just cover-web`, `just e2e`.
+- **Network schematic**: a feeder drawn by cable distance, with the voltage at each bus and the flow in each line that the engine records. `apps/web/src/routes/network/+page.svelte`, `apps/web/src/lib/map/layout.ts`, `apps/web/src/lib/map/schematic.ts`, `apps/api/internal/engine/report.go`, `packages/db/migrations/20261002000002_feeder_states.up.sql`.
 - **dersim**: simulated inverters, some rogue or flaky, as clients of the API. `apps/api/internal/dersim/`.
 - **Demo clock**: feeder time at a multiple of the wall clock. `apps/api/internal/simclock/simclock.go`, `apps/web/src/lib/clock.svelte.ts`.
 - **Assistant**: a language model with four read-only lookups, a rate limit and a daily budget. `apps/api/internal/service/assistant.go`, `apps/api/internal/repo/llm/llm.go`, `apps/web/src/lib/components/AssistantDrawer.svelte`. A lookup never writes.
 - **Persistence**: `packages/db/migrations/`, `packages/db/queries/`, `apps/api/internal/repo/pg/`. `apps/api/internal/repo/mem/` is the in-memory store of the unit tier, and one suite runs against both. Verify: `just lint`, `just test-db`.
-- **Web UI**: pages in `apps/web/src/routes/` (overview, sites, one site, operations, config); logic and components in `apps/web/src/lib/`. Verify: `just cover-web` for `apps/web/src/lib/`, `just e2e` for a page. Read "Web app" in `CONTRIBUTING.md` first.
+- **Web UI**: pages in `apps/web/src/routes/` (overview, map, network, sites, one site, operations, config); logic and components in `apps/web/src/lib/`. Verify: `just cover-web` for `apps/web/src/lib/`, `just e2e` for a page. Read "Web app" in `CONTRIBUTING.md` first.
 - **Observability**: metrics, traces, a Grafana dashboard. `apps/api/internal/obs/obs.go`, `infra/obs/`.
 - **Deploy**: one server, set up with Ansible. `scripts/deploy.sh`, `infra/prod/README.md`.
 - **Demo**: `just demo` runs the whole stack on a fresh database. Every recipe is in `justfile`.

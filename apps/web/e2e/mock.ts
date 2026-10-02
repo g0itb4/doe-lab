@@ -42,6 +42,62 @@ const SITES = [
   },
 ].map((s) => ({ feederId: FEEDER, nodeId: FEEDER, exportCapW: 0, ...s }));
 
+// The fleet map: two substations, and three sites with a place around the
+// first, on the feeder above.
+const SUBSTATIONS = [
+  {
+    id: "0199c0de-0000-7000-8000-000000000501",
+    code: "SUB-001",
+    name: "Ausgrid Lidcombe Zone",
+    dnsp: "Ausgrid",
+    state: "NSW",
+    latitudeDeg: -33.8524,
+    longitudeDeg: 151.0621,
+  },
+  {
+    id: "0199c0de-0000-7000-8000-000000000507",
+    code: "SUB-007",
+    name: "Jemena Footscray Zone",
+    dnsp: "Jemena",
+    state: "VIC",
+    latitudeDeg: -37.8048,
+    longitudeDeg: 144.9011,
+  },
+];
+const SECOND_FEEDER = "0199c0de-0000-7000-8000-000000000002";
+const NODES = {
+  mid: "0199c0de-0000-7000-8000-000000000702",
+  far: "0199c0de-0000-7000-8000-000000000703",
+};
+const LINES = {
+  main: "0199c0de-0000-7000-8000-000000000801",
+  far: "0199c0de-0000-7000-8000-000000000802",
+};
+const LOCATED = [
+  {
+    nmi: "NMI00000017",
+    pvKw: 0,
+    hasBattery: true,
+    batteryKwh: 10.8,
+    lat: -33.850025,
+    lng: 151.078926,
+  },
+  { nmi: "NMI00000033", pvKw: 3.3, lat: -33.86503, lng: 151.061588 },
+  { nmi: "NMI00000025", pvKw: 0, hasEv: true, exportCapW: 0, lat: -33.830587, lng: 151.078069 },
+].map(({ lat, lng, ...s }, i) => ({
+  id: `0199c0de-0000-7000-8000-0000000006a${i + 1}`,
+  feederId: FEEDER,
+  nodeId: FEEDER,
+  name: `Ld${i + 1}`,
+  phase: 1,
+  exportCapW: 5000,
+  importCapW: 14000,
+  latitudeDeg: lat,
+  longitudeDeg: lng,
+  ...s,
+}));
+export const MAP = { within: LOCATED[0]!.nmi, over: LOCATED[1]!.nmi, charger: LOCATED[2]!.nmi };
+
 export const OPERATOR_TOKEN = "operator-token-for-e2e";
 export const NMI = { enrolled: SITES[0]!.nmi, breaching: SITES[1]!.nmi, passive: SITES[2]!.nmi };
 
@@ -64,6 +120,11 @@ export type Mock = {
   assistant: "available" | "off";
   // Every question the assistant was asked.
   asked: Message[];
+  // How many feeders the API has: with more than one, the header offers a
+  // choice.
+  feeders: 1 | 2;
+  // How many tiles of the map were asked for.
+  tiles: number;
 };
 
 export async function mockApi(page: Page): Promise<Mock> {
@@ -73,6 +134,8 @@ export async function mockApi(page: Page): Promise<Mock> {
     delayMs: 0,
     assistant: "available",
     asked: [],
+    feeders: 1,
+    tiles: 0,
   };
   const start = Math.floor(Date.now() / HALF_HOUR) * HALF_HOUR;
 
@@ -124,7 +187,29 @@ export async function mockApi(page: Page): Promise<Mock> {
     },
   ];
 
-  const envelope = (site: (typeof SITES)[number], from: number) => ({
+  const feeders = () =>
+    [
+      {
+        id: FEEDER,
+        code: "LV10",
+        name: "lv10_223bus",
+        nominalVoltageV: 230,
+        transformerKva: 500,
+        timezone: "Australia/Sydney",
+        substationId: SUBSTATIONS[0]!.id,
+      },
+      {
+        id: SECOND_FEEDER,
+        code: "SUB-007-LV1",
+        name: "lv22_80bus",
+        nominalVoltageV: 230,
+        transformerKva: 500,
+        timezone: "Australia/Melbourne",
+        substationId: SUBSTATIONS[1]!.id,
+      },
+    ].slice(0, mock.feeders);
+
+  const envelope = (site: { id: string }, from: number) => ({
     id: `0199c0de-0000-7000-8000-${String(from / HALF_HOUR).padStart(12, "0")}`,
     siteId: site.id,
     validFrom: iso(from),
@@ -162,16 +247,97 @@ export async function mockApi(page: Page): Promise<Mock> {
       speed: 1,
       wallNow: iso(Date.now()),
     }),
-    "FeederService/ListFeeders": () => ({
-      feeders: [
+    "FeederService/ListFeeders": (req) => ({ feeders: feeders().slice(0, req.pageSize || 100) }),
+    "FeederService/GetFeeder": (req) => {
+      const feeder = feeders().find((f) => f.code === req.code || f.id === req.id);
+      if (!feeder) throw new RpcError("not_found", `feeder ${req.code} not found`, 404);
+      return { feeder };
+    },
+    // The network of the feeder: the transformer's bus, where the fixture's
+    // sites are, a junction 300 m out and a far end 200 m beyond it.
+    "FeederService/ListFeederNodes": () => ({
+      feederNodes: [
+        { id: FEEDER, feederId: FEEDER, name: "B1" },
+        { id: NODES.mid, feederId: FEEDER, name: "B2", parentNodeId: FEEDER },
+        { id: NODES.far, feederId: FEEDER, name: "B3", parentNodeId: NODES.mid },
+      ],
+    }),
+    "FeederService/ListFeederLines": () => ({
+      feederLines: [
         {
-          id: FEEDER,
-          code: "LV10",
-          name: "lv10_223bus",
-          nominalVoltageV: 230,
-          transformerKva: 500,
-          timezone: "Australia/Sydney",
+          id: LINES.main,
+          name: "L_main",
+          fromNodeId: FEEDER,
+          toNodeId: NODES.mid,
+          lengthM: 300,
+          ampacityA: 100,
         },
+        {
+          id: LINES.far,
+          name: "L_far",
+          fromNodeId: NODES.mid,
+          toNodeId: NODES.far,
+          lengthM: 200,
+          ampacityA: 50,
+        },
+      ].map((l) => ({ feederId: FEEDER, linecode: "e2e", ...l })),
+    }),
+    "TelemetryService/GetFeederState": (req) => {
+      // The half hour that holds the instant asked for; now when none is.
+      const from = req.at ? Math.floor(Date.parse(req.at) / HALF_HOUR) * HALF_HOUR : start;
+      const interval = { validFrom: iso(from), validTo: iso(from + HALF_HOUR) };
+      const node = (nodeId: string, forecast: number, envelope: number, fixed: number) => ({
+        ...interval,
+        nodeId,
+        forecastVPu: [forecast, 1.03, 1.03],
+        envelopeVPu: [envelope, 1.03, 1.03],
+        staticVPu: [fixed, 1.03, 1.03],
+      });
+      const line = (lineId: string, amps: number, watts: number) => ({
+        ...interval,
+        lineId,
+        forecastCurrentA: [amps, 1, 1, amps],
+        envelopeCurrentA: [2 * amps, 1, 1, 2 * amps],
+        staticCurrentA: [3 * amps, 1, 1, 3 * amps],
+        forecastPowerW: watts,
+        envelopePowerW: -watts,
+        staticPowerW: -2 * watts,
+      });
+      return {
+        at: iso(Date.now()),
+        nodes: [
+          node(FEEDER, 1.04, 1.05, 1.06),
+          node(NODES.mid, 1.05, 1.08, 1.11),
+          node(NODES.far, 1.06, 1.095, 1.13),
+        ],
+        lines: [line(LINES.main, 30, 6000), line(LINES.far, 14, 3000)],
+        vMinPu: 0.94,
+        vMaxPu: 1.1,
+        lineLimitPct: 100,
+        transformerLimitPct: 100,
+      };
+    },
+    "SubstationService/ListSubstations": () => ({ substations: SUBSTATIONS }),
+    "SiteService/ListLocatedSites": () => ({ sites: LOCATED }),
+    "TelemetryService/GetFleetState": () => ({
+      at: iso(Date.now()),
+      feeders: [summary()],
+      sites: [
+        {
+          siteId: LOCATED[0]!.id,
+          envelope: envelope(LOCATED[0]!, start),
+          reporting: true,
+          netExportW: 400,
+        },
+        {
+          siteId: LOCATED[1]!.id,
+          envelope: envelope(LOCATED[1]!, start),
+          reporting: true,
+          netExportW: 2740,
+          overLimit: true,
+          openAlert: { ...alerts[0], siteId: LOCATED[1]!.id },
+        },
+        { siteId: LOCATED[2]!.id, envelope: envelope(LOCATED[2]!, start), reporting: false },
       ],
     }),
     "SiteService/ListSites": () => ({ sites: SITES }),
@@ -346,6 +512,17 @@ export async function mockApi(page: Page): Promise<Mock> {
       return { envelopeConfig: saved };
     },
   };
+
+  // The street tiles of the map: one transparent pixel each, so that the
+  // suite asks no other host for anything.
+  await page.route("https://tile.openstreetmap.org/**", (route) => {
+    mock.tiles++;
+    return route.fulfill({
+      status: 200,
+      contentType: "image/gif",
+      body: Buffer.from("R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==", "base64"),
+    });
+  });
 
   // One handler per page: a test that asks for the mock again gets the first.
   await page.unroute("**/rpc/doelab.v1.*/*");

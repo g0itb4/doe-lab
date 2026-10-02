@@ -23,7 +23,8 @@ GridQube. Licensed CC BY-NC-SA 4.0.
 Changes made
 ------------
 
-The LV10_223bus feeder was parsed from OpenDSS into the formats used here
+The LV10_223bus feeder, and the LV2_43bus, LV3_55bus, LV13_58bus, LV22_80bus
+and LV32_100bus feeders, were parsed from OpenDSS into the formats used here
 (JSON fixtures and database rows). Solved node voltages were computed from it
 with OpenDSS. Customer load and generation profiles from the Ausgrid Solar
 Home Electricity Data (CC BY 3.0 AU, (c) Ausgrid) were assigned to the
@@ -33,4 +34,4 @@ both datasets.
 Files outside data/derived/ that carry this licence
 ---------------------------------------------------
 
-- apps/api/internal/engine/testdata/lv10_*.json (the network, and node voltages solved by OpenDSS)
+- apps/api/internal/engine/testdata/lv*_*.json (the networks, and node voltages solved by OpenDSS)

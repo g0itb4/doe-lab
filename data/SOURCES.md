@@ -54,9 +54,16 @@ Attribution:
 
 ## Changes made to the data
 
-- The OpenDSS files for LV10 are parsed into the engine's network model.
-- Ausgrid homes are assigned to LV10 connection points with a fixed seed. The
-  two datasets describe different places; the pairing is synthetic.
+- The OpenDSS files for LV10, LV2, LV3, LV13, LV22 and LV32 are parsed into
+  the engine's network model. `data/fleet/feeders.csv` says which feeder of
+  the demo is built from which of them; one model serves several feeders.
+- Ausgrid homes are assigned to the feeders' connection points with a fixed
+  seed. The two datasets describe different places; the pairing is synthetic.
+- `data/fleet/` is the demo's own: seven zone substations at the places of
+  real suburbs, and 76 sites with DER scattered within about 3 km of them.
+  The sites, their equipment and their coordinates are made up. Which
+  substation a feeder hangs from is made up too: the CSIRO feeders are not
+  from those places.
 - PV generation can be scaled up ("PV ×N") to represent present-day uptake.
 - NMIs are synthetic. They pass the AEMO checksum but belong to no customer.
 

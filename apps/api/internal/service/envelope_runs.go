@@ -123,6 +123,42 @@ func (s *EnvelopeRuns) CreateIntervals(ctx context.Context, runID uuid.UUID, row
 	return len(rows), nil
 }
 
+// RecordStates records what a running run solved bus by bus and line by line.
+// The states must be of whole intervals inside the run's horizon: for each
+// interval they name, they replace everything that was stored for it. The run
+// of each state is this one, whatever the state says.
+func (s *EnvelopeRuns) RecordStates(ctx context.Context, runID uuid.UUID, nodes []domain.FeederNodeState, lines []domain.FeederLineState) error {
+	return s.store.Tx(ctx, func(ctx context.Context, r Repos) error {
+		run, err := r.GetEnvelopeRun(ctx, runID)
+		if err != nil {
+			return fmt.Errorf("%w: envelope run %s does not exist", domain.ErrFailedPrecondition, runID)
+		}
+		if run.Status != domain.RunRunning {
+			return fmt.Errorf("%w: envelope run %s is %s, not running", domain.ErrFailedPrecondition, runID, run.Status)
+		}
+		inside := func(from, to time.Time) error {
+			if from.Before(run.HorizonFrom) || to.After(run.HorizonTo) {
+				return fmt.Errorf("%w: interval %s is outside the run's horizon",
+					domain.ErrInvalid, from.UTC().Format("2006-01-02T15:04:05Z"))
+			}
+			return nil
+		}
+		for i := range nodes {
+			if err := inside(nodes[i].ValidFrom, nodes[i].ValidTo); err != nil {
+				return err
+			}
+			nodes[i].EnvelopeRunID = runID
+		}
+		for i := range lines {
+			if err := inside(lines[i].ValidFrom, lines[i].ValidTo); err != nil {
+				return err
+			}
+			lines[i].EnvelopeRunID = runID
+		}
+		return r.ReplaceFeederStates(ctx, run.FeederID, nodes, lines)
+	})
+}
+
 // ListIntervals returns the intervals of a run, in time order.
 func (s *EnvelopeRuns) ListIntervals(ctx context.Context, runID uuid.UUID) ([]domain.EnvelopeRunInterval, error) {
 	if _, err := s.store.GetEnvelopeRun(ctx, runID); err != nil {

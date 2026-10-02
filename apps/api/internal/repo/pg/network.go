@@ -10,6 +10,38 @@ import (
 	"doelab/api/internal/repo/pg/gen"
 )
 
+func (r *repos) GetSubstation(ctx context.Context, id uuid.UUID) (domain.Substation, error) {
+	row, err := r.q.GetSubstation(ctx, id)
+	return one(row, err, substationFromRow)
+}
+
+func (r *repos) GetSubstationByCode(ctx context.Context, code string) (domain.Substation, error) {
+	row, err := r.q.GetSubstationByCode(ctx, code)
+	return one(row, err, substationFromRow)
+}
+
+func (r *repos) ListSubstations(ctx context.Context, page domain.Page) ([]domain.Substation, string, error) {
+	after, err := pagetoken.Decode(page.Token, 1)
+	if err != nil {
+		return nil, "", err
+	}
+	rows, err := r.q.ListSubstations(ctx, gen.ListSubstationsParams{AfterCode: after[0], PageSize: page.Size + 1})
+	out, err := many(rows, err, substationFromRow)
+	if err != nil {
+		return nil, "", err
+	}
+	out, next := pagetoken.Next(out, page.Size, func(s domain.Substation) []string { return []string{s.Code} })
+	return out, next, nil
+}
+
+func (r *repos) CreateSubstation(ctx context.Context, s domain.Substation) (domain.Substation, error) {
+	row, err := r.q.CreateSubstation(ctx, gen.CreateSubstationParams{
+		Code: s.Code, Name: s.Name, Dnsp: s.DNSP, State: s.State,
+		LatitudeDeg: s.LatitudeDeg, LongitudeDeg: s.LongitudeDeg,
+	})
+	return one(row, err, substationFromRow)
+}
+
 func (r *repos) GetFeeder(ctx context.Context, id uuid.UUID) (domain.Feeder, error) {
 	row, err := r.q.GetFeeder(ctx, id)
 	return one(row, err, feederFromRow)
@@ -39,7 +71,7 @@ func (r *repos) CreateFeeder(ctx context.Context, f domain.Feeder) (domain.Feede
 		Code: f.Code, Name: f.Name, NominalVoltageV: f.NominalVoltageV, TransformerKva: f.TransformerKVA,
 		SourceVoltageV: f.SourceVoltageV, SourceAngleDeg: f.SourceAngleDeg,
 		SourceROhm: f.SourceROhm, SourceXOhm: f.SourceXOhm, TapPu: f.TapPU,
-		Timezone: f.Timezone, Attribution: f.Attribution,
+		Timezone: f.Timezone, Attribution: f.Attribution, SubstationID: f.SubstationID,
 	})
 	return one(row, err, feederFromRow)
 }

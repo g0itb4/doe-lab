@@ -152,6 +152,7 @@ func New(t testing.TB) *API {
 	t.Cleanup(stop)
 
 	a.Deps = server.Deps{
+		Substations:     controller.NewSubstations(service.NewSubstations(store)),
 		Feeders:         controller.NewFeeders(service.NewFeeders(store)),
 		Sites:           controller.NewSites(service.NewSites(store)),
 		Devices:         controller.NewDevices(service.NewDevices(store)),

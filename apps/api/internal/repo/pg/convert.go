@@ -8,6 +8,14 @@ import (
 // Row to domain, one function per table. Field by field on purpose: when a
 // column is added, the compiler points here.
 
+func substationFromRow(r gen.Substation) domain.Substation {
+	return domain.Substation{
+		ID: r.ID, Code: r.Code, Name: r.Name, DNSP: r.Dnsp, State: r.State,
+		LatitudeDeg: r.LatitudeDeg, LongitudeDeg: r.LongitudeDeg,
+		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+	}
+}
+
 func feederFromRow(r gen.Feeder) domain.Feeder {
 	return domain.Feeder{
 		ID: r.ID, Code: r.Code, Name: r.Name,
@@ -16,6 +24,7 @@ func feederFromRow(r gen.Feeder) domain.Feeder {
 		SourceROhm: r.SourceROhm, SourceXOhm: r.SourceXOhm, TapPU: r.TapPu,
 		Timezone: r.Timezone, Attribution: r.Attribution,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
+		SubstationID: r.SubstationID,
 	}
 }
 
@@ -45,6 +54,7 @@ func siteFromRow(r gen.Site) domain.Site {
 		HasBattery: r.HasBattery, BatteryKWh: r.BatteryKwh, HasEV: r.HasEv,
 		ProfileCustomer: r.ProfileCustomer,
 		CreatedAt:       r.CreatedAt, UpdatedAt: r.UpdatedAt, DeletedAt: r.DeletedAt,
+		LatitudeDeg: r.LatitudeDeg, LongitudeDeg: r.LongitudeDeg,
 	}
 }
 
@@ -70,5 +80,22 @@ func envelopeConfigFromRow(r gen.EnvelopeConfig) domain.EnvelopeConfig {
 		IntervalMinutes: r.IntervalMinutes, HorizonIntervals: r.HorizonIntervals,
 		BreachGraceSeconds: r.BreachGraceSeconds, OfflineAfterSeconds: r.OfflineAfterSeconds,
 		Note: r.Note, CreatedBy: r.CreatedBy, CreatedAt: r.CreatedAt,
+	}
+}
+
+func feederNodeStateFromRow(r gen.FeederNodeState) domain.FeederNodeState {
+	return domain.FeederNodeState{
+		FeederID: r.FeederID, NodeID: r.NodeID, ValidFrom: r.ValidFrom, ValidTo: r.ValidTo,
+		EnvelopeRunID: r.EnvelopeRunID,
+		ForecastVPU:   r.ForecastVPu, EnvelopeVPU: r.EnvelopeVPu, StaticVPU: r.StaticVPu,
+	}
+}
+
+func feederLineStateFromRow(r gen.FeederLineState) domain.FeederLineState {
+	return domain.FeederLineState{
+		FeederID: r.FeederID, LineID: r.LineID, ValidFrom: r.ValidFrom, ValidTo: r.ValidTo,
+		EnvelopeRunID:    r.EnvelopeRunID,
+		ForecastCurrentA: r.ForecastCurrentA, EnvelopeCurrentA: r.EnvelopeCurrentA, StaticCurrentA: r.StaticCurrentA,
+		ForecastPowerW: r.ForecastPowerW, EnvelopePowerW: r.EnvelopePowerW, StaticPowerW: r.StaticPowerW,
 	}
 }

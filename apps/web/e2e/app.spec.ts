@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test as base, type Page } from "@playwright/test";
-import { mockApi, NMI, OPERATOR_TOKEN, type Mock } from "./mock.ts";
+import { MAP, mockApi, NMI, OPERATOR_TOKEN, type Mock } from "./mock.ts";
 
 // Every test gets a page whose API is the mock, and fails if the page logged
 // an error.
@@ -29,6 +29,8 @@ const test = base.extend<{ api: Mock; errors: string[] }>({
 // The pages, and the heading and the content that say each has loaded.
 const PAGES = [
   { path: "/", h1: "Feeder overview", nav: "Overview", ready: "Export: allowed and measured" },
+  { path: "/map", h1: "Map", nav: "Map", ready: "Ausgrid Lidcombe Zone" },
+  { path: "/network", h1: "Network: LV10", nav: "Network", ready: "Closest to a limit" },
   { path: "/sites", h1: "Sites", nav: "Sites", ready: NMI.enrolled },
   {
     path: `/sites/${NMI.breaching}`,
@@ -46,6 +48,11 @@ async function open(page: Page, path: string, ready: string) {
   // The charts are drawn after their library has loaded.
   if (path === "/" || path.startsWith("/sites/"))
     await expect(page.locator("canvas").first()).toBeVisible();
+  // The network is drawn once its state has arrived.
+  if (path.startsWith("/network")) await expect(page.getByText("Constrained")).toBeVisible();
+  // The map is drawn after its library has loaded.
+  if (path.startsWith("/map"))
+    await expect(page.getByRole("button", { name: /^Ausgrid Lidcombe Zone:/ })).toBeVisible();
 }
 
 for (const p of PAGES) {
@@ -557,4 +564,169 @@ test("a server with no assistant offers no way to ask", async ({ page, api }) =>
   api.assistant = "off";
   await open(page, "/", "Export: allowed and measured");
   await expect(page.getByRole("button", { name: "Ask", exact: true })).toHaveCount(0);
+});
+
+test("the map shows the substations, and a substation's sites when it is chosen", async ({
+  page,
+  api,
+  errors,
+}) => {
+  await open(page, "/map?region=all", "Ausgrid Lidcombe Zone");
+  const map = page.getByRole("region", { name: "Map of the fleet" });
+  // Both regions in one frame: the substations, and no site yet.
+  await expect(page.getByRole("link", { name: "All regions" })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  const lidcombe = map.getByRole("button", { name: "Ausgrid Lidcombe Zone: 1 over limit" });
+  await expect(lidcombe).toBeVisible();
+  await expect(map.getByRole("button", { name: /^Jemena Footscray Zone:/ })).toBeVisible();
+  await expect(map.locator(`[aria-label^="${MAP.over}"]`)).toHaveCount(0);
+  expect(api.tiles).toBeGreaterThan(0);
+  await expect(map.getByRole("link", { name: "OpenStreetMap" })).toBeVisible();
+
+  // Choosing the substation frames it, in the address, and says what it is.
+  // Again if need be: a click that lands while the map is still settling on
+  // its first frame falls on the map, not on the mark that moved from under it.
+  await expect(async () => {
+    await lidcombe.click();
+    await expect(page).toHaveURL(/[?&]sub=SUB-001/, { timeout: 1000 });
+  }).toPass();
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Ausgrid Lidcombe Zone", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("2 of 3 sites reporting, exporting")).toBeVisible();
+  await expect(map.locator(`[aria-label="${MAP.over}, Solar: Over limit"]`)).toBeVisible();
+  await expect(map.locator(`[aria-label="${MAP.within}, Battery: Within limit"]`)).toBeVisible();
+  await expect(
+    map.locator(`[aria-label="${MAP.charger}, EV charger: Not reporting"]`),
+  ).toBeVisible();
+
+  // A site on the map opens in the panel, with the way to its own page.
+  await map.locator(`[aria-label^="${MAP.over}"]`).click();
+  await expect(page).toHaveURL(new RegExp(`[?&]site=${MAP.over}`));
+  await expect(page.getByRole("heading", { level: 2, name: MAP.over })).toBeVisible();
+  await expect(page.getByText(/Exporting 2\.7\u00a0kW against a limit of/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Open the site" })).toHaveAttribute(
+    "href",
+    `/sites/${MAP.over}?feeder=LV10`,
+  );
+  expect(errors).toEqual([]);
+});
+
+test("every site of the map can be reached from the keyboard, through the table", async ({
+  page,
+  api,
+}) => {
+  void api;
+  await open(page, "/map?region=all", "Ausgrid Lidcombe Zone");
+  const table = page.getByRole("region", { name: "Sites on the map" });
+  await expect(table.getByRole("row")).toHaveCount(4);
+  const row = table.getByRole("row", { name: new RegExp(MAP.charger) });
+  await expect(row).toContainText("EV charger");
+  await expect(row).toContainText("Not reporting");
+  await row.getByRole("link", { name: MAP.charger }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(new RegExp(`[?&]site=${MAP.charger}`));
+  await expect(page.getByRole("heading", { level: 2, name: MAP.charger })).toBeVisible();
+
+  // The other region has a substation and nothing below it.
+  await page.getByRole("link", { name: "VIC", exact: true }).click();
+  await expect(page).toHaveURL(/[?&]region=VIC/);
+  await expect(page.getByRole("link", { name: "Jemena Footscray Zone" })).toBeVisible();
+  await expect(table.getByRole("row")).toHaveCount(1);
+});
+
+test("with more than one feeder the header offers the choice, and the choice is kept", async ({
+  page,
+  api,
+}) => {
+  api.feeders = 2;
+  await open(page, "/sites", NMI.enrolled);
+  const picker = page.getByLabel("Feeder");
+  await expect(picker).toHaveValue("LV10");
+  await picker.selectOption("SUB-007-LV1");
+  await expect(page).toHaveURL(/[?&]feeder=SUB-007-LV1/);
+  await expect(page.getByText("AEDT").or(page.getByText("AEST")).first()).toBeVisible();
+  // On another page, with no feeder in its address, the choice still holds.
+  await page.getByRole("link", { name: "Config" }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("Envelope config");
+  await expect(page.getByLabel("Feeder")).toHaveValue("SUB-007-LV1");
+});
+
+test("with one feeder there is nothing to choose", async ({ page, api }) => {
+  void api;
+  await open(page, "/sites", NMI.enrolled);
+  await expect(page.getByLabel("Feeder")).toHaveCount(0);
+});
+
+test("the network is drawn as the engine solved it, at each of its three operating points", async ({
+  page,
+  api,
+  errors,
+}) => {
+  void api;
+  await open(page, "/network", "Closest to a limit");
+  const drawing = page.getByRole("img", { name: /500 metres of cable away/ });
+  await expect(drawing).toBeVisible();
+  // What limits the feeder is said in words, before the drawing.
+  await expect(page.getByText("Export is limited by high voltage at XDLAB000022")).toBeVisible();
+  // The forecast: everything inside its limits.
+  const far = drawing.locator('[data-bus="B3"]');
+  await expect(far).toHaveAttribute("data-level", "ok");
+  await expect(drawing.locator('[data-line="L_far"]')).toHaveAttribute("data-level", "ok");
+
+  // At the fixed limit the far end is past the band, and its line past its
+  // rating. The choice is in the address.
+  await page.getByRole("link", { name: "At the fixed limit" }).click();
+  await expect(page).toHaveURL(/[?&]point=static/);
+  await expect(far).toHaveAttribute("data-level", "critical");
+  await expect(drawing.locator('[data-line="L_far"]')).toHaveAttribute("data-level", "warn");
+  const table = page.getByRole("region", { name: "Closest to a limit" });
+  await expect(table.getByRole("row").nth(1)).toContainText("B3");
+  await expect(table.getByRole("row").nth(1)).toContainText("Past its limit");
+
+  // A mark is chosen from the table with the keyboard, and described.
+  await table.getByRole("link", { name: "L_far" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/[?&]mark=/);
+  await expect(page.getByRole("heading", { level: 2, name: "Line L_far" })).toBeVisible();
+  await expect(
+    page.getByText(/towards the transformer, 84\u00a0% of its rating/).last(),
+  ).toBeVisible();
+  await expect(drawing.locator('[data-line="L_far"]')).toHaveAttribute("data-selected", "");
+
+  // And from the drawing, with the pointer.
+  await far.locator(".hit").click();
+  await expect(page.getByRole("heading", { level: 2, name: "Bus B3" })).toBeVisible();
+  await expect(page.getByText(/Phase to neutral: 259\.9\u00a0V/)).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test("the network can be looked at half an hour on, and back at now, from the address", async ({
+  page,
+  api,
+}) => {
+  void api;
+  await open(page, "/network", "Closest to a limit");
+  const time = page.getByRole("navigation", { name: "Time" });
+  await expect(time.getByRole("link", { name: "Now" })).toHaveAttribute("aria-current", "true");
+
+  const asked = page.waitForRequest(
+    (r) => r.url().includes("GetFeederState") && /at/.test(r.url()),
+  );
+  await time.getByRole("link", { name: "30 minutes later" }).click();
+  await expect(page).toHaveURL(/[?&]at=\d+/);
+  await asked;
+  // On a half-hour boundary, later than now.
+  const at = Number(new URL(page.url()).searchParams.get("at"));
+  expect(at % 1800).toBe(0);
+  expect(at * 1000).toBeGreaterThan(Date.now());
+  await expect(time.getByRole("link", { name: "Now" })).not.toHaveAttribute("aria-current");
+  await expect(page.getByRole("img", { name: /500 metres of cable away/ })).toBeVisible();
+
+  await time.getByRole("link", { name: "30 minutes earlier" }).click();
+  await expect(page).toHaveURL(new RegExp(`[?&]at=${at - 1800}`));
+  await time.getByRole("link", { name: "Now" }).click();
+  await expect(page).not.toHaveURL(/[?&]at=/);
 });

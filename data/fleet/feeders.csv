@@ -1,0 +1,17 @@
+code,substation,template,timezone,pv_scale
+LV10,SUB-001,LV10_223bus,Australia/Sydney,1.5
+SUB-002-LV1,SUB-002,LV2_43bus,Australia/Sydney,1
+SUB-002-LV2,SUB-002,LV3_55bus,Australia/Sydney,1
+SUB-002-LV3,SUB-002,LV13_58bus,Australia/Sydney,1
+SUB-003-LV1,SUB-003,LV22_80bus,Australia/Sydney,1
+SUB-003-LV2,SUB-003,LV32_100bus,Australia/Sydney,1
+SUB-003-LV3,SUB-003,LV2_43bus,Australia/Sydney,1
+SUB-004-LV1,SUB-004,LV3_55bus,Australia/Sydney,1
+SUB-004-LV2,SUB-004,LV13_58bus,Australia/Sydney,1
+SUB-005-LV1,SUB-005,LV22_80bus,Australia/Sydney,1
+SUB-005-LV2,SUB-005,LV32_100bus,Australia/Sydney,1
+SUB-005-LV3,SUB-005,LV2_43bus,Australia/Sydney,1
+SUB-006-LV1,SUB-006,LV3_55bus,Australia/Adelaide,1
+SUB-006-LV2,SUB-006,LV13_58bus,Australia/Adelaide,1
+SUB-007-LV1,SUB-007,LV22_80bus,Australia/Melbourne,1
+SUB-007-LV2,SUB-007,LV32_100bus,Australia/Melbourne,1

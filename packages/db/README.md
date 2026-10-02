@@ -93,7 +93,13 @@ afterwards and fails when a table is missing a trigger.
 
 Tables without `updated_at` are not targets, on purpose: `envelope_configs` and
 `envelopes` are immutable (their rows are their own history), the hypertables
-would flood the audit log, and `device_status` is live state.
+would flood the audit log, and `device_status`, `feeder_node_states` and
+`feeder_line_states` are state: the latest of each, replaced as it changes.
+
+A trigger that `apply_conventions()` installs names every column of its table.
+A `.down.sql` that drops a column of a business table drops the table's
+`_set_updated_at` trigger first (`drop_trigger_if_present`) and ends with
+`SELECT apply_conventions();`.
 
 ### Immutable tables
 
@@ -286,6 +292,19 @@ erDiagram
     timestamptz superseded_at "nullable"
     timestamptz created_at
   }
+  feeder_line_states {
+    uuid feeder_id PK,FK
+    uuid line_id PK,FK
+    timestamptz valid_from PK
+    timestamptz valid_to
+    uuid envelope_run_id FK
+    float8[] forecast_current_a
+    float8[] envelope_current_a
+    float8[] static_current_a
+    float8 forecast_power_w
+    float8 envelope_power_w
+    float8 static_power_w
+  }
   feeder_lines {
     uuid id PK
     uuid feeder_id FK
@@ -302,6 +321,16 @@ erDiagram
     ampacity_source ampacity_source "nullable"
     timestamptz created_at
     timestamptz updated_at
+  }
+  feeder_node_states {
+    uuid feeder_id PK,FK
+    uuid node_id PK,FK
+    timestamptz valid_from PK
+    timestamptz valid_to
+    uuid envelope_run_id FK
+    float8[] forecast_v_pu
+    float8[] envelope_v_pu
+    float8[] static_v_pu
   }
   feeder_nodes {
     uuid id PK
@@ -328,6 +357,7 @@ erDiagram
     text attribution
     timestamptz created_at
     timestamptz updated_at
+    uuid substation_id FK "nullable"
   }
   idempotency_keys {
     text scope PK
@@ -372,6 +402,19 @@ erDiagram
     timestamptz created_at
     timestamptz updated_at
     timestamptz deleted_at "nullable"
+    float8 latitude_deg "nullable"
+    float8 longitude_deg "nullable"
+  }
+  substations {
+    uuid id PK
+    text code
+    text name
+    text dnsp
+    text state
+    float8 latitude_deg
+    float8 longitude_deg
+    timestamptz created_at
+    timestamptz updated_at
   }
   backstop_events ||--o{ backstop_event_sites : "backstop_event_sites_event_fkey"
   backstop_events ||--o{ envelopes : "envelopes_backstop_fkey"
@@ -381,8 +424,12 @@ erDiagram
   envelope_configs ||--o{ envelope_runs : "envelope_runs_config_fkey"
   envelope_runs ||--o{ envelope_run_intervals : "envelope_run_intervals_run_fkey"
   envelope_runs ||--o{ envelopes : "envelopes_run_fkey"
+  envelope_runs ||--o{ feeder_line_states : "feeder_line_states_run_fkey"
+  envelope_runs ||--o{ feeder_node_states : "feeder_node_states_run_fkey"
   envelope_runs ||--o{ idempotency_keys : "idempotency_keys_run_fkey"
+  feeder_lines ||--o{ feeder_line_states : "feeder_line_states_line_fkey"
   feeder_nodes ||--o{ feeder_lines : "feeder_lines_joins_parent_fkey, feeder_lines_to_node_fkey"
+  feeder_nodes ||--o{ feeder_node_states : "feeder_node_states_node_fkey"
   feeder_nodes ||--o{ feeder_nodes : "feeder_nodes_parent_fkey"
   feeder_nodes ||--o{ sites : "sites_node_fkey"
   feeders ||--o{ backstop_events : "backstop_events_feeder_fkey"
@@ -397,5 +444,6 @@ erDiagram
   sites ||--o{ devices : "devices_site_fkey"
   sites ||--o{ envelopes : "envelopes_site_fkey"
   sites ||--o{ site_profiles : "site_profiles_site_fkey"
+  substations ||--o{ feeders : "feeders_substation_fkey"
 ```
 <!-- erd:end -->

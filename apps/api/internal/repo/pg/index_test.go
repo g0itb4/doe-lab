@@ -71,6 +71,15 @@ func TestListQueriesUseAnIndex(t *testing.T) {
 
 	store := pg.NewStore(pool)
 	f := repotest.Seed(t, store, "LV10", 1)
+	if _, err := store.CreateSubstation(repotest.Ctx(), repotest.NewSubstation("SUB-001")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateSite(repotest.Ctx(), domain.Site{
+		NMI: repotest.NMI(t, 3), FeederID: f.Feeder.ID, NodeID: f.HouseA.ID, Name: "Ld3_LOAD_A", Phase: 1,
+		LatitudeDeg: repotest.Ptr(-33.85), LongitudeDeg: repotest.Ptr(151.06),
+	}); err != nil {
+		t.Fatal(err)
+	}
 	device, err := store.CreateDevice(repotest.Ctx(), domain.Device{SiteID: f.SiteA.ID, DERType: domain.DERSolar, RatedW: 5000})
 	if err != nil {
 		t.Fatal(err)
@@ -120,6 +129,7 @@ func TestListQueriesUseAnIndex(t *testing.T) {
 		table string
 		run   func() error
 	}{
+		{"ListSubstations", "substations", func() error { _, _, err := store.ListSubstations(ctx, page); return err }},
 		{"ListFeeders", "feeders", func() error { _, _, err := store.ListFeeders(ctx, page); return err }},
 		{"ListFeederNodes", "feeder_nodes", func() error { _, _, err := store.ListFeederNodes(ctx, f.Feeder.ID, page); return err }},
 		{"ListFeederLines", "feeder_lines", func() error { _, _, err := store.ListFeederLines(ctx, f.Feeder.ID, page); return err }},
@@ -128,6 +138,7 @@ func TestListQueriesUseAnIndex(t *testing.T) {
 			_, _, err := store.ListSites(ctx, f.Feeder.ID, repotest.Ptr(int16(1)), page)
 			return err
 		}},
+		{"ListLocatedSites", "sites", func() error { _, _, err := store.ListLocatedSites(ctx, page); return err }},
 		{"ListDevices", "devices", func() error { _, _, err := store.ListDevices(ctx, service.DeviceFilter{}, page); return err }},
 		{"ListDevices by site", "devices", func() error {
 			_, _, err := store.ListDevices(ctx, service.DeviceFilter{SiteID: &f.SiteA.ID}, page)

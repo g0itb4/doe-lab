@@ -11,7 +11,7 @@ Wants=doelab-api.service
 DynamicUser=yes
 EnvironmentFile=/etc/doelab/doelab.env
 EnvironmentFile=-/srv/doelab/current/version.env
-ExecStart=/srv/doelab/current/dersim -feeder LV10 -rogue 0.04 -flaky 0.04
+ExecStart=/srv/doelab/current/dersim -rogue 0.04 -flaky 0.04
 Restart=always
 RestartSec=5
 

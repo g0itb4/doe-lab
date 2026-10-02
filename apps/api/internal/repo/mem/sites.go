@@ -57,10 +57,30 @@ func (r *repos) ListAllSites(_ context.Context, feederID uuid.UUID) ([]domain.Si
 	return r.feederSites(feederID, nil, ""), nil
 }
 
+func (r *repos) ListLocatedSites(_ context.Context, page domain.Page) ([]domain.Site, string, error) {
+	defer r.lock()()
+	after, err := pagetoken.Decode(page.Token, 1)
+	if err != nil {
+		return nil, "", err
+	}
+	rows := sorted(r.s.st.sites,
+		func(s domain.Site) bool { return s.LatitudeDeg != nil && s.DeletedAt == nil && s.NMI > after[0] },
+		func(a, b domain.Site) int { return cmp.Compare(a.NMI, b.NMI) })
+	rows, next := pagetoken.Next(limit(rows, page.Size+1), page.Size,
+		func(s domain.Site) []string { return []string{s.NMI} })
+	return rows, next, nil
+}
+
 func (r *repos) CreateSite(_ context.Context, s domain.Site) (domain.Site, error) {
 	defer r.lock()()
 	if !domain.ValidNMI(s.NMI) {
 		return domain.Site{}, fmt.Errorf("sites_nmi_checksum: %w", domain.ErrInvalid)
+	}
+	if (s.LatitudeDeg == nil) != (s.LongitudeDeg == nil) {
+		return domain.Site{}, fmt.Errorf("sites_location_complete: %w", domain.ErrInvalid)
+	}
+	if s.LatitudeDeg != nil && !located(*s.LatitudeDeg, *s.LongitudeDeg) {
+		return domain.Site{}, fmt.Errorf("sites_location_range: %w", domain.ErrInvalid)
 	}
 	if node, ok := r.s.st.nodes[s.NodeID]; !ok || node.FeederID != s.FeederID {
 		return domain.Site{}, fmt.Errorf("sites_node_fkey: %w", domain.ErrFailedPrecondition)

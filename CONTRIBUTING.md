@@ -119,7 +119,8 @@ Rules:
 
 The engine is checked against OpenDSS. `tools/opendss_snapshots.py` solves the
 feeder in OpenDSS and writes node voltages to
-`apps/api/internal/engine/testdata/lv10_*.json`; the Go solver must match them
+`apps/api/internal/engine/testdata/lv*_*.json`, for LV10 and for the five
+smaller feeders the fleet is built from; the Go solver must match them
 within the tolerance fixed in the test.
 
 ## Web app
@@ -152,7 +153,7 @@ server at run time. It reaches the API at `/rpc`.
 - Source code: PolyForm Noncommercial 1.0.0 (`LICENSE`): any use but a
   commercial one.
 - **Anything derived from the CSIRO feeder is CC BY-NC-SA 4.0**: files in
-  `data/derived/`, the fixtures `apps/api/internal/engine/testdata/lv10_*.json`,
+  `data/derived/`, the fixtures `apps/api/internal/engine/testdata/lv*_*.json`,
   and the database seed. List such files in `data/derived/LICENSE`.
 - **Raw data is never committed.** `data/raw/` is ignored, and the
   `check-added-large-files` hook is the second guard. `just data` downloads it

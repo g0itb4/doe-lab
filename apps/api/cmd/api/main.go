@@ -124,6 +124,7 @@ func run(log *slog.Logger) error {
 	defer stopStreams()
 
 	srv := server.New(cfg, log, server.Deps{
+		Substations:     controller.NewSubstations(service.NewSubstations(store)),
 		Feeders:         controller.NewFeeders(service.NewFeeders(store)),
 		Sites:           controller.NewSites(service.NewSites(store)),
 		Devices:         controller.NewDevices(service.NewDevices(store)),

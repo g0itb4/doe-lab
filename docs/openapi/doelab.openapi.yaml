@@ -986,6 +986,49 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/doelab.v1.ListEnvelopeRunsResponse'
+  /doelab.v1.EnvelopeRunService/RecordFeederStates:
+    post:
+      tags:
+        - doelab.v1.EnvelopeRunService
+      summary: RecordFeederStates
+      description: |-
+        Records what a run solved bus by bus and line by line, for whole
+         intervals: the states of each interval named replace everything stored
+         for it, by this run or an earlier one. The engine sends a run's intervals
+         a few at a time. Needs the engine scope.
+      operationId: doelab.v1.EnvelopeRunService.RecordFeederStates
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.RecordFeederStatesRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.RecordFeederStatesResponse'
   /doelab.v1.EnvelopeService/GetCurrentEnvelope:
     post:
       tags:
@@ -1575,6 +1618,47 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/doelab.v1.GetSiteResponse'
+  /doelab.v1.SiteService/ListLocatedSites:
+    post:
+      tags:
+        - doelab.v1.SiteService
+      summary: ListLocatedSites
+      description: |-
+        The sites that have a location, of every feeder, in NMI order: what a
+         map draws.
+      operationId: doelab.v1.SiteService.ListLocatedSites
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.ListLocatedSitesRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.ListLocatedSitesResponse'
   /doelab.v1.SiteService/ListSiteProfiles:
     post:
       tags:
@@ -1693,6 +1777,83 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/doelab.v1.UpdateSiteResponse'
+  /doelab.v1.SubstationService/GetSubstation:
+    post:
+      tags:
+        - doelab.v1.SubstationService
+      summary: GetSubstation
+      operationId: doelab.v1.SubstationService.GetSubstation
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetSubstationRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetSubstationResponse'
+  /doelab.v1.SubstationService/ListSubstations:
+    post:
+      tags:
+        - doelab.v1.SubstationService
+      summary: ListSubstations
+      description: The substations, in code order.
+      operationId: doelab.v1.SubstationService.ListSubstations
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.ListSubstationsRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.ListSubstationsResponse'
   /doelab.v1.TelemetryService/GetDailyReport:
     post:
       tags:
@@ -1775,6 +1936,88 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/doelab.v1.GetFeederSeriesResponse'
+  /doelab.v1.TelemetryService/GetFeederState:
+    post:
+      tags:
+        - doelab.v1.TelemetryService
+      summary: GetFeederState
+      description: |-
+        One feeder at an instant, bus by bus and line by line: what a drawing of
+         the network shows.
+      operationId: doelab.v1.TelemetryService.GetFeederState
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetFeederStateRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetFeederStateResponse'
+  /doelab.v1.TelemetryService/GetFleetState:
+    post:
+      tags:
+        - doelab.v1.TelemetryService
+      summary: GetFleetState
+      description: |-
+        Every feeder now, and each site that has a place on the map: what a map
+         of the fleet draws.
+      operationId: doelab.v1.TelemetryService.GetFleetState
+      parameters:
+        - name: Connect-Protocol-Version
+          in: header
+          description: Define the version of the Connect protocol
+          schema:
+            $ref: '#/components/schemas/connect-protocol-version'
+          example: 1
+        - name: Connect-Timeout-Ms
+          in: header
+          description: Define the timeout, in ms
+          schema:
+            $ref: '#/components/schemas/connect-timeout-header'
+          example: 1000
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/doelab.v1.GetFleetStateRequest'
+        required: true
+      responses:
+        default:
+          description: Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/connect.error'
+        "200":
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/doelab.v1.GetFleetStateResponse'
   /doelab.v1.TelemetryService/GetFleetSummary:
     post:
       tags:
@@ -3111,6 +3354,15 @@ components:
           allOf:
             - $ref: '#/components/schemas/google.protobuf.Timestamp'
           title: updated_at
+        substationId:
+          type:
+            - string
+            - "null"
+          title: substation_id
+          format: uuid
+          description: |-
+            The zone substation the feeder hangs from. Unset for a feeder that has
+             not been placed.
       title: Feeder
       additionalProperties: false
       description: |-
@@ -3209,6 +3461,80 @@ components:
       description: |-
         The four-conductor line, or closed switch, into a bus from its parent.
          Mirrors the feeder_lines table.
+    doelab.v1.FeederLineState:
+      type: object
+      properties:
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+          description: Set by the server, from the run.
+        lineId:
+          type: string
+          title: line_id
+          format: uuid
+        validFrom:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: valid_from
+        validTo:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: valid_to
+        envelopeRunId:
+          type: string
+          title: envelope_run_id
+          format: uuid
+          description: Set by the server, from the request.
+        forecastCurrentA:
+          type: array
+          items:
+            type: number
+            format: double
+          title: forecast_current_a
+          maxItems: 4
+          minItems: 4
+        envelopeCurrentA:
+          type: array
+          items:
+            type: number
+            format: double
+          title: envelope_current_a
+          maxItems: 4
+          minItems: 4
+        staticCurrentA:
+          type: array
+          items:
+            type: number
+            format: double
+          title: static_current_a
+          maxItems: 4
+          minItems: 4
+        forecastPowerW:
+          type: number
+          title: forecast_power_w
+          format: double
+          description: |-
+            Power the line carries towards its far end, in watts. Negative is power
+             flowing back towards the transformer.
+        envelopePowerW:
+          type: number
+          title: envelope_power_w
+          format: double
+        staticPowerW:
+          type: number
+          title: static_power_w
+          format: double
+      title: FeederLineState
+      required:
+        - validFrom
+        - validTo
+      additionalProperties: false
+      description: |
+        The flow in a line for one interval, as the latest run that covered the
+         interval solved it. Mirrors the feeder_line_states table. Each list of
+         currents holds phases 1 to 3 and then the neutral, in amperes.
+        feeder_line_state.period // valid_to must be after valid_from
     doelab.v1.FeederNode:
       type: object
       properties:
@@ -3258,6 +3584,68 @@ components:
       title: FeederNode
       additionalProperties: false
       description: A bus of the feeder tree. Mirrors the feeder_nodes table.
+    doelab.v1.FeederNodeState:
+      type: object
+      properties:
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+          description: Set by the server, from the run.
+        nodeId:
+          type: string
+          title: node_id
+          format: uuid
+        validFrom:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: valid_from
+        validTo:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: valid_to
+        envelopeRunId:
+          type: string
+          title: envelope_run_id
+          format: uuid
+          description: Set by the server, from the request.
+        forecastVPu:
+          type: array
+          items:
+            type: number
+            format: double
+          title: forecast_v_pu
+          maxItems: 3
+          minItems: 3
+          description: With every site at its forecast.
+        envelopeVPu:
+          type: array
+          items:
+            type: number
+            format: double
+          title: envelope_v_pu
+          maxItems: 3
+          minItems: 3
+          description: With every enrolled site exporting at its envelope.
+        staticVPu:
+          type: array
+          items:
+            type: number
+            format: double
+          title: static_v_pu
+          maxItems: 3
+          minItems: 3
+          description: With every enrolled site exporting at the fixed limit.
+      title: FeederNodeState
+      required:
+        - validFrom
+        - validTo
+      additionalProperties: false
+      description: |
+        The voltage at a bus for one interval, as the latest run that covered the
+         interval solved it. Mirrors the feeder_node_states table. Each list holds
+         phases 1 to 3, phase to neutral, per unit of the nominal voltage.
+        feeder_node_state.period // valid_to must be after valid_from
     doelab.v1.FeederPoint:
       type: object
       properties:
@@ -3923,6 +4311,89 @@ components:
           format: double
       title: GetFeederSeriesResponse
       additionalProperties: false
+    doelab.v1.GetFeederStateRequest:
+      type: object
+      properties:
+        feederId:
+          type: string
+          title: feeder_id
+          format: uuid
+        at:
+          oneOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+            - type: "null"
+          title: at
+          description: The instant, in feeder time. Unset is now.
+      title: GetFeederStateRequest
+      additionalProperties: false
+    doelab.v1.GetFeederStateResponse:
+      type: object
+      properties:
+        at:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: at
+          description: Feeder time of the state.
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.FeederNodeState'
+          title: nodes
+          description: |-
+            The voltage at each bus and the flow in each line, for the interval that
+             holds `at`. Empty when the engine has solved no interval that holds it.
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.FeederLineState'
+          title: lines
+        vMinPu:
+          type: number
+          title: v_min_pu
+          format: double
+          description: |-
+            The limits the state is judged against, from the active config. Zero for
+             a feeder that has none.
+        vMaxPu:
+          type: number
+          title: v_max_pu
+          format: double
+        lineLimitPct:
+          type: number
+          title: line_limit_pct
+          format: double
+        transformerLimitPct:
+          type: number
+          title: transformer_limit_pct
+          format: double
+      title: GetFeederStateResponse
+      additionalProperties: false
+    doelab.v1.GetFleetStateRequest:
+      type: object
+      title: GetFleetStateRequest
+      additionalProperties: false
+    doelab.v1.GetFleetStateResponse:
+      type: object
+      properties:
+        at:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: at
+          description: Feeder time of the state.
+        feeders:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.FleetSummary'
+          title: feeders
+          description: The summary of each feeder, in code order.
+        sites:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.SiteState'
+          title: sites
+          description: The state of every site that has a location.
+      title: GetFleetStateResponse
+      additionalProperties: false
     doelab.v1.GetFleetSummaryRequest:
       type: object
       properties:
@@ -4027,6 +4498,53 @@ components:
           title: forecast
           description: The forecast of the site by the half hour.
       title: GetSiteSeriesResponse
+      additionalProperties: false
+    doelab.v1.GetSubstationRequest:
+      type: object
+      allOf:
+        - oneOf:
+            - required:
+                - id
+            - required:
+                - code
+      anyOf:
+        - type: object
+          properties:
+            code:
+              type: string
+              title: code
+              pattern: ^[A-Z0-9][A-Z0-9_-]{0,31}$
+          title: code
+        - type: object
+          properties:
+            id:
+              type: string
+              title: id
+              format: uuid
+          title: id
+      unevaluatedProperties: false
+      not:
+        allOf:
+          - anyOf:
+              - required:
+                  - code
+              - required:
+                  - id
+          - not:
+              oneOf:
+                - required:
+                    - code
+                - required:
+                    - id
+      title: GetSubstationRequest
+    doelab.v1.GetSubstationResponse:
+      type: object
+      properties:
+        substation:
+          allOf:
+            - $ref: '#/components/schemas/doelab.v1.Substation'
+          title: substation
+      title: GetSubstationResponse
       additionalProperties: false
     doelab.v1.IngestReadingsRequest:
       type: object
@@ -4433,6 +4951,35 @@ components:
           description: Empty when there are no more pages.
       title: ListFeedersResponse
       additionalProperties: false
+    doelab.v1.ListLocatedSitesRequest:
+      type: object
+      properties:
+        pageSize:
+          type: integer
+          title: page_size
+          maximum: 500
+          minimum: 0
+          format: int32
+          description: At most this many sites. 0 means the default, 100.
+        pageToken:
+          type: string
+          title: page_token
+          maxLength: 1024
+      title: ListLocatedSitesRequest
+      additionalProperties: false
+    doelab.v1.ListLocatedSitesResponse:
+      type: object
+      properties:
+        sites:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.Site'
+          title: sites
+        nextPageToken:
+          type: string
+          title: next_page_token
+      title: ListLocatedSitesResponse
+      additionalProperties: false
     doelab.v1.ListReadingsRequest:
       type: object
       properties:
@@ -4567,6 +5114,37 @@ components:
           title: next_page_token
       title: ListSitesResponse
       additionalProperties: false
+    doelab.v1.ListSubstationsRequest:
+      type: object
+      properties:
+        pageSize:
+          type: integer
+          title: page_size
+          maximum: 500
+          minimum: 0
+          format: int32
+          description: At most this many substations. 0 means the default, 100.
+        pageToken:
+          type: string
+          title: page_token
+          maxLength: 1024
+          description: next_page_token of the previous page. Empty for the first page.
+      title: ListSubstationsRequest
+      additionalProperties: false
+    doelab.v1.ListSubstationsResponse:
+      type: object
+      properties:
+        substations:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.Substation'
+          title: substations
+        nextPageToken:
+          type: string
+          title: next_page_token
+          description: Empty when there are no more pages.
+      title: ListSubstationsResponse
+      additionalProperties: false
     doelab.v1.PublishEnvelopesRequest:
       type: object
       properties:
@@ -4677,6 +5255,42 @@ components:
         - ts
       additionalProperties: false
       description: One measurement from a device. Mirrors the readings table.
+    doelab.v1.RecordFeederStatesRequest:
+      type: object
+      properties:
+        envelopeRunId:
+          type: string
+          title: envelope_run_id
+          format: uuid
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.FeederNodeState'
+          title: nodes
+          maxItems: 8000
+          description: 'Whole intervals: every node state of each interval named.'
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/doelab.v1.FeederLineState'
+          title: lines
+          maxItems: 8000
+          description: 'Whole intervals: every line state of each interval named.'
+      title: RecordFeederStatesRequest
+      additionalProperties: false
+    doelab.v1.RecordFeederStatesResponse:
+      type: object
+      properties:
+        nodes:
+          type: integer
+          title: nodes
+          format: int32
+        lines:
+          type: integer
+          title: lines
+          format: int32
+      title: RecordFeederStatesResponse
+      additionalProperties: false
     doelab.v1.RunStatus:
       type: string
       title: RunStatus
@@ -4778,6 +5392,26 @@ components:
           allOf:
             - $ref: '#/components/schemas/google.protobuf.Timestamp'
           title: updated_at
+        latitudeDeg:
+          type:
+            - number
+            - "null"
+          title: latitude_deg
+          maximum: 90
+          minimum: -90
+          format: double
+          description: |-
+            Where the connection point is: WGS 84, in degrees, south and west
+             negative. Set together, and unset for a site with no place on the map.
+             Synthetic, like the NMI.
+        longitudeDeg:
+          type:
+            - number
+            - "null"
+          title: longitude_deg
+          maximum: 180
+          minimum: -180
+          format: double
       title: Site
       additionalProperties: false
       description: |
@@ -4785,6 +5419,7 @@ components:
          neutral of a bus. Mirrors the sites table. deleted_at is not on the wire: a
          deleted site is not returned.
         site.battery_sized // battery_kwh must be set exactly when has_battery is true
+        site.location_complete // latitude_deg and longitude_deg must be set together
     doelab.v1.SiteForecastPoint:
       type: object
       properties:
@@ -4864,6 +5499,46 @@ components:
       title: SiteProfile
       additionalProperties: false
       description: One half-hour of a site's load and PV. Mirrors the site_profiles table.
+    doelab.v1.SiteState:
+      type: object
+      properties:
+        siteId:
+          type: string
+          title: site_id
+        envelope:
+          oneOf:
+            - $ref: '#/components/schemas/doelab.v1.Envelope'
+            - type: "null"
+          title: envelope
+          description: The envelope in force. Unset for a site that has none.
+        reporting:
+          type: boolean
+          title: reporting
+          description: A device of the site was heard within the offline period.
+        netExportW:
+          type:
+            - number
+            - "null"
+          title: net_export_w
+          format: double
+          description: |-
+            Net flow at the connection point as the site last reported it, in watts:
+             positive is export. Unset for a site that is not reporting.
+        overLimit:
+          type: boolean
+          title: over_limit
+          description: The net flow is above the export limit in force.
+        openAlert:
+          oneOf:
+            - $ref: '#/components/schemas/doelab.v1.Alert'
+            - type: "null"
+          title: open_alert
+          description: The open alert of the site that matters most. Unset when it has none.
+      title: SiteState
+      additionalProperties: false
+      description: |-
+        One site at an instant: the envelope in force, and what its devices last
+         said.
     doelab.v1.SubscribeEnvelopesRequest:
       type: object
       properties:
@@ -4900,6 +5575,58 @@ components:
              keeps the stream alive and lets a device notice a dead connection.
       title: SubscribeEnvelopesResponse
       additionalProperties: false
+    doelab.v1.Substation:
+      type: object
+      properties:
+        id:
+          type: string
+          title: id
+          format: uuid
+        code:
+          type: string
+          title: code
+          pattern: ^[A-Z0-9][A-Z0-9_-]{0,31}$
+          description: Short stable identifier, for example SUB-001.
+        name:
+          type: string
+          title: name
+          maxLength: 200
+        dnsp:
+          type: string
+          title: dnsp
+          maxLength: 200
+          description: The distribution network service provider that owns the substation.
+        state:
+          type: string
+          title: state
+          pattern: ^[A-Z]{2,3}$
+          description: 'The Australian state or territory, as its abbreviation: NSW, VIC, SA.'
+        latitudeDeg:
+          type: number
+          title: latitude_deg
+          maximum: 90
+          minimum: -90
+          format: double
+          description: WGS 84, in degrees. South and west are negative.
+        longitudeDeg:
+          type: number
+          title: longitude_deg
+          maximum: 180
+          minimum: -180
+          format: double
+        createdAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: created_at
+        updatedAt:
+          allOf:
+            - $ref: '#/components/schemas/google.protobuf.Timestamp'
+          title: updated_at
+      title: Substation
+      additionalProperties: false
+      description: |-
+        A zone substation: the place that the feeders below it are drawn from. It
+         is not part of the power flow. Mirrors the substations table.
     doelab.v1.UpdateDeviceRequest:
       type: object
       properties:
@@ -5113,6 +5840,10 @@ tags:
        line's rating. The model itself is created by the import.
   - name: doelab.v1.SiteService
     description: SiteService manages customer connection points and reads their profiles.
+  - name: doelab.v1.SubstationService
+    description: |-
+      SubstationService reads the zone substations: where on the map the feeders
+       are. A substation is created by the import, and nothing changes it.
   - name: doelab.v1.TelemetryService
     description: |-
       TelemetryService takes readings from devices, and shows what the fleet and

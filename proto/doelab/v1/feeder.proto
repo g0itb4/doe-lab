@@ -86,6 +86,9 @@ message Feeder {
   string attribution = 12;
   google.protobuf.Timestamp created_at = 13;
   google.protobuf.Timestamp updated_at = 14;
+  // The zone substation the feeder hangs from. Unset for a feeder that has
+  // not been placed.
+  optional string substation_id = 15 [(buf.validate.field).string.uuid = true];
 }
 
 // A bus of the feeder tree. Mirrors the feeder_nodes table.

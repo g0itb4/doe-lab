@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"time"
 
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -127,6 +128,58 @@ func (c *Telemetry) GetFleetSummary(ctx context.Context, req *connect.Request[do
 		return nil, err
 	}
 	return connect.NewResponse(&doelabv1.GetFleetSummaryResponse{Summary: fleetSummary(summary)}), nil
+}
+
+// GetFleetState returns every feeder now, and each site that has a location.
+func (c *Telemetry) GetFleetState(ctx context.Context, _ *connect.Request[doelabv1.GetFleetStateRequest]) (*connect.Response[doelabv1.GetFleetStateResponse], error) {
+	state, err := c.svc.FleetState(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := &doelabv1.GetFleetStateResponse{
+		At:      timestamppb.New(state.At),
+		Feeders: protomap.Slice(state.Feeders, fleetSummary),
+		Sites:   make([]*doelabv1.SiteState, len(state.Sites)),
+	}
+	for i, site := range state.Sites {
+		message := &doelabv1.SiteState{
+			SiteId: site.SiteID.String(), Envelope: protomap.OptionalEnvelope(site.Envelope),
+			Reporting: site.Reporting, OverLimit: site.OverLimit,
+		}
+		if site.Reporting {
+			message.NetExportW = &site.NetExportW
+		}
+		if site.OpenAlert != nil {
+			message.OpenAlert = protomap.Alert(*site.OpenAlert)
+		}
+		out.Sites[i] = message
+	}
+	return connect.NewResponse(out), nil
+}
+
+// GetFeederState returns one feeder at an instant, bus by bus and line by
+// line.
+func (c *Telemetry) GetFeederState(ctx context.Context, req *connect.Request[doelabv1.GetFeederStateRequest]) (*connect.Response[doelabv1.GetFeederStateResponse], error) {
+	feederID, err := parseID("feeder_id", req.Msg.GetFeederId())
+	if err != nil {
+		return nil, err
+	}
+	var at *time.Time
+	if req.Msg.At != nil {
+		t := req.Msg.GetAt().AsTime()
+		at = &t
+	}
+	state, err := c.svc.FeederState(ctx, feederID, at)
+	if err != nil {
+		return nil, err
+	}
+	return connect.NewResponse(&doelabv1.GetFeederStateResponse{
+		At:     timestamppb.New(state.At),
+		Nodes:  protomap.Slice(state.Nodes, protomap.FeederNodeState),
+		Lines:  protomap.Slice(state.Lines, protomap.FeederLineState),
+		VMinPu: state.VMinPU, VMaxPu: state.VMaxPU,
+		LineLimitPct: state.LineLimitPct, TransformerLimitPct: state.TransformerLimitPct,
+	}), nil
 }
 
 // WatchFleet streams the fleet summary until the client leaves.

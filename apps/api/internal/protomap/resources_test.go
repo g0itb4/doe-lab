@@ -29,8 +29,23 @@ func TestRoundTrips(t *testing.T) {
 		SourceVoltageV: 250, SourceAngleDeg: -30, SourceROhm: 0.003, SourceXOhm: 0.0001, TapPU: 0.975,
 		Timezone: "Australia/Sydney", Attribution: "CSIRO", CreatedAt: created, UpdatedAt: updated,
 	}
-	if got := FeederFromMessage(Feeder(feeder)); got != feeder {
+	if got := FeederFromMessage(Feeder(feeder)); !reflect.DeepEqual(got, feeder) {
 		t.Errorf("feeder:\n got %+v\nwant %+v", got, feeder)
+	}
+	substation := domain.Substation{
+		ID: uuid.New(), Code: "SUB-001", Name: "Lidcombe Zone", DNSP: "Ausgrid", State: "NSW",
+		LatitudeDeg: -33.8524, LongitudeDeg: 151.0621, CreatedAt: created, UpdatedAt: updated,
+	}
+	if got := Substation(substation); got.GetId() != substation.ID.String() || got.GetCode() != "SUB-001" ||
+		got.GetName() != "Lidcombe Zone" || got.GetDnsp() != "Ausgrid" || got.GetState() != "NSW" ||
+		got.GetLatitudeDeg() != -33.8524 || got.GetLongitudeDeg() != 151.0621 ||
+		!got.GetCreatedAt().AsTime().Equal(created) || !got.GetUpdatedAt().AsTime().Equal(updated) {
+		t.Errorf("substation = %v", got)
+	}
+	placed := feeder
+	placed.SubstationID = &substation.ID
+	if got := FeederFromMessage(Feeder(placed)); !reflect.DeepEqual(got, placed) {
+		t.Errorf("feeder below a substation:\n got %+v\nwant %+v", got, placed)
 	}
 
 	root := domain.FeederNode{ID: uuid.New(), FeederID: feeder.ID, Name: "root", CreatedAt: created, UpdatedAt: updated}
@@ -68,11 +83,46 @@ func TestRoundTrips(t *testing.T) {
 	if got := SiteFromMessage(Site(site)); !reflect.DeepEqual(got, site) {
 		t.Errorf("site:\n got %+v\nwant %+v", got, site)
 	}
+	located := site
+	located.LatitudeDeg, located.LongitudeDeg = ptr(-33.850025), ptr(151.078926)
+	if got := SiteFromMessage(Site(located)); !reflect.DeepEqual(got, located) {
+		t.Errorf("located site:\n got %+v\nwant %+v", got, located)
+	}
 	// deleted_at does not cross the wire.
 	deleted := site
 	deleted.DeletedAt = &updated
 	if got := SiteFromMessage(Site(deleted)); got.DeletedAt != nil {
 		t.Errorf("deleted_at crossed the wire: %v", got.DeletedAt)
+	}
+
+	// A state goes out whole. Coming in, the feeder and the run are the
+	// server's to set.
+	nodeState := domain.FeederNodeState{
+		FeederID: feeder.ID, NodeID: node.ID, ValidFrom: created, ValidTo: created.Add(30 * time.Minute), EnvelopeRunID: uuid.New(),
+		ForecastVPU: []float64{1.05, 1.04, 1.03}, EnvelopeVPU: []float64{1.09, 1.04, 1.03}, StaticVPU: []float64{1.12, 1.04, 1.03},
+	}
+	nodeMessage := FeederNodeState(nodeState)
+	if nodeMessage.GetFeederId() != feeder.ID.String() || nodeMessage.GetEnvelopeRunId() != nodeState.EnvelopeRunID.String() {
+		t.Errorf("node state message = %v", nodeMessage)
+	}
+	wantNode := nodeState
+	wantNode.FeederID, wantNode.EnvelopeRunID = uuid.Nil, uuid.Nil
+	if got := FeederNodeStateFromProto(nodeMessage); !reflect.DeepEqual(got, wantNode) {
+		t.Errorf("node state:\n got %+v\nwant %+v", got, wantNode)
+	}
+	lineState := domain.FeederLineState{
+		FeederID: feeder.ID, LineID: rated.ID, ValidFrom: created, ValidTo: created.Add(30 * time.Minute), EnvelopeRunID: uuid.New(),
+		ForecastCurrentA: []float64{10, 1, 2, 9}, EnvelopeCurrentA: []float64{20, 1, 2, 19}, StaticCurrentA: []float64{30, 1, 2, 29},
+		ForecastPowerW: 1500, EnvelopePowerW: -3000, StaticPowerW: -4500,
+	}
+	lineMessage := FeederLineState(lineState)
+	if lineMessage.GetFeederId() != feeder.ID.String() || lineMessage.GetEnvelopeRunId() != lineState.EnvelopeRunID.String() {
+		t.Errorf("line state message = %v", lineMessage)
+	}
+	wantLine := lineState
+	wantLine.FeederID, wantLine.EnvelopeRunID = uuid.Nil, uuid.Nil
+	if got := FeederLineStateFromProto(lineMessage); !reflect.DeepEqual(got, wantLine) {
+		t.Errorf("line state:\n got %+v\nwant %+v", got, wantLine)
 	}
 
 	device := domain.Device{ID: uuid.New(), SiteID: site.ID, DERType: domain.DERBattery, RatedW: 5000, CreatedAt: created, UpdatedAt: updated}

@@ -110,89 +110,189 @@ type FleetSummary struct {
 	LatestRun *domain.EnvelopeRun
 }
 
+// SiteState is one site at an instant: the envelope in force, and what its
+// devices last said.
+type SiteState struct {
+	SiteID uuid.UUID
+	// Envelope is the envelope in force; nil when the site has none.
+	Envelope *domain.Envelope
+	// Reporting says that a device of the site was heard within the offline
+	// period. NetExportW is what it said the site's net flow was, positive
+	// for export, and is meaningful only for a reporting site.
+	Reporting  bool
+	NetExportW float64
+	// OverLimit says that the net flow is above the export limit in force.
+	OverLimit bool
+	// OpenAlert is the open alert that matters most; nil when there is none.
+	OpenAlert *domain.Alert
+}
+
 // Summary returns the fleet of a feeder now.
 func (s *Telemetry) Summary(ctx context.Context, feederID uuid.UUID) (FleetSummary, error) {
-	now := s.clock.Now()
-	out := FleetSummary{FeederID: feederID, At: now}
+	var out FleetSummary
 	err := s.store.Tx(ctx, func(ctx context.Context, r Repos) error {
-		if _, err := r.GetFeeder(ctx, feederID); err != nil {
-			return err
-		}
-		_, offlineAfter, err := thresholds(ctx, r, feederID)
-		if err != nil {
-			return err
-		}
-		sites, err := r.ListAllSites(ctx, feederID)
-		if err != nil {
-			return err
-		}
-		var enrolled []uuid.UUID
-		for _, site := range sites {
-			if site.ExportCapW > 0 || site.ImportCapW > 0 {
-				enrolled = append(enrolled, site.ID)
-			}
-		}
-		out.EnrolledSites = len(enrolled)
+		var err error
+		out, _, err = s.feederState(ctx, r, feederID, s.clock.Now())
+		return err
+	})
+	return out, err
+}
 
-		// A site's net flow is what its most recently heard device says: the
-		// devices of a site share one meter.
-		states, err := r.ListDeviceStates(ctx, feederID)
-		if err != nil {
-			return err
+// feederState reads the fleet of a feeder at now: its summary, and the state
+// of each of its sites that has a place on the map, in NMI order.
+func (s *Telemetry) feederState(ctx context.Context, r Repos, feederID uuid.UUID, now time.Time) (FleetSummary, []SiteState, error) {
+	out := FleetSummary{FeederID: feederID, At: now}
+	if _, err := r.GetFeeder(ctx, feederID); err != nil {
+		return out, nil, err
+	}
+	_, offlineAfter, err := thresholds(ctx, r, feederID)
+	if err != nil {
+		return out, nil, err
+	}
+	sites, err := r.ListAllSites(ctx, feederID)
+	if err != nil {
+		return out, nil, err
+	}
+	var enrolled []uuid.UUID
+	// The located sites, and where each is in the result.
+	var states []SiteState
+	located := map[uuid.UUID]int{}
+	for _, site := range sites {
+		if site.ExportCapW > 0 || site.ImportCapW > 0 {
+			enrolled = append(enrolled, site.ID)
 		}
-		type live struct {
-			seen time.Time
-			netW float64
+		if site.LatitudeDeg != nil {
+			located[site.ID] = len(states)
+			states = append(states, SiteState{SiteID: site.ID})
 		}
-		reporting := map[uuid.UUID]live{}
-		out.Devices = len(states)
-		for _, state := range states {
-			if state.LastSeenAt == nil || now.Sub(*state.LastSeenAt) > offlineAfter {
-				continue
-			}
-			out.DevicesOnline++
-			if have, ok := reporting[state.SiteID]; !ok || state.LastSeenAt.After(have.seen) {
-				reporting[state.SiteID] = live{seen: *state.LastSeenAt, netW: state.NetExportW}
-			}
-		}
-		out.ReportingSites = len(reporting)
-		for _, l := range reporting {
-			out.ExportW += max(l.netW, 0)
-			out.ImportW += max(-l.netW, 0)
-		}
+	}
+	out.EnrolledSites = len(enrolled)
 
-		envelopes, err := r.ListActiveEnvelopes(ctx, enrolled, now)
-		if err != nil {
-			return err
+	// A site's net flow is what its most recently heard device says: the
+	// devices of a site share one meter.
+	devices, err := r.ListDeviceStates(ctx, feederID)
+	if err != nil {
+		return out, nil, err
+	}
+	type live struct {
+		seen time.Time
+		netW float64
+	}
+	reporting := map[uuid.UUID]live{}
+	out.Devices = len(devices)
+	for _, state := range devices {
+		if state.LastSeenAt == nil || now.Sub(*state.LastSeenAt) > offlineAfter {
+			continue
 		}
-		for _, e := range envelopes {
-			if e.ValidFrom.After(now) {
-				continue // not in force yet
-			}
-			out.ExportLimitW += e.ExportLimitW
-			if l, ok := reporting[e.SiteID]; ok && l.netW > e.ExportLimitW+ExportToleranceW {
-				out.SitesOverLimit++
-			}
+		out.DevicesOnline++
+		if have, ok := reporting[state.SiteID]; !ok || state.LastSeenAt.After(have.seen) {
+			reporting[state.SiteID] = live{seen: *state.LastSeenAt, netW: state.NetExportW}
 		}
+	}
+	out.ReportingSites = len(reporting)
+	for id, l := range reporting {
+		out.ExportW += max(l.netW, 0)
+		out.ImportW += max(-l.netW, 0)
+		if i, ok := located[id]; ok {
+			states[i].Reporting, states[i].NetExportW = true, l.netW
+		}
+	}
 
-		if out.OpenAlerts, err = r.CountOpenAlerts(ctx, feederID); err != nil {
-			return err
+	envelopes, err := r.ListActiveEnvelopes(ctx, enrolled, now)
+	if err != nil {
+		return out, nil, err
+	}
+	for _, e := range envelopes {
+		if e.ValidFrom.After(now) {
+			continue // not in force yet
 		}
-		backstop, err := r.GetActiveBackstopEvent(ctx, feederID)
-		switch {
-		case err == nil:
-			out.BackstopEventID = &backstop.ID
-		case !errors.Is(err, domain.ErrNotFound):
-			return err
+		out.ExportLimitW += e.ExportLimitW
+		l, heard := reporting[e.SiteID]
+		over := heard && l.netW > e.ExportLimitW+ExportToleranceW
+		if over {
+			out.SitesOverLimit++
 		}
-		runs, _, err := r.ListEnvelopeRuns(ctx, feederID, nil, domain.Page{Size: 1})
-		if err != nil {
-			return err
+		if i, ok := located[e.SiteID]; ok {
+			states[i].Envelope, states[i].OverLimit = &e, over
 		}
-		if len(runs) > 0 {
-			out.LatestRun = &runs[0]
+	}
+
+	if out.OpenAlerts, err = r.CountOpenAlerts(ctx, feederID); err != nil {
+		return out, nil, err
+	}
+	backstop, err := r.GetActiveBackstopEvent(ctx, feederID)
+	switch {
+	case err == nil:
+		out.BackstopEventID = &backstop.ID
+	case !errors.Is(err, domain.ErrNotFound):
+		return out, nil, err
+	}
+	runs, _, err := r.ListEnvelopeRuns(ctx, feederID, nil, domain.Page{Size: 1})
+	if err != nil {
+		return out, nil, err
+	}
+	if len(runs) > 0 {
+		out.LatestRun = &runs[0]
+	}
+	return out, states, nil
+}
+
+// FleetState is every feeder at one instant, with the sites that a map draws.
+type FleetState struct {
+	At time.Time
+	// Feeders is the summary of each feeder, in code order.
+	Feeders []FleetSummary
+	// Sites is the state of every site that has a location: feeder by
+	// feeder, and within a feeder in NMI order.
+	Sites []SiteState
+}
+
+// maxOpenAlerts is how many open alerts of a feeder the fleet state reads. A
+// feeder with more shows the newest.
+const maxOpenAlerts = 500
+
+// severityRank orders the alert severities.
+var severityRank = map[domain.AlertSeverity]int{
+	domain.SeverityInfo: 1, domain.SeverityWarning: 2, domain.SeverityCritical: 3,
+}
+
+// FleetState returns every feeder now: the summary of each, and the state of
+// each site that has a place on the map.
+func (s *Telemetry) FleetState(ctx context.Context) (FleetState, error) {
+	out := FleetState{At: s.clock.Now()}
+	err := s.store.Tx(ctx, func(ctx context.Context, r Repos) error {
+		for token := ""; ; {
+			feeders, next, err := r.ListFeeders(ctx, domain.Page{Size: 500, Token: token})
+			if err != nil {
+				return err
+			}
+			for _, feeder := range feeders {
+				summary, sites, err := s.feederState(ctx, r, feeder.ID, out.At)
+				if err != nil {
+					return fmt.Errorf("feeder %s: %w", feeder.Code, err)
+				}
+				// The open alerts, newest first: a site shows the gravest of
+				// its own, and of two as grave the newer.
+				alerts, _, err := r.ListAlerts(ctx, feeder.ID, AlertFilter{OpenOnly: true}, domain.Page{Size: maxOpenAlerts})
+				if err != nil {
+					return fmt.Errorf("feeder %s: %w", feeder.Code, err)
+				}
+				gravest := map[uuid.UUID]*domain.Alert{}
+				for _, alert := range alerts {
+					if have := gravest[alert.SiteID]; have == nil || severityRank[alert.Severity] > severityRank[have.Severity] {
+						gravest[alert.SiteID] = &alert
+					}
+				}
+				for i := range sites {
+					sites[i].OpenAlert = gravest[sites[i].SiteID]
+				}
+				out.Feeders = append(out.Feeders, summary)
+				out.Sites = append(out.Sites, sites...)
+			}
+			if token = next; token == "" {
+				return nil
+			}
 		}
-		return nil
 	})
 	return out, err
 }
@@ -214,6 +314,52 @@ func (s *Telemetry) Watch(ctx context.Context, feederID uuid.UUID, send func(Fle
 		case <-s.after(s.WatchEvery):
 		}
 	}
+}
+
+// FeederState is one feeder at an instant, bus by bus and line by line, with
+// the limits it is judged against.
+type FeederState struct {
+	At time.Time
+	// Nodes and Lines are the states of the interval that holds At; empty
+	// when the engine has solved no interval that holds it.
+	Nodes []domain.FeederNodeState
+	Lines []domain.FeederLineState
+	// The limits of the active config; zero for a feeder that has none.
+	VMinPU              float64
+	VMaxPU              float64
+	LineLimitPct        float64
+	TransformerLimitPct float64
+}
+
+// FeederState returns what the engine solved for a feeder at an instant of
+// feeder time: now, when at is nil.
+func (s *Telemetry) FeederState(ctx context.Context, feederID uuid.UUID, at *time.Time) (FeederState, error) {
+	out := FeederState{At: s.clock.Now()}
+	if at != nil {
+		out.At = *at
+	}
+	err := s.store.Tx(ctx, func(ctx context.Context, r Repos) error {
+		if _, err := r.GetFeeder(ctx, feederID); err != nil {
+			return err
+		}
+		var err error
+		if out.Nodes, err = r.ListFeederNodeStates(ctx, feederID, out.At); err != nil {
+			return err
+		}
+		if out.Lines, err = r.ListFeederLineStates(ctx, feederID, out.At); err != nil {
+			return err
+		}
+		config, err := r.GetActiveEnvelopeConfig(ctx, feederID)
+		switch {
+		case err == nil:
+			out.VMinPU, out.VMaxPU = config.VMinPU, config.VMaxPU
+			out.LineLimitPct, out.TransformerLimitPct = config.LineLimitPct, config.TransformerLimitPct
+		case !errors.Is(err, domain.ErrNotFound):
+			return err
+		}
+		return nil
+	})
+	return out, err
 }
 
 // FeederPoint is one interval of a feeder: forecast, allowed and measured.

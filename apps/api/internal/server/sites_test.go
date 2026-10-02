@@ -262,3 +262,55 @@ func TestSiteProfiles(t *testing.T) {
 	_, err = c.ListSiteProfiles(ctx, req(&doelabv1.ListSiteProfilesRequest{SiteId: unknownID, From: from, To: to}))
 	wantCode(t, "an unknown site", err, connect.CodeNotFound)
 }
+
+func TestLocatedSites(t *testing.T) {
+	t.Parallel()
+	a := newAPI(t)
+	c := a.sites("")
+	place := func(serial int32, latitude, longitude *float64) (*doelabv1.Site, error) {
+		res, err := a.sites(operatorToken).CreateSite(ctx, req(&doelabv1.CreateSiteRequest{Site: &doelabv1.Site{
+			Nmi: repotest.NMI(t, int(serial)), FeederId: a.fixture.Feeder.ID.String(), NodeId: a.fixture.HouseB.ID.String(),
+			Name: "Ld" + repotest.NMI(t, int(serial)), Phase: 1, LatitudeDeg: latitude, LongitudeDeg: longitude,
+		}}))
+		if err != nil {
+			return nil, err
+		}
+		return res.Msg.GetSite(), nil
+	}
+
+	// The fixture's sites have no place.
+	empty, err := c.ListLocatedSites(ctx, req(&doelabv1.ListLocatedSitesRequest{}))
+	noErr(t, "list with no located site", err)
+	if len(empty.Msg.GetSites()) != 0 {
+		t.Errorf("%d located sites before any has a place", len(empty.Msg.GetSites()))
+	}
+
+	for serial := int32(60); serial < 63; serial++ {
+		got, err := place(serial, repotest.Ptr(-33.850025), repotest.Ptr(151.078926))
+		noErr(t, "create a located site", err)
+		if got.GetLatitudeDeg() != -33.850025 || got.GetLongitudeDeg() != 151.078926 {
+			t.Errorf("created at %v, %v", got.GetLatitudeDeg(), got.GetLongitudeDeg())
+		}
+	}
+	page1, err := c.ListLocatedSites(ctx, req(&doelabv1.ListLocatedSitesRequest{PageSize: 2}))
+	noErr(t, "page 1", err)
+	if len(page1.Msg.GetSites()) != 2 || page1.Msg.GetSites()[0].GetNmi() != repotest.NMI(t, 60) || page1.Msg.GetNextPageToken() == "" {
+		t.Fatalf("page 1 = %v", page1.Msg)
+	}
+	page2, err := c.ListLocatedSites(ctx, req(&doelabv1.ListLocatedSitesRequest{PageSize: 2, PageToken: page1.Msg.GetNextPageToken()}))
+	noErr(t, "page 2", err)
+	if len(page2.Msg.GetSites()) != 1 || page2.Msg.GetSites()[0].GetNmi() != repotest.NMI(t, 62) || page2.Msg.GetNextPageToken() != "" {
+		t.Errorf("page 2 = %v", page2.Msg)
+	}
+	_, err = c.ListLocatedSites(ctx, req(&doelabv1.ListLocatedSitesRequest{PageSize: 501}))
+	wantViolation(t, "page size over the cap", err, "page_size")
+	_, err = c.ListLocatedSites(ctx, req(&doelabv1.ListLocatedSitesRequest{PageToken: "not-a-token"}))
+	wantCode(t, "malformed page token", err, connect.CodeInvalidArgument)
+
+	_, err = place(70, repotest.Ptr(-33.85), nil)
+	wantViolation(t, "a latitude with no longitude", err, "latitude_deg and longitude_deg")
+	_, err = place(70, repotest.Ptr(-91.0), repotest.Ptr(151.0))
+	wantViolation(t, "a latitude off the globe", err, "latitude_deg")
+	_, err = place(70, repotest.Ptr(-33.85), repotest.Ptr(181.0))
+	wantViolation(t, "a longitude off the globe", err, "longitude_deg")
+}

@@ -230,6 +230,35 @@ func (pf *PowerFlow) LineCurrent(sol *Solution, bus int) [Conductors]float64 {
 	return out
 }
 
+// LinePower returns the complex power that enters the line into bus at its
+// parent's end, in volt-amperes: what the line carries towards the bus, with
+// its own losses. A negative real part is power flowing back towards the
+// transformer. bus must not be the first bus.
+func (pf *PowerFlow) LinePower(sol *Solution, bus int) complex128 {
+	parent := pf.net.Buses[bus].Parent
+	var drop vec
+	for c := range Conductors {
+		drop[c] = sol.V[parent][c] - sol.V[bus][c]
+	}
+	series := pf.lineY[bus].mulVec(&drop)
+	charge := pf.lineB[bus].mulVec(&sol.V[parent])
+	var s complex128
+	for c := range Conductors {
+		s += sol.V[parent][c] * cmplx.Conj(series[c]+charge[c])
+	}
+	return s
+}
+
+// BusVoltage returns the phase-to-neutral voltage magnitude of each phase of
+// a bus, in volts.
+func (pf *PowerFlow) BusVoltage(sol *Solution, bus int) [Neutral]float64 {
+	var out [Neutral]float64
+	for ph := range Neutral {
+		out[ph] = cmplx.Abs(sol.V[bus][ph] - sol.V[bus][Neutral])
+	}
+	return out
+}
+
 // dense is the whole admittance matrix, factorised.
 type dense struct {
 	lu      *lu

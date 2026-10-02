@@ -94,6 +94,19 @@ func TestHandCase(t *testing.T) {
 				near(t, "neutral current", current[Neutral], 10, 1e-6)
 				near(t, "phase 2 current", current[1], 0, 1e-6)
 			}
+			// Each line carries what the customer draws and what is lost
+			// beyond its near end: 10² · 0.08 ohm in the main, out and back,
+			// and 10² · 0.30 ohm in the service.
+			near(t, "power into the main", real(pf.LinePower(&sol, 1)), 2338, 1e-5)
+			near(t, "power into the service", real(pf.LinePower(&sol, 2)), 2330, 1e-5)
+			near(t, "reactive power into the main", imag(pf.LinePower(&sol, 1)), 0, 1e-5)
+			// Phase to neutral at the house: 237.9 − 7.9 V on the loaded
+			// phase, and the idle phases shifted by the neutral.
+			house := pf.BusVoltage(&sol, 2)
+			near(t, "phase 1 to neutral at the house", house[0], 230, 1e-6)
+			if house[1] <= 240 || house[2] <= 240 {
+				t.Errorf("idle phases at the house = %v, want both above 240 V", house)
+			}
 			// 240 V · 10 A leaves the source: 2300 W to the customer and
 			// 10² · 1.00 ohm = 100 W of loss.
 			power := pf.SourcePower(&sol)
@@ -119,6 +132,10 @@ func TestExportRaisesVoltage(t *testing.T) {
 	}
 	near(t, "customer voltage", pf.PhaseVoltage(&sol, 0), 250, 1e-6)
 	near(t, "source P", real(pf.SourcePower(&sol)), -2400, 1e-5)
+	// The power flows back: 2500 W less the service's loss reaches the main,
+	// and less the main's reaches the transformer's bus.
+	near(t, "power into the service", real(pf.LinePower(&sol, 2)), -(2500 - 30), 1e-5)
+	near(t, "power into the main", real(pf.LinePower(&sol, 1)), -(2500 - 38), 1e-5)
 }
 
 func TestWarmStart(t *testing.T) {

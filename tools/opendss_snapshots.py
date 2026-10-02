@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-"""Solve the LV10 feeder in OpenDSS and write reference voltages for the Go solver.
+"""Solve the demo's feeders in OpenDSS and write reference voltages for the Go solver.
 
 Each snapshot sets every customer's power explicitly, solves, and records the
 complex node-to-earth voltage of every low-voltage bus, the current magnitude
 in every line, and the power at the transformer. The Go engine must reproduce
 these within the tolerance fixed in its golden test.
 
+LV10 is solved at five operating points. The smaller feeders that the fleet
+import uses as templates are solved at two, the evening peak and the midday
+export: enough to show that the parser and the solver read them as OpenDSS
+does.
+
 Run through `just fixtures`. Needs the raw CSIRO data (`just data`) and the
 tools venv (`.venv-tools`, OpenDSSDirect.py 0.9.4).
 
-The fixtures are derived from the CSIRO feeder and carry its licence,
+The fixtures are derived from the CSIRO feeders and carry their licence,
 CC BY-NC-SA 4.0. See data/derived/LICENSE.
 """
 
@@ -22,8 +27,19 @@ import random
 import opendssdirect as dss
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-FEEDER = ROOT / "data" / "raw" / "csiro" / "LV" / "LV10_223bus"
+RAW = ROOT / "data" / "raw" / "csiro" / "LV"
 OUT = ROOT / "apps" / "api" / "internal" / "engine" / "testdata"
+
+# The feeders to solve: the prefix of the fixture files, the directory of the
+# raw data, and the snapshots to keep (None is all of them).
+FEEDERS: list[tuple[str, str, set[str] | None]] = [
+    ("lv10", "LV10_223bus", None),
+    ("lv2", "LV2_43bus", {"peak", "pv_export"}),
+    ("lv3", "LV3_55bus", {"peak", "pv_export"}),
+    ("lv13", "LV13_58bus", {"peak", "pv_export"}),
+    ("lv22", "LV22_80bus", {"peak", "pv_export"}),
+    ("lv32", "LV32_100bus", {"peak", "pv_export"}),
+]
 
 # Lagging power factor of household load. OpenDSS would otherwise default to
 # 0.88, so every snapshot sets kW and kvar itself.
@@ -77,7 +93,7 @@ def run(cmd: str) -> None:
         raise RuntimeError(f"OpenDSS error on {cmd!r}: {dss.Error.Description()}")
 
 
-def compile_feeder() -> None:
+def compile_feeder(feeder: pathlib.Path) -> None:
     """Build the circuit from Master.dss, without its solve and export lines.
 
     Master.dss ends with `batchedit`, `solve` and `export`, and the export
@@ -89,8 +105,8 @@ def compile_feeder() -> None:
     # 60 Hz and inject nothing into a 50 Hz solution: every voltage is zero.
     # The model's authors ran with a 50 Hz default; make that explicit.
     run("set defaultbasefrequency=50")
-    run(f'set datapath="{FEEDER}"')
-    for line in (FEEDER / "Master.dss").read_text().splitlines():
+    run(f'set datapath="{feeder}"')
+    for line in (feeder / "Master.dss").read_text().splitlines():
         line = line.strip()
         if not line or line.split()[0].lower() in {"batchedit", "solve", "export", "clear"}:
             continue
@@ -120,7 +136,9 @@ def solve(power: dict[str, tuple[float, float]]) -> dict:
     if not dss.Solution.Converged():
         raise RuntimeError("OpenDSS did not converge")
 
-    source_bus = dss.Vsources.AllNames() and "b185"
+    # The medium-voltage bus above the transformer is not part of the model.
+    dss.Vsources.First()
+    source_bus = dss.CktElement.BusNames()[0].split(".")[0].lower()
     voltages = {}
     for name in dss.Circuit.AllBusNames():
         if name == source_bus:
@@ -153,31 +171,34 @@ def solve(power: dict[str, tuple[float, float]]) -> dict:
 
 
 def main() -> None:
-    compile_feeder()
-    loads = load_names()
     OUT.mkdir(parents=True, exist_ok=True)
-    for name, snap in snapshots(loads).items():
-        result = solve(snap["power"])
-        fixture = {
-            "name": name,
-            "description": snap["description"],
-            "source": "OpenDSS via OpenDSSDirect.py " + dss.__version__,
-            "licence": "CC BY-NC-SA 4.0, derived from CSIRO DOI 10.25919/ghnz-bk28",
-            "sites": {k: {"p_w": p, "q_var": q} for k, (p, q) in snap["power"].items()},
-            **result,
-        }
-        path = OUT / f"lv10_{name}.json"
-        path.write_text(json.dumps(fixture, separators=(",", ":")) + "\n")
-        v_ln = [
-            abs(complex(*v[p]) - complex(*v[3]))
-            for v in result["voltages"].values()
-            for p in range(3)
-        ]
-        print(
-            f"{name:15s} iterations={result['iterations']:3d} "
-            f"V phase-neutral {min(v_ln):7.2f} to {max(v_ln):7.2f} V  "
-            f"transformer {result['transformer_w'] / 1000:8.2f} kW  -> {path.relative_to(ROOT)}"
-        )
+    for prefix, directory, keep in FEEDERS:
+        compile_feeder(RAW / directory)
+        loads = load_names()
+        for name, snap in snapshots(loads).items():
+            if keep is not None and name not in keep:
+                continue
+            result = solve(snap["power"])
+            fixture = {
+                "name": name,
+                "description": snap["description"],
+                "source": "OpenDSS via OpenDSSDirect.py " + dss.__version__,
+                "licence": "CC BY-NC-SA 4.0, derived from CSIRO DOI 10.25919/ghnz-bk28",
+                "sites": {k: {"p_w": p, "q_var": q} for k, (p, q) in snap["power"].items()},
+                **result,
+            }
+            path = OUT / f"{prefix}_{name}.json"
+            path.write_text(json.dumps(fixture, separators=(",", ":")) + "\n")
+            v_ln = [
+                abs(complex(*v[p]) - complex(*v[3]))
+                for v in result["voltages"].values()
+                for p in range(3)
+            ]
+            print(
+                f"{prefix:5s} {name:15s} iterations={result['iterations']:3d} "
+                f"V phase-neutral {min(v_ln):7.2f} to {max(v_ln):7.2f} V  "
+                f"transformer {result['transformer_w'] / 1000:8.2f} kW  -> {path.relative_to(ROOT)}"
+            )
 
 
 if __name__ == "__main__":

@@ -255,3 +255,67 @@ func TestLV10Network(t *testing.T) {
 		t.Errorf("%s is out of date with the raw data and the parser; rerun with -update", lv10Fixture)
 	}
 }
+
+// templates are the smaller CSIRO feeders that the fleet import builds its
+// other feeders from: the directory of the raw data, the prefix of the
+// fixture, and what the parser must find in it. Their fixtures carry the same
+// licence as LV10's and are rewritten the same way, with -update.
+var templates = []struct {
+	dir, prefix  string
+	buses, sites int
+	kva          float64
+}{
+	{dir: "LV2_43bus", prefix: "lv2", buses: 43, sites: 7, kva: 500},
+	{dir: "LV3_55bus", prefix: "lv3", buses: 55, sites: 12, kva: 500},
+	{dir: "LV13_58bus", prefix: "lv13", buses: 58, sites: 11, kva: 750},
+	{dir: "LV22_80bus", prefix: "lv22", buses: 80, sites: 21, kva: 500},
+	{dir: "LV32_100bus", prefix: "lv32", buses: 100, sites: 22, kva: 1000},
+}
+
+func TestTemplateNetworks(t *testing.T) {
+	t.Parallel()
+
+	for _, tt := range templates {
+		t.Run(tt.prefix, func(t *testing.T) {
+			t.Parallel()
+			raw := rawFeeders + "/" + tt.dir
+			if _, err := os.Stat(raw + "/Master.dss"); err != nil {
+				t.Skip("raw CSIRO data not downloaded; run `just data`")
+			}
+			c, err := Read(os.DirFS(raw), "Master.dss")
+			if err != nil {
+				t.Fatal(err)
+			}
+			net, err := c.Network()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := net.Validate(); err != nil {
+				t.Fatal(err)
+			}
+			if len(net.Buses) != tt.buses || len(net.Sites) != tt.sites {
+				t.Errorf("%d buses and %d sites, want %d and %d", len(net.Buses), len(net.Sites), tt.buses, tt.sites)
+			}
+			approx(t, "transformer kVA", net.Source.KVA, tt.kva)
+
+			got, err := json.Marshal(net)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got = append(got, '\n')
+			fixture := "../testdata/" + tt.prefix + "_network.json"
+			if *update {
+				if err := os.WriteFile(fixture, got, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			want, err := os.ReadFile(fixture)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, want) {
+				t.Errorf("%s is out of date with the raw data and the parser; rerun with -update", fixture)
+			}
+		})
+	}
+}

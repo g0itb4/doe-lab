@@ -24,8 +24,16 @@ import (
 	"doelab/api/internal/service"
 )
 
+// stateKey names the state of one node or line for one interval.
+type stateKey struct {
+	element uuid.UUID
+	from    int64
+}
+
 // state is every table.
 type state struct {
+	substations map[uuid.UUID]domain.Substation
+
 	feeders  map[uuid.UUID]domain.Feeder
 	nodes    map[uuid.UUID]domain.FeederNode
 	lines    map[uuid.UUID]domain.FeederLine
@@ -39,6 +47,9 @@ type state struct {
 	keys      map[[2]string]domain.IdempotencyKey
 
 	intervals []domain.EnvelopeRunInterval
+	// The latest solved state of each node and line, per interval.
+	nodeStates map[stateKey]domain.FeederNodeState
+	lineStates map[stateKey]domain.FeederLineState
 	// readings holds each device's readings by time.
 	readings      map[uuid.UUID]map[int64]domain.Reading
 	status        map[uuid.UUID]domain.DeviceStatus
@@ -49,6 +60,8 @@ type state struct {
 
 func newState() *state {
 	return &state{
+		substations: map[uuid.UUID]domain.Substation{},
+
 		feeders:  map[uuid.UUID]domain.Feeder{},
 		nodes:    map[uuid.UUID]domain.FeederNode{},
 		lines:    map[uuid.UUID]domain.FeederLine{},
@@ -60,6 +73,9 @@ func newState() *state {
 
 		envelopes: map[uuid.UUID]domain.Envelope{},
 		keys:      map[[2]string]domain.IdempotencyKey{},
+
+		nodeStates: map[stateKey]domain.FeederNodeState{},
+		lineStates: map[stateKey]domain.FeederLineState{},
 
 		readings:      map[uuid.UUID]map[int64]domain.Reading{},
 		status:        map[uuid.UUID]domain.DeviceStatus{},
@@ -73,6 +89,8 @@ func newState() *state {
 // values and are never changed in place, so copying the maps is enough.
 func (s *state) clone() *state {
 	return &state{
+		substations: maps.Clone(s.substations),
+
 		feeders:  maps.Clone(s.feeders),
 		nodes:    maps.Clone(s.nodes),
 		lines:    maps.Clone(s.lines),
@@ -84,6 +102,9 @@ func (s *state) clone() *state {
 
 		envelopes: maps.Clone(s.envelopes),
 		keys:      maps.Clone(s.keys),
+
+		nodeStates: maps.Clone(s.nodeStates),
+		lineStates: maps.Clone(s.lineStates),
 
 		intervals:     slices.Clone(s.intervals),
 		readings:      cloneReadings(s.readings),
