@@ -101,9 +101,12 @@ type FleetSummary struct {
 	ExportW        float64
 	ImportW        float64
 	// ExportLimitW is the sum of the export limits in force.
-	ExportLimitW   float64
-	SitesOverLimit int
-	OpenAlerts     int
+	ExportLimitW float64
+	// ControlledExportW is the export of the reporting sites that have a limit
+	// in force: the part of ExportW that ExportLimitW is a limit on.
+	ControlledExportW float64
+	SitesOverLimit    int
+	OpenAlerts        int
 	// BackstopEventID is the backstop in force, if any.
 	BackstopEventID *uuid.UUID
 	// LatestRun is the newest run of the engine, if there is one.
@@ -208,6 +211,9 @@ func (s *Telemetry) feederState(ctx context.Context, r Repos, feederID uuid.UUID
 		}
 		out.ExportLimitW += e.ExportLimitW
 		l, heard := reporting[e.SiteID]
+		if heard {
+			out.ControlledExportW += max(l.netW, 0)
+		}
 		over := heard && l.netW > e.ExportLimitW+ExportToleranceW
 		if over {
 			out.SitesOverLimit++

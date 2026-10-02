@@ -22,7 +22,8 @@
   </ul>
   <p>
     A square is a substation; a circle is a site, and its ring fills as the site uses its export
-    limit. The lines tie each site to its substation, one style for each feeder: they are not the
-    routes of cables. Sites appear from a closer zoom.
+    limit. A substation's border fills the same way, for all of its sites together. The lines tie
+    each site to its substation, one style for each feeder: they are not the routes of cables. Sites
+    appear from a closer zoom.
   </p>
 </div>

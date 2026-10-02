@@ -153,6 +153,10 @@ message FleetSummary {
   optional string latest_run_id = 13;
   optional google.protobuf.Timestamp latest_run_at = 14;
   optional RunStatus latest_run_status = 15;
+  // Net export of the reporting sites that have an export limit in force, in
+  // watts: what export_limit_w can be compared with. export_w also counts
+  // the sites that take no part in envelopes.
+  double controlled_export_w = 16;
 }
 
 message GetFleetSummaryRequest {

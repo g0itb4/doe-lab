@@ -12,12 +12,13 @@
   import EmptyState from "$lib/components/EmptyState.svelte";
   import ErrorState from "$lib/components/ErrorState.svelte";
   import type FleetMap from "$lib/components/FleetMap.svelte";
+  import LimitMeter from "$lib/components/LimitMeter.svelte";
   import MapLegend from "$lib/components/MapLegend.svelte";
   import Skeleton from "$lib/components/Skeleton.svelte";
   import StaleBanner from "$lib/components/StaleBanner.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import { kw } from "$lib/format.ts";
-  import { fleetView, frame, KIND_WORDS, regionsOf } from "$lib/map/fleet.ts";
+  import { fleetView, frame, KIND_WORDS, regionsOf, type SiteMark } from "$lib/map/fleet.ts";
   import { queryParam, withQuery } from "$lib/query.ts";
   import { Resource } from "$lib/resource.svelte.ts";
 
@@ -91,6 +92,9 @@
     (view?.substations ?? []).filter((s) => region === "all" || s.state === region),
   );
 
+  // Why a site has no comparison to show.
+  const noUse = (s: SiteMark) => (s.exportW === undefined ? "No reading" : "No limit in force");
+
   function select(kind: "site" | "substation", key: string) {
     const changes: Record<string, string | null> =
       kind === "site" ? { site: key } : { sub: key, site: null };
@@ -105,7 +109,7 @@
     <h1 class="text-2xl font-bold tracking-tight">Map</h1>
     <p class="text-muted max-w-prose text-sm">
       Every substation, and around each the sites with solar, a battery or an EV charger. A site's
-      ring fills as it uses its export limit.
+      ring fills as it uses its export limit, and a substation's border as its sites do together.
     </p>
   </div>
 
@@ -159,13 +163,10 @@
           <h2 id="selected" class="tabular text-base font-semibold">{site.nmi}</h2>
           <StatusBadge level={site.status.level} label={site.status.label} />
           <p class="text-sm">{site.status.detail}</p>
+          <LimitMeter use={site.use} level={site.status.level} empty={noUse(site)} />
           <dl class="tabular grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
             <dt class="text-muted">Equipment</dt>
             <dd>{KIND_WORDS[site.kind]}</dd>
-            <dt class="text-muted">Net export now</dt>
-            <dd>{kw(site.exportW)}</dd>
-            <dt class="text-muted">Export limit</dt>
-            <dd>{kw(site.limitW)}</dd>
             <dt class="text-muted">Feeder</dt>
             <dd>{site.feederCode}</dd>
           </dl>
@@ -180,6 +181,11 @@
           <h2 id="selected" class="text-base font-semibold">{substation.name}</h2>
           <StatusBadge level={substation.status.level} label={substation.status.label} />
           <p class="text-sm">{substation.status.detail}</p>
+          <LimitMeter
+            use={substation.use}
+            level={substation.status.level}
+            empty="No site to compare"
+          />
           <dl class="tabular grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
             <dt class="text-muted">Network</dt>
             <dd>{substation.dnsp}, {substation.state}</dd>
@@ -211,8 +217,13 @@
             >
             <StatusBadge level={s.status.level} label={s.status.label} />
             <span class="text-muted tabular w-full text-xs">
-              {s.reporting} of {s.sites} sites reporting · {kw(s.exportW)} of {kw(s.limitW)}
+              {s.reporting} of {s.sites} sites reporting{s.use
+                ? ` · ${kw(s.use.usedW)} of ${kw(s.use.limitW)}`
+                : ""}
             </span>
+            <div class="w-full">
+              <LimitMeter use={s.use} level={s.status.level} empty="No site to compare" />
+            </div>
           </li>
         {/each}
       </ul>
@@ -225,7 +236,7 @@
       <!-- A wide table scrolls inside its own box; the page does not. -->
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <div class="card overflow-x-auto" tabindex="0" role="region" aria-label="Sites on the map">
-        <table class="tabular w-full min-w-[640px] text-sm">
+        <table class="tabular w-full min-w-[800px] text-sm">
           <thead>
             <tr class="border-rule border-b text-left">
               <th scope="col" class="px-3 py-2 font-semibold">NMI</th>
@@ -234,6 +245,7 @@
               <th scope="col" class="px-3 py-2 font-semibold">Status</th>
               <th scope="col" class="px-3 py-2 text-right font-semibold">Net export</th>
               <th scope="col" class="px-3 py-2 text-right font-semibold">Export limit</th>
+              <th scope="col" class="px-3 py-2 font-semibold">Use of limit</th>
             </tr>
           </thead>
           <tbody>
@@ -254,6 +266,9 @@
                 </td>
                 <td class="px-3 py-2 text-right">{kw(s.exportW)}</td>
                 <td class="px-3 py-2 text-right">{kw(s.limitW)}</td>
+                <td class="w-48 px-3 py-2">
+                  <LimitMeter use={s.use} level={s.status.level} empty={noUse(s)} />
+                </td>
               </tr>
             {/each}
           </tbody>

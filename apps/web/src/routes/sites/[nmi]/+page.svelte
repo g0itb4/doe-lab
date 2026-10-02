@@ -15,11 +15,13 @@
   import EmptyState from "$lib/components/EmptyState.svelte";
   import ErrorState from "$lib/components/ErrorState.svelte";
   import Kpi from "$lib/components/Kpi.svelte";
+  import LimitMeter from "$lib/components/LimitMeter.svelte";
   import RangePicker from "$lib/components/RangePicker.svelte";
   import Skeleton from "$lib/components/Skeleton.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import { feeder } from "$lib/feeder.svelte.ts";
   import { bindingWords, dayAndTime, exportSentence, kw } from "$lib/format.ts";
+  import { useOf } from "$lib/limit.ts";
   import { queryParam, withQuery } from "$lib/query.ts";
   import { Resource } from "$lib/resource.svelte.ts";
   import { rangeKey, windowOf, zoomOf } from "$lib/series.ts";
@@ -104,6 +106,8 @@
   const spans = $derived(detail?.data ? breachSpans(detail.data.alerts, nowSeconds) : []);
   const alerts = $derived(detail?.data ? sortAlerts(detail.data.alerts) : []);
   const latest = $derived(detail?.data?.series.power.at(-1));
+  // The last reading against the limit in force now.
+  const use = $derived(useOf(latest?.avgNetExportW, current?.exportLimitW, current?.importLimitW));
   const active = $derived(
     (detail?.data?.envelopes ?? []).filter((e) => e.supersededAt === undefined),
   );
@@ -194,17 +198,23 @@
     </section>
 
     {#if detail?.data}
+      <!-- The track of the bar ends at the connection's own limit, that way. -->
+      {@const capW = use?.direction === "import" ? s.importCapW : s.exportCapW}
       <dl class="grid grid-cols-2 gap-2 lg:grid-cols-4">
         <Kpi
-          label="Export limit now"
-          value={current ? kw(current.exportLimitW) : "–"}
-          hint="of {kw(s.exportCapW)} connection limit"
-        />
-        <Kpi
-          label="Net export, last reading"
-          value={latest ? kw(latest.avgNetExportW) : "–"}
-          hint={latest ? dayAndTime(date(latest.bucket), zone) : "no telemetry in this range"}
-        />
+          class="col-span-2"
+          label={use ? `Net ${use.direction} against its limit` : "Net export, last reading"}
+          value={use
+            ? `${kw(use.usedW)} of ${kw(use.limitW)}`
+            : latest
+              ? kw(latest.avgNetExportW)
+              : "–"}
+          hint="{latest
+            ? dayAndTime(date(latest.bucket), zone)
+            : 'no telemetry in this range'} · connection limit {kw(capW)}"
+        >
+          <LimitMeter {use} {capW} empty={latest ? "No limit in force" : "No reading"} />
+        </Kpi>
         <Kpi
           label="Solar"
           value={s.pvKw > 0 ? `${s.pvKw.toFixed(1)} kW` : "–"}

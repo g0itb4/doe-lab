@@ -28,8 +28,8 @@ const substation = (fields: Partial<SubstationMark> = {}): SubstationMark => ({
   feeders: 1,
   sites: 2,
   reporting: 2,
-  exportW: 0,
-  limitW: 0,
+  use: undefined,
+  fill: 0,
   ...fields,
 });
 const site = (fields: Partial<SiteMark> = {}): SiteMark => ({
@@ -44,11 +44,12 @@ const site = (fields: Partial<SiteMark> = {}): SiteMark => ({
   status: ok,
   exportW: 1500,
   limitW: 3000,
+  use: undefined,
   fill: 0.5,
   ...fields,
 });
 const view: FleetView = {
-  substations: [substation()],
+  substations: [substation({ fill: 0.8 })],
   sites: [
     site(),
     site({
@@ -102,11 +103,19 @@ describe("the marks", () => {
   });
 
   it("draw a substation as its status and its name, whatever the name holds", () => {
-    const html = substationHtml('Crows <Nest> & "Co"', "warn", true);
+    const html = substationHtml('Crows <Nest> & "Co"', "warn", 0, true);
     expect(html).toContain('data-level="warn"');
     expect(html).toContain("data-selected");
     expect(html).toContain("Crows &#60;Nest&#62; &#38; &#34;Co&#34;");
-    expect(substationHtml("Lidcombe", "ok", false)).not.toContain("data-selected");
+    expect(substationHtml("Lidcombe", "ok", 0, false)).not.toContain("data-selected");
+  });
+
+  it("fill a substation's border as its sites use their limits", () => {
+    // In hundredths of the border's own length, whatever that is.
+    expect(substationHtml("Lidcombe", "ok", 0.8, false)).toContain(
+      'pathLength="100" stroke-dasharray="80.0 100"',
+    );
+    expect(substationHtml("Lidcombe", "ok", 0, false)).toContain('stroke-dasharray="0.0 100"');
   });
 
   it("come from OpenStreetMap, which is named on the map", () => {
@@ -127,6 +136,15 @@ describe("FleetMap", () => {
     expect(sub.getAttribute("role")).toBe("button");
     expect(sub.tabIndex).toBe(0);
     expect(sub.textContent).toBe("Lidcombe");
+    // Four fifths of its border is drawn in the colour of its status.
+    const ring = sub.querySelector<SVGRectElement>("rect.fleet-ring")!;
+    expect(ring.getAttribute("stroke-dasharray")).toBe("80.0 100");
+    expect(getComputedStyle(ring).stroke).toBe(
+      getComputedStyle(sub.querySelector(".fleet-substation")!).color,
+    );
+    expect(getComputedStyle(sub.querySelector("rect.fleet-disc")!).stroke).not.toBe(
+      getComputedStyle(ring).stroke,
+    );
     const box = sub.getBoundingClientRect();
     expect(Math.min(box.width, box.height)).toBeGreaterThanOrEqual(24);
     // From far away the sites are not drawn.

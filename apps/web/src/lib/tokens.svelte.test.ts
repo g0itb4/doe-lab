@@ -37,6 +37,11 @@ const PAIRS: [fg: string, bg: string, min: number][] = [
   ["--color-series-3", "--color-surface", 3],
   ["--color-series-4", "--color-surface", 3],
   ["--color-series-ref", "--color-surface", 3],
+  // The bar of a LimitMeter on its track.
+  ["--color-ok", "--color-sunken", 3],
+  ["--color-accent", "--color-sunken", 3],
+  ["--color-warn", "--color-sunken", 3],
+  ["--color-critical", "--color-sunken", 3],
 ];
 
 afterEach(() => theme.set("system"));

@@ -125,8 +125,14 @@ test("the overview states the status in words, and the figures, before any chart
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "1 open alert" })).toBeVisible();
   const figures = page.locator("dl").first();
-  await expect(figures).toContainText("2.8 kW");
-  await expect(figures).toContainText("of 3.5 kW allowed");
+  // What the sites with a limit export, against the sum of those limits, as
+  // a number and a bar; and beside it what every site exports.
+  const controlled = figures.locator(".card", { hasText: "Controlled export" });
+  await expect(controlled).toContainText("2.5 kW");
+  await expect(controlled).toContainText("of 3.5 kW allowed");
+  await expect(controlled).toContainText("73\u00a0%");
+  await expect(controlled.locator(".bar .fill")).toBeVisible();
+  await expect(figures.locator(".card", { hasText: "Export, all sites" })).toContainText("2.8 kW");
   await expect(figures).toContainText("2 of 2");
 });
 
@@ -229,6 +235,12 @@ test("the site page says why the site is limited, and marks its breach", async (
     page.getByText(/^Export limited to \d\.\d\skW by high voltage at XDLAB000022\.$/),
   ).toBeVisible();
   await expect(page.locator("figure")).toContainText("1 breach is marked.");
+  // The last reading and the limit in force are one figure, with a bar.
+  const tile = page.locator(".card", { hasText: "Net export against its limit" });
+  await expect(tile).toContainText(/1\.5\u00a0kW of \d\.\d\u00a0kW/);
+  await expect(tile).toContainText(/Exporting 1\.5\u00a0kW of \d\.\d\u00a0kW allowed: /);
+  await expect(tile).toContainText("connection limit 5.0\u00a0kW");
+  await expect(tile.locator(".bar .fill").first()).toBeVisible();
   await expect(page.getByText("Exporting 2.7 kW against a limit of 1.5 kW")).toBeVisible();
   await page.getByText("Envelopes in this range (49)").click();
   await expect(page.getByRole("table").locator("tbody tr").first()).toContainText(
@@ -470,6 +482,21 @@ test("nothing animates for a reader who asked for reduced motion", async ({ page
   expect(await animated()).toEqual([]);
 });
 
+test("the network's dashes stand down for a reader who asked for reduced motion", async ({
+  page,
+  api,
+}) => {
+  void api;
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await open(page, "/network", "Closest to a limit");
+  const drawing = page.getByRole("img", { name: /500 metres of cable away/ });
+  // The arrows still say which way the power goes; nothing moves, and there
+  // is nothing to stop.
+  await expect(drawing.locator(".arrow")).toHaveCount(2);
+  await expect(drawing.locator(".flow").first()).toBeHidden();
+  await expect(page.getByRole("link", { name: "Stop the moving dashes" })).toBeHidden();
+});
+
 test("a page keeps its layout while it loads", async ({ page, api }) => {
   api.delayMs = 300;
   await page.addInitScript(() => {
@@ -595,7 +622,9 @@ test("the map shows the substations, and a substation's sites when it is chosen"
   await expect(
     page.getByRole("heading", { level: 2, name: "Ausgrid Lidcombe Zone", exact: true }),
   ).toBeVisible();
-  await expect(page.getByText("2 of 3 sites reporting, exporting")).toBeVisible();
+  // The two that report, against their own limits: the silent site's limit
+  // is no part of the sum.
+  await expect(page.getByText(/2 of 3 sites reporting\. Exporting 3\.1\u00a0kW of /)).toBeVisible();
   await expect(map.locator(`[aria-label="${MAP.over}, Solar: Over limit"]`)).toBeVisible();
   await expect(map.locator(`[aria-label="${MAP.within}, Battery: Within limit"]`)).toBeVisible();
   await expect(
@@ -607,6 +636,10 @@ test("the map shows the substations, and a substation's sites when it is chosen"
   await expect(page).toHaveURL(new RegExp(`[?&]site=${MAP.over}`));
   await expect(page.getByRole("heading", { level: 2, name: MAP.over })).toBeVisible();
   await expect(page.getByText(/Exporting 2\.7\u00a0kW against a limit of/)).toBeVisible();
+  // And its reading against its limit, in a sentence and as a bar.
+  const panel = page.locator("section", { has: page.getByRole("heading", { name: MAP.over }) });
+  await expect(panel).toContainText(/Exporting 2\.7\u00a0kW of \d\.\d\u00a0kW allowed: /);
+  await expect(panel.locator(".bar .fill").first()).toBeVisible();
   await expect(page.getByRole("link", { name: "Open the site" })).toHaveAttribute(
     "href",
     `/sites/${MAP.over}?feeder=LV10`,
@@ -625,6 +658,12 @@ test("every site of the map can be reached from the keyboard, through the table"
   const row = table.getByRole("row", { name: new RegExp(MAP.charger) });
   await expect(row).toContainText("EV charger");
   await expect(row).toContainText("Not reporting");
+  // Each row compares the site's reading with its limit, or says why not.
+  await expect(table.getByRole("columnheader", { name: "Use of limit" })).toBeVisible();
+  await expect(row).toContainText("No reading");
+  await expect(table.getByRole("row", { name: new RegExp(MAP.within) })).toContainText(
+    /Exporting 0\.4\u00a0kW of \d\.\d\u00a0kW allowed: \d+\u00a0%/,
+  );
   await row.getByRole("link", { name: MAP.charger }).focus();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(new RegExp(`[?&]site=${MAP.charger}`));
@@ -675,6 +714,18 @@ test("the network is drawn as the engine solved it, at each of its three operati
   const far = drawing.locator('[data-bus="B3"]');
   await expect(far).toHaveAttribute("data-level", "ok");
   await expect(drawing.locator('[data-line="L_far"]')).toHaveAttribute("data-level", "ok");
+  // Dashes move along each line, away from the transformer: the way the
+  // forecast's power flows. They can be stopped, from the address.
+  const flow = drawing.locator('[data-line="L_far"] .flow');
+  await expect(flow).toHaveAttribute("data-direction", "out");
+  expect(await flow.evaluate((el) => getComputedStyle(el).animationName)).not.toBe("none");
+  await page.getByRole("link", { name: "Stop the moving dashes" }).click();
+  await expect(page).toHaveURL(/[?&]flow=off/);
+  await expect(drawing.locator(".flow")).toHaveCount(0);
+  await expect(drawing.locator(".arrow")).toHaveCount(2);
+  await page.getByRole("link", { name: "Show the flow moving" }).click();
+  await expect(page).not.toHaveURL(/flow=/);
+  await expect(drawing.locator(".flow")).toHaveCount(2);
 
   // At the fixed limit the far end is past the band, and its line past its
   // rating. The choice is in the address.
@@ -682,6 +733,8 @@ test("the network is drawn as the engine solved it, at each of its three operati
   await expect(page).toHaveURL(/[?&]point=static/);
   await expect(far).toHaveAttribute("data-level", "critical");
   await expect(drawing.locator('[data-line="L_far"]')).toHaveAttribute("data-level", "warn");
+  // There the power runs back towards the transformer, and so do the dashes.
+  await expect(flow).toHaveAttribute("data-direction", "back");
   const table = page.getByRole("region", { name: "Closest to a limit" });
   await expect(table.getByRole("row").nth(1)).toContainText("B3");
   await expect(table.getByRole("row").nth(1)).toContainText("Past its limit");

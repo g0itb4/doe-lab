@@ -36,6 +36,7 @@ const envelope = (exportLimitW: number, fields: Init<typeof EnvelopeSchema> = {}
   create(EnvelopeSchema, {
     source: EnvelopeSource.ENGINE,
     exportLimitW,
+    importLimitW: 14000,
     exportBinding: BindingConstraint.VOLTAGE_HIGH,
     exportBindingElement: "NMI00000098",
     ...fields,
@@ -230,12 +231,24 @@ describe("the fleet as marks", () => {
       limitW: 3000,
       fill: 0.5,
     });
+    expect(view.sites[0]!.use).toMatchObject({
+      direction: "export",
+      share: 0.5,
+      brief: "50\u00a0%",
+    });
     // The feeders of a substation are counted in code order.
     expect(view.sites[1]).toMatchObject({ feederCode: "SUB-001-LV2", feederIndex: 1, fill: 1 });
     // Not reporting: no flow, no fill, and the limit still known.
-    expect(view.sites[2]).toMatchObject({ exportW: undefined, limitW: 2000, fill: 0 });
-    // Importing uses none of an export limit.
+    expect(view.sites[2]).toMatchObject({
+      exportW: undefined,
+      limitW: 2000,
+      use: undefined,
+      fill: 0,
+    });
+    // Importing uses none of an export limit: it is measured against the
+    // import limit, and the ring stays empty.
     expect(view.sites[3]).toMatchObject({ exportW: -700, fill: 0, substationCode: "SUB-007" });
+    expect(view.sites[3]!.use).toMatchObject({ direction: "import", usedW: 700, limitW: 14000 });
     // A feeder that hangs from nothing, and a feeder that is gone.
     expect(view.sites[4]).toMatchObject({
       feederCode: "LOOSE",
@@ -255,17 +268,23 @@ describe("the fleet as marks", () => {
       feeders: 2,
       sites: 3,
       reporting: 2,
-      exportW: 4000,
-      limitW: 7000,
     });
     expect(lidcombe!.status).toEqual({
       level: "warn",
       label: "1 over limit",
-      detail: "2 of 3 sites reporting, exporting 4.0\u00a0kW of 7.0\u00a0kW allowed.",
+      detail:
+        "2 of 3 sites reporting. Exporting 4.0\u00a0kW of 5.0\u00a0kW allowed: 80\u00a0%, 1.0\u00a0kW to spare.",
     });
+    // Its border fills with the export of the sites that report, against
+    // their limits alone: the silent site's 2 kW is no one's headroom.
+    expect(lidcombe!.fill).toBe(0.8);
+    expect(lidcombe!.use!.text).toBe(
+      "Exporting 4.0\u00a0kW of 5.0\u00a0kW allowed: 80\u00a0%, 1.0\u00a0kW to spare.",
+    );
+    expect(footscray).toMatchObject({ fill: 0, use: { direction: "export", usedW: 0 } });
     expect(footscray!.status).toMatchObject({ level: "ok", label: "Normal" });
     expect(footscray!.status.detail).toBe(
-      "1 of 1 site reporting, exporting 0.0\u00a0kW of 4.0\u00a0kW allowed.",
+      "1 of 1 site reporting. Exporting 0.0\u00a0kW of 4.0\u00a0kW allowed: 0\u00a0%, 4.0\u00a0kW to spare.",
     );
   });
 
@@ -326,6 +345,21 @@ describe("the fleet as marks", () => {
     expect(view.sites[0]!.status.label).toBe("Loading");
     expect(view.substations[0]!.status.label).toBe("Loading");
     expect(view.sites[0]).toMatchObject({ exportW: undefined, limitW: undefined, fill: 0 });
+    expect(view.substations[0]).toMatchObject({ use: undefined, fill: 0 });
+  });
+
+  it("fills the ring of a site that exports against a limit of nothing", () => {
+    const held = state([
+      {
+        siteId: "s-1",
+        envelope: envelope(0, { source: EnvelopeSource.BACKSTOP }),
+        netExportW: 900,
+      },
+      { siteId: "s-2", envelope: envelope(0, { source: EnvelopeSource.BACKSTOP }), netExportW: 0 },
+    ]);
+    const view = fleetView(substations, feeders, sites, held);
+    expect(view.sites.slice(0, 2).map((s) => s.fill)).toEqual([1, 0]);
+    expect(view.substations[0]!.fill).toBe(1);
   });
 });
 

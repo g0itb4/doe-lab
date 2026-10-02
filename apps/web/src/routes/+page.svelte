@@ -15,12 +15,14 @@
   import EmptyState from "$lib/components/EmptyState.svelte";
   import ErrorState from "$lib/components/ErrorState.svelte";
   import Kpi from "$lib/components/Kpi.svelte";
+  import LimitMeter from "$lib/components/LimitMeter.svelte";
   import RangePicker from "$lib/components/RangePicker.svelte";
   import Skeleton from "$lib/components/Skeleton.svelte";
   import StaleBanner from "$lib/components/StaleBanner.svelte";
   import StatusBadge from "$lib/components/StatusBadge.svelte";
   import { feeder } from "$lib/feeder.svelte.ts";
   import { ago, count, kw, kwh, percent, volts } from "$lib/format.ts";
+  import { useOf } from "$lib/limit.ts";
   import { Live } from "$lib/live.svelte.ts";
   import { overviewCharts } from "$lib/overview.ts";
   import { queryParam, withQuery } from "$lib/query.ts";
@@ -106,6 +108,11 @@
   });
 
   const summary = $derived(fleet?.value);
+  // The export of the sites that have a limit, against the sum of those
+  // limits: the sites that take no part are in neither.
+  const use = $derived(
+    summary ? useOf(summary.controlledExportW, summary.exportLimitW, undefined) : undefined,
+  );
   // The status waits for the envelope that says what binds: shown a moment
   // earlier it would say "Normal" and then change under the reader's eyes.
   const status = $derived(
@@ -145,7 +152,7 @@
     knownAlerts = summary.openAlerts;
     if (Date.now() - spokenAt < 15_000) return;
     spokenAt = Date.now();
-    spoken = `${status.label}. Export ${kw(summary.exportW)} of ${kw(summary.exportLimitW)} allowed. ${summary.reportingSites} of ${summary.enrolledSites} sites reporting. ${summary.openAlerts} open alerts.`;
+    spoken = `${status.label}. Export ${kw(summary.controlledExportW)} of ${kw(summary.exportLimitW)} allowed. ${summary.reportingSites} of ${summary.enrolledSites} sites reporting. ${summary.openAlerts} open alerts.`;
   });
 
   // The panel is in the prerendered page, so a first-time visitor reads it at
@@ -245,13 +252,22 @@
     <section aria-labelledby="fleet-heading">
       <h2 id="fleet-heading" class="mb-2 font-semibold">The fleet now</h2>
       {#if summary}
-        <dl class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+        <!-- Every tile as tall as the one with a bar, as the skeletons are. -->
+        <dl class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6 [&>div]:min-h-[6.25rem]">
+          <!-- Like against like: only the sites that have a limit are in
+               either number. What every site exports is the next tile. -->
           <Kpi
-            label="Export"
-            value={kw(summary.exportW)}
+            label="Controlled export"
+            value={kw(summary.controlledExportW)}
             hint="of {kw(summary.exportLimitW)} allowed"
+          >
+            <LimitMeter {use} />
+          </Kpi>
+          <Kpi
+            label="Export, all sites"
+            value={kw(summary.exportW)}
+            hint="import {kw(summary.importW)}"
           />
-          <Kpi label="Import" value={kw(summary.importW)} hint="by the reporting sites" />
           <Kpi
             label="Sites reporting"
             value="{summary.reportingSites} of {summary.enrolledSites}"
@@ -278,7 +294,7 @@
       {:else}
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           {#each { length: 6 }, i (i)}
-            <Skeleton label="fleet figures" class="h-[5.5rem] w-full" />
+            <Skeleton label="fleet figures" class="h-[6.25rem] w-full" />
           {/each}
         </div>
       {/if}

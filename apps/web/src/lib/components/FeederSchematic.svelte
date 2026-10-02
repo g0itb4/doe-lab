@@ -4,16 +4,21 @@
   // A feeder drawn as a schematic: the transformer on the left, each bus as
   // far to the right as there is cable to it, each branch in a lane. A line is
   // as heavy as the power it carries and coloured by how near its rating it
-  // is; a bus is coloured by how near the voltage band's edge it is. A click
-  // on a mark selects it; the page shows what it is.
+  // is; a bus is coloured by how near the voltage band's edge it is. Dashes
+  // move along a line the way its power flows. A click on a mark selects it;
+  // the page shows what it is.
   let {
     view,
     selected = "",
+    animate = true,
     onselect,
   }: {
     view: Schematic;
     // The id of the selected bus or line.
     selected?: string;
+    // False stops the dashes: motion a reader can switch off. The arrows say
+    // the direction without them.
+    animate?: boolean;
     onselect: (kind: "bus" | "line", id: string) => void;
   } = $props();
 
@@ -23,6 +28,12 @@
     const [a, b] = [points[points.length - 2]!, points[points.length - 1]!];
     return { x: (a[0] + b[0]) / 2, y: b[1] };
   };
+  // A flow worth showing, as a share of the busiest line's power: less than
+  // this and a line has no arrow and no moving dashes.
+  const SHOWN_FROM = 0.08;
+  // How long the dashes take to move on by one, in seconds: the more a line
+  // carries, the quicker.
+  const pace = (weight: number) => (2.4 - 1.8 * weight).toFixed(2);
   const root = $derived(view.nodes[0]);
   const scaleY = $derived(view.height - 8);
 </script>
@@ -57,7 +68,17 @@
           points={path(line.points)}
           stroke-width={1.5 + 5 * line.weight}
         />
-        {#if line.powerW !== undefined && line.weight > 0.08}
+        {#if line.powerW !== undefined && line.weight > SHOWN_FROM}
+          {#if animate && !line.isSwitch}
+            <!-- A switch is dashed already: its arrow alone says the direction. -->
+            <polyline
+              class="flow"
+              data-direction={line.powerW < 0 ? "back" : "out"}
+              points={path(line.points)}
+              stroke-width={Math.max(1, 0.35 * (1.5 + 5 * line.weight))}
+              style:--pace="{pace(line.weight)}s"
+            />
+          {/if}
           {@const at = arrowAt(line.points)}
           <!-- Which way the power goes: left is back towards the transformer. -->
           <path
@@ -145,6 +166,35 @@
   }
   .switch {
     stroke-dasharray: 2 3;
+  }
+  /* The dashes run from the transformer outwards, or back towards it. They
+     are drawn in the colour of the page, as gaps that move along the wire. */
+  .flow {
+    fill: none;
+    stroke: var(--color-surface);
+    stroke-linecap: round;
+    stroke-dasharray: 3 11;
+    pointer-events: none;
+    animation: flow-out var(--pace) linear infinite;
+  }
+  .flow[data-direction="back"] {
+    animation-name: flow-back;
+  }
+  @keyframes flow-out {
+    to {
+      stroke-dashoffset: -14;
+    }
+  }
+  @keyframes flow-back {
+    to {
+      stroke-dashoffset: 14;
+    }
+  }
+  /* Dashes that stand still would say "switch", not "flow". */
+  @media (prefers-reduced-motion: reduce) {
+    .flow {
+      display: none;
+    }
   }
   .arrow {
     fill: none;

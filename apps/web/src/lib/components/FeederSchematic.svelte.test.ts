@@ -141,6 +141,46 @@ describe("FeederSchematic", () => {
     );
   });
 
+  it("moves dashes along a line the way its power flows, quicker the more it carries", async () => {
+    const screen = await render(FeederSchematic, { view, onselect: () => {} });
+    const flow = (name: string) => g("line", name).querySelector<SVGPolylineElement>(".flow");
+    expect(flow("main")!.dataset.direction).toBe("out");
+    expect(flow("L_far")!.dataset.direction).toBe("back");
+    // Along the wire itself, and thinner than it.
+    expect(flow("main")!.getAttribute("points")).toBe("28,50 28,50 600,50");
+    expect(Number(flow("main")!.getAttribute("stroke-width"))).toBeCloseTo(2.275);
+    expect(flow("L_far")!.getAttribute("stroke-width")).toBe("1.4");
+    const style = (name: string) => getComputedStyle(flow(name)!);
+    expect(style("main").animationDuration).toBe("0.6s");
+    expect(style("L_far").animationDuration).toBe("1.5s");
+    expect(style("main").animationIterationCount).toBe("infinite");
+    // One set of keyframes for each direction.
+    expect(style("main").animationName).not.toBe("none");
+    expect(style("main").animationName).not.toBe(style("L_far").animationName);
+    // The dashes never take a click from the line under them.
+    expect(style("main").pointerEvents).toBe("none");
+    // A trickle has none, and neither has a switch, which is dashed already.
+    expect(flow("Switch_1")).toBeNull();
+    await screen.rerender({
+      view: {
+        ...view,
+        lines: [view.lines[0]!, { ...view.lines[2]!, weight: 0.6, powerW: 3600 }],
+      },
+    });
+    expect(flow("Switch_1")).toBeNull();
+    expect(g("line", "Switch_1").querySelector(".arrow")).not.toBeNull();
+    // A thin line's dashes are still a pixel wide.
+    await screen.rerender({
+      view: { ...view, lines: [view.lines[0]!, { ...view.lines[1]!, weight: 0.1 }] },
+    });
+    expect(flow("L_far")!.getAttribute("stroke-width")).toBe("1");
+
+    // The motion can be stopped: the arrows remain.
+    await screen.rerender({ view, animate: false });
+    expect(document.querySelectorAll(".flow")).toHaveLength(0);
+    expect(document.querySelectorAll(".arrow")).toHaveLength(2);
+  });
+
   it("rings what limits the feeder: a bus, or a line", async () => {
     const screen = await render(FeederSchematic, { view, onselect: () => {} });
     const halo = () => document.querySelectorAll(".halo");

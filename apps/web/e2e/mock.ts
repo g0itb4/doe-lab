@@ -232,6 +232,8 @@ export async function mockApi(page: Page): Promise<Mock> {
     exportW: backstop ? 0 : 2840,
     importW: 310,
     exportLimitW: backstop ? 0 : 3500,
+    // One site that takes no part exports 0.3 kW of the 2.84.
+    controlledExportW: backstop ? 0 : 2540,
     sitesOverLimit: 0,
     openAlerts: alerts.filter((a) => !a.resolvedAt).length,
     backstopEventId: backstop?.id,

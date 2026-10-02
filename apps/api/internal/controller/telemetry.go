@@ -103,7 +103,7 @@ func fleetSummary(s service.FleetSummary) *doelabv1.FleetSummary {
 		FeederId: s.FeederID.String(), At: timestamppb.New(s.At),
 		EnrolledSites: int32(s.EnrolledSites), ReportingSites: int32(s.ReportingSites), //nolint:gosec // G115: counts of a feeder's sites
 		Devices: int32(s.Devices), DevicesOnline: int32(s.DevicesOnline), //nolint:gosec // G115: as above
-		ExportW: s.ExportW, ImportW: s.ImportW, ExportLimitW: s.ExportLimitW,
+		ExportW: s.ExportW, ImportW: s.ImportW, ExportLimitW: s.ExportLimitW, ControlledExportW: s.ControlledExportW,
 		SitesOverLimit: int32(s.SitesOverLimit), OpenAlerts: int32(s.OpenAlerts), //nolint:gosec // G115: as above
 	}
 	if s.BackstopEventID != nil {

@@ -21,12 +21,12 @@ from a look at the screen.
 
 | Rule | Check | Result |
 | ---- | ----- | ------ |
-| Text contrast at least 4.5:1; chart lines and control borders at least 3:1; in both themes | `tokens.svelte.test.ts` computes the WCAG contrast of every pair of design tokens that is used together, in the light and the dark theme: 20 pairs, 40 assertions | pass |
+| Text contrast at least 4.5:1; chart lines and control borders at least 3:1; in both themes | `tokens.svelte.test.ts` computes the WCAG contrast of every pair of design tokens that is used together, in the light and the dark theme: 24 pairs, 48 assertions | pass |
 | No WCAG 2.2 AA violation | `e2e/app.spec.ts` runs axe-core (tags wcag2a, wcag2aa, wcag21a, wcag21aa, wcag22aa) on the seven pages and on the open assistant drawer, in both themes, at both widths: 32 runs | 0 violations |
 | Every control works by keyboard, with a visible focus ring | One e2e test reaches the backstop control with Tab alone, checks a focus ring of at least 2 px on every stop, then triggers and clears a backstop from the keyboard | pass |
 | Pointer targets at least 24 by 24 px | An e2e test measures every link, button and field on every page (links inside a sentence are exempt, as in WCAG 2.5.8) | pass |
 | Semantic HTML; one `<h1>` per page | The e2e smoke test counts the `<h1>` on each page; the pages use `<nav>`, `<main>`, `<table>` with `<caption>` and `scope`, `<button>`, `<label for>` | pass |
-| Colour is never the only signal | `StatusBadge` tests check an icon and a word for every level; `Chart` tests check that every series has its own dash pattern; a breach on a chart is shaded, hatched and labelled; `FleetMap` tests check the status shape on a mark and a dash pattern for each feeder's lines | pass |
+| Colour is never the only signal | `StatusBadge` tests check an icon and a word for every level; `Chart` tests check that every series has its own dash pattern; a breach on a chart is shaded, hatched and labelled; `FleetMap` tests check the status shape on a mark and a dash pattern for each feeder's lines; `LimitMeter` tests check that what is over a limit is hatched, and that the bar is hidden from a screen reader beside words that say the same | pass |
 | A map and a drawing have a text path | Every site of the map is a row of the table under it, and every bus or line near a limit a row of the table under the drawing; e2e tests select a site and a line from those tables with the keyboard alone. A substation on the map is a button a keyboard reaches | pass |
 | Each chart has a text summary and a table | `Chart` tests compare the table with the series, value by value; `overview.test.ts` and `site.test.ts` check the summary sentences; the canvas is `aria-hidden` | pass |
 | Live updates are announced politely, a new breach at once | The overview speaks its figures through one `aria-live="polite"` sentence at most every 15 s, and a new alert through `role="alert"`; `StaleBanner` and `Toasts` tests check their roles | pass |
@@ -44,7 +44,8 @@ from a look at the screen.
 | ---- | ----- | ------ |
 | Light and dark themes from design tokens; the default follows the system; a toggle stores the choice | `theme.svelte.test.ts`; an e2e test switches the theme, reloads and finds it kept. A stored choice is applied before first paint by the inline script in `app.html`, whose hash is in the CSP | pass |
 | The two dark token blocks stay identical | `tokens.svelte.test.ts` compares them as text | pass |
-| Animation respects `prefers-reduced-motion` | An e2e test loads a page slowly enough to show its skeletons, first sees them pulse, then with reduced motion finds no element with a running animation or a transition | pass |
+| Animation respects `prefers-reduced-motion` | An e2e test loads a page slowly enough to show its skeletons, first sees them pulse, then with reduced motion finds no element with a running animation or a transition. Another opens the network with reduced motion and finds its dashes not drawn, and the arrows still there | pass |
+| Motion that runs on can be stopped | The dashes that move along the lines of the network are the only motion that does not end. `FeederSchematic` tests check that they are gone when it is told to stop, and that the arrows remain; an e2e test stops them from the page and starts them again | pass |
 
 ### Every state is designed
 
@@ -82,13 +83,14 @@ from a look at the screen.
 | ---- | ----- |
 | Operator words; the CSIP-AUS name as a tooltip | `exportSentence` and `bindingWords` tests; the site page carries `opModExpLimW` in an `<abbr>` |
 | Every number has a unit; power in kW at one precision | `format.test.ts` |
+| A reading and its limit are one comparison, in the same words on every page: how much of how much, the share, and what is left or how far over | `limit.test.ts` checks the sentence for a reading under, at and over its limit, for an import, and for a limit of nothing; `LimitMeter` tests measure the bar and the tick on the screen; `fleet.test.ts` checks that a substation compares only the sites that have both a reading and a limit; e2e tests read the comparison on the overview, the map and a site's page |
 | Times in the feeder's zone, named; the clock labelled as accelerated | `format.test.ts` runs in a browser set to Europe/London and expects Sydney times; the header names the zone ("AEDT") and says "60× accelerated" |
 
 ### Navigation and state in the URL
 
 | Rule | Check |
 | ---- | ----- |
-| The time range, the zoom, the alert filter, the site search, the map's region and selection, and the network's operating point and instant live in the address | `query.test.ts`, `series.test.ts`; e2e tests open a view from its address |
+| The time range, the zoom, the alert filter, the site search, the map's region and selection, and the network's operating point, its instant and whether its dashes move live in the address | `query.test.ts`, `series.test.ts`; e2e tests open a view from its address |
 | The feeder on show is chosen in the header, kept across pages, and can be named in the address (`?feeder=`) | `feeder.svelte.test.ts`; an e2e test chooses a feeder and finds it kept on another page |
 | The current page is marked with `aria-current`; a skip link | e2e smoke test; e2e skip-link test |
 

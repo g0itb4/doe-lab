@@ -25,6 +25,8 @@
   const selected = $derived(queryParam(page.url, "mark") ?? "");
   // The instant on show, in the address: unset is now, and follows the clock.
   const at = $derived(atOf(queryParam(page.url, "at")));
+  // Whether the dashes on the lines move: on unless the address says off.
+  const moving = $derived(queryParam(page.url, "flow") !== "off");
 
   // The network, which does not change, and what the engine solved for the
   // interval in force, which is asked again as feeder time passes.
@@ -196,13 +198,24 @@
     </nav>
 
     <figure class="space-y-2">
-      <FeederSchematic {view} {selected} onselect={select} />
+      <FeederSchematic {view} {selected} animate={moving} onselect={select} />
+      <!-- Motion a reader can stop. One who asked for reduced motion has none
+           to stop: the dashes are not drawn. -->
+      <p class="motion-reduce:hidden">
+        <a
+          href={withQuery(page.url, { flow: moving ? "off" : null })}
+          class="btn"
+          data-sveltekit-noscroll>{moving ? "Stop the moving dashes" : "Show the flow moving"}</a
+        >
+      </p>
       <figcaption class="text-muted space-y-1 text-xs">
         <p>
-          A line is as heavy as the power it carries, with an arrow for its direction, and a bus
-          with a ring is a site that takes part in envelopes. Green is inside the limits, amber is
-          within {volts(0.01, nominalV)} of the voltage band's edge or above 80 % of a line's rating,
-          red is past a limit, and grey is not solved.
+          A line is as heavy as the power it carries, with an arrow for its direction<span
+            class="motion-reduce:hidden"
+            >{moving ? ", and the dashes on it move the way the power flows" : ""}</span
+          >. A bus with a ring is a site that takes part in envelopes. Green is inside the limits,
+          amber is within {volts(0.01, nominalV)} of the voltage band's edge or above 80 % of a line's
+          rating, red is past a limit, and grey is not solved.
         </p>
         <p>
           {POINT_WORDS.forecast} is every site at its forecast. {POINT_WORDS.envelope} is every site that

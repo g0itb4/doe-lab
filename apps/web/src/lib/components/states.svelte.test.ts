@@ -112,6 +112,17 @@ describe("Kpi", () => {
     await expect.element(screen.getByText("12.3 kW")).toBeVisible();
     await expect.element(screen.getByText("of 40.0 kW allowed")).toBeVisible();
   });
+
+  it("can hold a picture of its figure, and take the room of two tiles", async () => {
+    const screen = await render(Kpi, {
+      label: "Export against its limit",
+      value: "2.7 kW of 3.0 kW",
+      class: "col-span-2",
+      children: createRawSnippet(() => ({ render: () => "<span>a bar</span>" })),
+    });
+    await expect.element(screen.getByText("a bar")).toBeVisible();
+    expect(screen.getByText("a bar").element().closest(".card")!.classList).toContain("col-span-2");
+  });
 });
 
 describe("ThemeToggle", () => {

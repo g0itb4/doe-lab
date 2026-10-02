@@ -53,11 +53,23 @@
     );
   }
 
-  // A substation: its status shape, and its name beneath.
-  export function substationHtml(name: string, level: Level, selected: boolean): string {
+  // A substation: its status shape in a border that fills as its sites
+  // together use their export limits, and its name beneath. The border is
+  // measured in hundredths of its own length.
+  export function substationHtml(
+    name: string,
+    level: Level,
+    fill: number,
+    selected: boolean,
+  ): string {
+    const edge = 'x="1.5" y="1.5" width="33" height="33" rx="6.5"';
     return (
       `<span class="fleet-substation" data-level="${level}"${selected ? " data-selected" : ""}>` +
-      `<svg viewBox="0 0 20 20" width="22" height="22"><path d="${LEVEL_PATHS[level]}"/></svg>` +
+      `<svg class="fleet-edge" viewBox="0 0 36 36" width="36" height="36">` +
+      `<rect class="fleet-disc" ${edge}/>` +
+      `<rect class="fleet-ring" ${edge} pathLength="100" stroke-dasharray="${(fill * 100).toFixed(1)} 100"/>` +
+      `</svg>` +
+      `<svg class="fleet-status" viewBox="0 0 20 20" width="22" height="22"><path d="${LEVEL_PATHS[level]}"/></svg>` +
       `</span><span class="fleet-name">${escape(name)}</span>`
     );
   }
@@ -219,7 +231,7 @@
         substationLayer,
         key,
         [s.latitude, s.longitude],
-        substationHtml(s.place, s.status.level, selected === s.code),
+        substationHtml(s.place, s.status.level, s.fill, selected === s.code),
         36,
         `${s.name}: ${s.status.label}`,
         true,
@@ -342,11 +354,13 @@
     width: 36px;
     height: 36px;
     place-items: center;
-    border: 2px solid currentColor;
-    border-radius: 8px;
-    background: var(--color-surface);
   }
-  .fleet-map :global(.fleet-substation svg) {
+  .fleet-map :global(.fleet-edge) {
+    position: absolute;
+    inset: 0;
+  }
+  .fleet-map :global(.fleet-status) {
+    position: relative;
     fill: none;
     stroke: currentColor;
     stroke-width: 1.7;

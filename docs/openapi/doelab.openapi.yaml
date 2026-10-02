@@ -3806,6 +3806,14 @@ components:
             - $ref: '#/components/schemas/doelab.v1.RunStatus'
             - type: "null"
           title: latest_run_status
+        controlledExportW:
+          type: number
+          title: controlled_export_w
+          format: double
+          description: |-
+            Net export of the reporting sites that have an export limit in force, in
+             watts: what export_limit_w can be compared with. export_w also counts
+             the sites that take no part in envelopes.
       title: FleetSummary
       additionalProperties: false
       description: The fleet of a feeder at one instant.

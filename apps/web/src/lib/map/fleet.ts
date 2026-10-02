@@ -5,6 +5,7 @@ import type { Substation } from "@doelab/gen/doelab/v1/substation_pb.js";
 import type { GetFleetStateResponse, SiteState } from "@doelab/gen/doelab/v1/telemetry_pb.js";
 import { severityLevel } from "../alerts.ts";
 import { exportSentence, kw } from "../format.ts";
+import { LIMIT_BAND_W, type Use, useOf } from "../limit.ts";
 import type { Level, Status } from "../status.ts";
 
 // What the map draws: the fleet as marks, each with a place and a status.
@@ -43,7 +44,10 @@ export type SiteMark = {
   exportW: number | undefined;
   // The export limit in force: unset for a site with no envelope.
   limitW: number | undefined;
-  // How much of the limit the site uses, from 0 to 1.
+  // The reading against the limit on the way the power flows: unset without
+  // a reading, or without an envelope.
+  use: Use | undefined;
+  // How much of its export limit the site uses, from 0 to 1.
   fill: number;
 };
 
@@ -61,16 +65,15 @@ export type SubstationMark = {
   feeders: number;
   sites: number;
   reporting: number;
-  // Export of the reporting sites and the sum of the limits in force, watts.
-  exportW: number;
-  limitW: number;
+  // The export of the sites that have both a reading and a limit, against
+  // those limits: a silent site's limit is not headroom anyone is using.
+  // Unset when no site has both.
+  use: Use | undefined;
+  // How much of those limits the sites use together, from 0 to 1.
+  fill: number;
 };
 
 export type FleetView = { substations: SubstationMark[]; sites: SiteMark[] };
-
-// A site within this many watts of its limit is at it: an inverter that
-// curtails holds its export just under the limit, not on it.
-export const AT_LIMIT_W = 50;
 
 const RANK: Record<Level, number> = { ok: 0, info: 1, warn: 2, critical: 3 };
 
@@ -136,7 +139,7 @@ export function siteStatus(site: Site, state: SiteState | undefined): Status {
   if (
     site.exportCapW > 0 &&
     envelope.exportLimitW < site.exportCapW &&
-    net >= envelope.exportLimitW - AT_LIMIT_W
+    net >= envelope.exportLimitW - LIMIT_BAND_W
   ) {
     return { level: "warn", label: "At its limit", detail: why };
   }
@@ -144,28 +147,28 @@ export function siteStatus(site: Site, state: SiteState | undefined): Status {
   return { level: "ok", label: "Within limit", detail: `${flow}. ${why}` };
 }
 
-// How much of its export limit a site uses, from 0 to 1.
-function fillOf(state: SiteState | undefined): number {
-  const limit = state?.envelope?.exportLimitW ?? 0;
-  const net = state?.netExportW ?? 0;
-  if (limit <= 0 || net <= 0) return 0;
-  return Math.min(1, net / limit);
+// How much of an export limit is used, from 0 to 1: the ring of a mark. An
+// import uses none of it.
+function fillOf(use: Use | undefined): number {
+  return use?.direction === "export" ? Math.min(1, use.share) : 0;
 }
 
 function plural(n: number, one: string, many: string): string {
   return n === 1 ? `1 ${one}` : `${n} ${many}`;
 }
 
+// What a substation says when none of its sites can be compared.
+export const NO_USE = "No site has both a reading and a limit.";
+
 // A substation in a word: its gravest site, and how many of them.
 function substationStatus(
   sites: SiteMark[],
   backstop: boolean,
   ran: boolean,
-  exportW: number,
-  limitW: number,
+  use: Use | undefined,
 ): Status {
   const reporting = sites.filter((s) => s.exportW !== undefined).length;
-  const detail = `${reporting} of ${plural(sites.length, "site", "sites")} reporting, exporting ${kw(exportW)} of ${kw(limitW)} allowed.`;
+  const detail = `${reporting} of ${plural(sites.length, "site", "sites")} reporting. ${use?.text ?? NO_USE}`;
   if (backstop) return { level: "critical", label: "Backstop active", detail };
   if (!ran) return { level: "info", label: "No envelopes yet", detail };
   const count = (label: string) => sites.filter((s) => s.status.label === label).length;
@@ -215,6 +218,9 @@ export function fleetView(
     const feeder = feederById.get(site.feederId);
     const substation = substationById.get(feeder?.substationId ?? "");
     const siteState = stateBySite.get(site.id);
+    const exportW = siteState?.reporting ? (siteState.netExportW ?? 0) : undefined;
+    const envelope = siteState?.envelope;
+    const use = useOf(exportW, envelope?.exportLimitW, envelope?.importLimitW);
     siteMarks.push({
       id: site.id,
       nmi: site.nmi,
@@ -225,9 +231,10 @@ export function fleetView(
       feederIndex: Math.max(0, (feedersOf.get(substation?.id ?? "") ?? []).indexOf(feeder!)),
       kind: kindOf(site),
       status: state ? siteStatus(site, siteState) : waiting,
-      exportW: siteState?.reporting ? (siteState.netExportW ?? 0) : undefined,
-      limitW: siteState?.envelope?.exportLimitW,
-      fill: fillOf(siteState),
+      exportW,
+      limitW: envelope?.exportLimitW,
+      use,
+      fill: fillOf(use),
     });
   }
 
@@ -235,8 +242,15 @@ export function fleetView(
     const own = feedersOf.get(substation.id) ?? [];
     const marks = siteMarks.filter((s) => s.substationCode === substation.code);
     const summaries = own.flatMap((f) => summaryByFeeder.get(f.id) ?? []);
-    const exportW = marks.reduce((sum, s) => sum + Math.max(s.exportW ?? 0, 0), 0);
-    const limitW = marks.reduce((sum, s) => sum + (s.limitW ?? 0), 0);
+    const both = marks.filter((s) => s.exportW !== undefined && s.limitW !== undefined);
+    const use =
+      both.length > 0
+        ? useOf(
+            both.reduce((sum, s) => sum + Math.max(s.exportW!, 0), 0),
+            both.reduce((sum, s) => sum + s.limitW!, 0),
+            undefined,
+          )
+        : undefined;
     return {
       id: substation.id,
       code: substation.code,
@@ -251,15 +265,14 @@ export function fleetView(
             marks,
             summaries.some((s) => s.backstopEventId !== undefined),
             summaries.some((s) => s.latestRunId !== undefined),
-            exportW,
-            limitW,
+            use,
           )
         : waiting,
       feeders: own.length,
       sites: marks.length,
       reporting: marks.filter((s) => s.exportW !== undefined).length,
-      exportW,
-      limitW,
+      use,
+      fill: fillOf(use),
     };
   });
   return { substations: substationMarks, sites: siteMarks };

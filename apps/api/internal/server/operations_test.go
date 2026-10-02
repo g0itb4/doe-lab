@@ -180,7 +180,8 @@ func TestFleetSummaryAndWatch(t *testing.T) {
 		}
 		got := stream.Msg().GetSummary()
 		if got.GetReportingSites() == 1 {
-			if got.GetExportW() != 2500 || got.GetExportLimitW() != 1000 || got.GetSitesOverLimit() != 1 || got.GetDevicesOnline() != 1 {
+			if got.GetExportW() != 2500 || got.GetExportLimitW() != 1000 || got.GetControlledExportW() != 2500 ||
+				got.GetSitesOverLimit() != 1 || got.GetDevicesOnline() != 1 {
 				t.Errorf("the summary after a reading = %v", got)
 			}
 			break

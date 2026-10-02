@@ -377,6 +377,10 @@ func TestFleetSummary(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+	// With no envelope in force, the export is no one's to hold to a limit.
+	if free, err := o.telemetry.Summary(ctx, feeder); err != nil || free.ExportW != 3500 || free.ControlledExportW != 0 || free.ExportLimitW != 0 {
+		t.Errorf("before an envelope: %+v, %v", free, err)
+	}
 	// The envelope in force, and the next one, which is not in force yet.
 	o.limit(t, 0, 3000)
 	o.limit(t, 1, 4000)
@@ -393,7 +397,8 @@ func TestFleetSummary(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.EnrolledSites != 1 || got.Devices != 4 || got.DevicesOnline != 3 || got.ReportingSites != 2 ||
-		got.ExportW != 3500 || got.ImportW != 2000 || got.ExportLimitW != 3000 || got.SitesOverLimit != 1 || got.OpenAlerts != 1 {
+		got.ExportW != 3500 || got.ImportW != 2000 || got.ExportLimitW != 3000 || got.ControlledExportW != 3500 ||
+		got.SitesOverLimit != 1 || got.OpenAlerts != 1 {
 		t.Errorf("the summary = %+v", got)
 	}
 
@@ -416,7 +421,8 @@ func TestFleetSummary(t *testing.T) {
 
 	// Ten minutes on, with no reading since: nothing is online.
 	o.clock.set(at(600))
-	if got, err = o.telemetry.Summary(ctx, feeder); err != nil || got.DevicesOnline != 0 || got.ReportingSites != 0 || got.ExportW != 0 || got.SitesOverLimit != 0 {
+	if got, err = o.telemetry.Summary(ctx, feeder); err != nil || got.DevicesOnline != 0 || got.ReportingSites != 0 || got.ExportW != 0 ||
+		got.ControlledExportW != 0 || got.SitesOverLimit != 0 {
 		t.Errorf("after ten minutes of silence: %+v, %v", got, err)
 	}
 
