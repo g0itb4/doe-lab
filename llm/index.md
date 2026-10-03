@@ -45,7 +45,7 @@ For a Go feature the path is its service or package. Its handlers are in `apps/a
 - **Web UI**: pages in `apps/web/src/routes/` (fleet, feeder, network, operations, sites, one site, config); logic and components in `apps/web/src/lib/`. Verify: `just cover-web` for `apps/web/src/lib/`, `just e2e` for a page, `just perf` for what a page costs while open. Read "Web app" in `CONTRIBUTING.md` first.
 - **Observability**: metrics, traces, a Grafana dashboard. `apps/api/internal/obs/obs.go`, `infra/obs/`.
 - **Deploy**: one server, set up with Ansible. `scripts/deploy.sh`, `infra/prod/README.md`.
-- **Demo**: `just demo` runs the whole stack on a fresh database. Every recipe is in `justfile`.
+- **Demo**: `just demo` runs the whole stack on a fresh database; `just resume` runs it again on the database it left. Every recipe is in `justfile`.
 - **Tour GIF**: the README's recording, made by `just tour` on a stack and database of its own, with the pointer moved by a tested model of a hand. `scripts/tour.sh`, `apps/web/tour/human-path.ts`, `apps/web/tour/tour.spec.ts`.
 
 ## Documents

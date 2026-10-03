@@ -32,9 +32,9 @@
   } from "$lib/map/fleet.ts";
   import { poll } from "$lib/poll.ts";
   import { queryParam, withQuery } from "$lib/query.ts";
+  import { traces } from "$lib/map/trace.svelte.ts";
   import { Resource } from "$lib/resource.svelte.ts";
   import { type Sort, sortOf, sortRows } from "$lib/sort.ts";
-  import { timestamp } from "$lib/time.ts";
 
   // Where everything is, which does not change, and what it is doing, which
   // is asked again as feeder time passes.
@@ -121,30 +121,23 @@
   const substation = $derived(view?.substations.find((s) => s.code === substationCode));
   const site = $derived(view?.sites.find((s) => s.nmi === siteNmi));
 
-  // What the chosen site has exported over the last six hours of feeder time:
-  // asked for when a site is chosen, and not again until another is.
-  const TRACE_SECONDS = 6 * 3600;
+  // What a site has exported over the last six hours of feeder time, against
+  // its limit: on the card of the mark under the pointer, and in the panel of
+  // the site that is chosen. The chosen site's is asked for at once, and not
+  // before the clock has settled: the window is in feeder time.
   const siteId = $derived(site?.id);
-  let trace = $state<Resource<number[]>>();
   $effect(() => {
-    const id = siteId;
-    // Not before the clock has settled: the window is in feeder time.
-    if (!id || !clock.settled) {
-      trace = undefined;
-      return;
-    }
-    const loaded = new Resource(async (signal) => {
-      const now = clock.nowSeconds();
-      const res = await api.telemetry.getSiteSeries(
-        { siteId: id, from: timestamp(now - TRACE_SECONDS), to: timestamp(now) },
-        { signal },
-      );
-      return res.power.map((p) => p.avgNetExportW);
-    });
-    trace = loaded;
-    void loaded.load();
-    return () => loaded.cancel();
+    if (siteId && clock.settled) traces.want(siteId, 0);
   });
+  const trace = (s: SiteMark) => ({
+    label: "Net export, last 6 hours",
+    values: () => traces.of(s.id),
+    limit: s.limitW,
+    format: (watts: number) => kw(watts),
+    ask: () => traces.want(s.id),
+    rest: () => traces.rest(),
+  });
+
   // The sites of the table: those of the substation in view, or of the region.
   const listed = $derived(
     (view?.sites ?? []).filter((s) => {
@@ -346,7 +339,7 @@
       <figure class="min-w-0 space-y-2">
         <h2 class="h-section">Where it is</h2>
         {#if MapView}
-          <MapView {view} {bounds} selected={siteNmi || substationCode} onselect={select} />
+          <MapView {view} {bounds} selected={siteNmi || substationCode} onselect={select} {trace} />
         {:else}
           <Skeleton label="the map" class="h-80 w-full sm:h-[30rem]" />
         {/if}
@@ -370,7 +363,12 @@
                the panel does not grow when the line arrives. -->
           <div>
             <p class="text-muted text-label">Net export, last 6 hours</p>
-            <Sparkline values={trace?.data ?? []} format={(v) => kw(v)} label="Net export" />
+            <Sparkline
+              values={traces.of(site.id) ?? []}
+              format={(v) => kw(v)}
+              label="Net export"
+              limit={site.limitW}
+            />
           </div>
           <dl class="tabular grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
             <dt class="text-muted">Equipment</dt>

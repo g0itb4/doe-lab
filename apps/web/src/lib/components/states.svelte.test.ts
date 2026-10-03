@@ -99,6 +99,45 @@ describe("StatusBadge", () => {
     const screen = await render(StatusBadge, { level: "ok", label: "Normal", large: true });
     await expect.element(screen.getByText("Normal")).toHaveClass("text-base");
   });
+
+  it("gives each status a mark of its own shape, in its own colour, beside a word in the colour of text", async () => {
+    theme.set("light");
+    const shapes = new Set<string>();
+    const colours = new Set<string>();
+    for (const level of ["ok", "info", "warn", "critical"] as const) {
+      const screen = await render(StatusBadge, { level, label: `Word for ${level}` });
+      const badge = screen.getByText(`Word for ${level}`).element();
+      const mark = badge.querySelector(`svg[data-mark=${level}]`)!;
+      shapes.add(mark.querySelector("path")!.getAttribute("d")!);
+      colours.add(getComputedStyle(mark).color);
+      // A solid shape, not an outline with a sign inside it.
+      expect(getComputedStyle(mark).fill).toBe(getComputedStyle(mark).color);
+      // The word reads the same on every status.
+      expect(getComputedStyle(badge).color).toBe(getComputedStyle(document.body).color);
+    }
+    expect(shapes.size).toBe(4);
+    expect(colours.size).toBe(4);
+  });
+
+  it("is quiet while all is well, and tinted only when it wants attention", async () => {
+    theme.set("light");
+    const fill = async (level: "ok" | "info" | "warn" | "critical") => {
+      const screen = await render(StatusBadge, { level, label: `Tint of ${level}` });
+      return getComputedStyle(screen.getByText(`Tint of ${level}`).element()).backgroundColor;
+    };
+    const clear = "rgba(0, 0, 0, 0)";
+    const [ok, info, warn, critical] = [
+      await fill("ok"),
+      await fill("info"),
+      await fill("warn"),
+      await fill("critical"),
+    ];
+    expect(ok).toBe(clear);
+    expect(info).toBe(clear);
+    expect(warn).not.toBe(clear);
+    expect(critical).not.toBe(clear);
+    expect(warn).not.toBe(critical);
+  });
 });
 
 describe("Kpi", () => {

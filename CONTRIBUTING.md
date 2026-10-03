@@ -20,6 +20,7 @@ just e2e          # the built web app in Playwright: smoke, keyboard, axe (WCAG 
 just perf         # what each page costs while it is open, at the demo's speed and size
 just tour         # record the README's tour again, on a stack and database of its own
 just demo         # the whole stack on a fresh database, until Ctrl-C
+just resume       # the same on the database it left: no download, migration or import
 just dev          # the database, the API and the web UI, in watch mode
 just data         # download the raw datasets and verify their checksums
 ```

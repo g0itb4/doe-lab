@@ -5,7 +5,23 @@ import type { Level } from "./status.ts";
 // line or two about it, and its status when it has one. One card for the
 // whole app, shown by the layout, in place of the browser's own tooltip:
 // that one is slow to come, cannot be styled, and never comes on a phone.
-export type Card = { title: string; lines: string[]; level?: Level };
+//
+// A card can carry a small plot: a figure's shape through time, against its
+// limit. The plot is asked for when the card is shown, since nobody wants the
+// plots of the marks the pointer merely passed.
+export type Plot = {
+  // What the plot is of: "Net export, last 6 hours".
+  label: string;
+  // The values, once they have arrived.
+  values: () => readonly (number | null | undefined)[] | undefined;
+  // The limit they are held to, when there is one, and a value with its unit.
+  limit?: number;
+  format: (value: number) => string;
+  // Asks for the values, and takes the question back if the card goes first.
+  ask: () => void;
+  rest: () => void;
+};
+export type Card = { title: string; lines: string[]; level?: Level; plot?: Plot };
 
 class HoverCards {
   #card = $state<Card>();

@@ -21,6 +21,7 @@ import {
   boundsOf,
   fleetTotals,
   fleetView,
+  flowWords,
   frame,
   kindOf,
   placeName,
@@ -588,5 +589,34 @@ describe("what needs attention", () => {
     // A site with no substation says its feeder; with neither, nothing.
     expect(rows[5]!.where).toBe("LOOSE");
     expect(rows[6]!.where).toBe("");
+  });
+});
+
+describe("what a site is doing, in a few words", () => {
+  const marks = fleetView(substations, feeders, sites, busy).sites;
+
+  it("says which way the power flows, how much, and of how much", () => {
+    expect(flowWords(marks[0]!)).toBe("Exporting 1.5\u00a0kW of 3.0\u00a0kW");
+    expect(flowWords(marks[1]!)).toBe("Exporting 2.5\u00a0kW of 2.0\u00a0kW");
+    // An import is against the import limit.
+    expect(flowWords(marks[3]!)).toBe("Importing 0.7\u00a0kW of 14.0\u00a0kW");
+  });
+
+  it("says so when there is no limit to compare with, and nothing for a silent site", () => {
+    expect(flowWords({ exportW: 800, use: undefined })).toBe(
+      "Exporting 0.8\u00a0kW, no limit in force",
+    );
+    expect(flowWords({ exportW: -300, use: undefined })).toBe(
+      "Importing 0.3\u00a0kW, no limit in force",
+    );
+    expect(flowWords(marks[2]!)).toBeUndefined();
+  });
+
+  it("says a site is idle when nothing to speak of flows either way", () => {
+    expect(flowWords({ exportW: 0, use: undefined })).toBe("Idle: nothing in or out");
+    expect(flowWords({ exportW: -30, use: marks[3]!.use })).toBe("Idle: nothing in or out");
+    expect(flowWords({ exportW: 60, use: undefined })).toBe(
+      "Exporting 0.1\u00a0kW, no limit in force",
+    );
   });
 });

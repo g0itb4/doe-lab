@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import HoverCard from "./components/HoverCard.svelte";
 import { type Card, hint, hovercard } from "./hovercard.svelte.ts";
@@ -114,5 +114,66 @@ describe("HoverCard", () => {
 
     hovercard.hide();
     await expect.element(screen.getByText("bare")).not.toBeInTheDocument();
+  });
+
+  it("draws a card's plot against its limit, asks for it when the card is shown and not before", async () => {
+    let values: number[] | undefined;
+    const [ask, rest] = [vi.fn(), vi.fn()];
+    const plot = {
+      label: "Net export, last 6 hours",
+      values: () => values,
+      limit: 4000,
+      format: (watts: number) => `${(watts / 1000).toFixed(1)} kW`,
+      ask,
+      rest,
+    };
+    const screen = await render(HoverCard);
+    expect(ask).not.toHaveBeenCalled();
+    hovercard.show(
+      {
+        title: "NMI00000033, Solar",
+        lines: ["Within limit", "Exporting 2.0 kW of 4.0 kW"],
+        level: "ok",
+        plot,
+      },
+      60,
+      40,
+    );
+    await expect
+      .element(screen.getByText("Net export, last 6 hours", { exact: true }))
+      .toBeVisible();
+    await vi.waitFor(() => expect(ask).toHaveBeenCalledOnce());
+    const card = screen.container.querySelector(".card-over") as HTMLElement;
+    // The room for the plot is there before the plot is: the limit's rule,
+    // and no line yet.
+    const height = card.getBoundingClientRect().height;
+    expect(card.querySelector("line.limit")).not.toBeNull();
+    expect(card.querySelector(".spark path")).toBeNull();
+    expect(card.getBoundingClientRect().width).toBeGreaterThanOrEqual(13 * 16);
+    // Its words are few: the status, and one line.
+    expect([...card.querySelectorAll("p.text-label")].map((p) => p.textContent)).toEqual([
+      "Exporting 2.0 kW of 4.0 kW",
+    ]);
+
+    // The card goes before its plot came: the question is taken back.
+    hovercard.hide();
+    await vi.waitFor(() => expect(rest).toHaveBeenCalledOnce());
+
+    // With its values, the line is drawn, and the card is no taller.
+    values = [1000, 2000, 2000];
+    hovercard.show(
+      { title: "NMI00000033, Solar", lines: ["Within limit"], level: "ok", plot: { ...plot } },
+      60,
+      40,
+    );
+    await vi.waitFor(() =>
+      expect(screen.container.querySelector(".spark path")?.getAttribute("d")).toBe(
+        "M0 17.3L60 12L120 12",
+      ),
+    );
+    expect(
+      screen.container.querySelector(".card-over")!.getBoundingClientRect().height,
+    ).toBeLessThanOrEqual(height);
+    hovercard.hide();
   });
 });

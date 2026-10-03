@@ -6,18 +6,21 @@
 // lowest value at the bottom, the highest at the top, and a break wherever a
 // value is missing. A series that never changes is a level line across the
 // middle; one with no value at all is no line.
+//
+// With a `domain`, the bottom and the top are the domain's and not the
+// series' own: a line drawn against a limit shares its scale with the limit.
 export function sparkPath(
   values: readonly (number | null | undefined)[],
   width: number,
   height: number,
   pad = 1.5,
+  domain?: readonly [number, number],
 ): string {
   const known = values.filter((v): v is number => v !== null && v !== undefined);
   if (known.length === 0) return "";
-  const [lo, hi] = [Math.min(...known), Math.max(...known)];
+  const scale = domain ?? ([Math.min(...known), Math.max(...known)] as const);
   const x = (i: number) => (values.length === 1 ? width / 2 : (i / (values.length - 1)) * width);
-  const y = (v: number) =>
-    hi === lo ? height / 2 : height - pad - ((v - lo) / (hi - lo)) * (height - 2 * pad);
+  const y = (v: number) => sparkY(v, scale, height, pad);
   const round = (n: number) => Math.round(n * 10) / 10;
   let path = "";
   let pen = false;
@@ -32,6 +35,29 @@ export function sparkPath(
   // One value on its own would draw nothing: a short level stroke stands for it.
   if (known.length === 1) path += `h0.1`;
   return path;
+}
+
+// How far down the box a value is drawn, for a scale from its lowest to its
+// highest: the middle, when the two are the same.
+export function sparkY(
+  value: number,
+  [lo, hi]: readonly [number, number],
+  height: number,
+  pad = 1.5,
+): number {
+  return hi === lo ? height / 2 : height - pad - ((value - lo) / (hi - lo)) * (height - 2 * pad);
+}
+
+// The scale of a line drawn against a limit: from nothing, or from the
+// deepest import, up to the limit, or to the highest value when that is over
+// it. So a line that hugs the top is at its limit, and one above the mark of
+// the limit is over it.
+export function limitDomain(
+  values: readonly (number | null | undefined)[],
+  limit: number,
+): [number, number] {
+  const known = values.filter((v): v is number => v !== null && v !== undefined);
+  return [Math.min(0, ...known), Math.max(limit, ...known)];
 }
 
 // The same series in a few words, for a reader who cannot see the line: where

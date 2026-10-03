@@ -386,6 +386,65 @@ test("the time range lives in the address", async ({ page, api }) => {
   );
 });
 
+for (const [path, ready] of [
+  ["/feeder", "Export: allowed and measured"],
+  [`/sites/${NMI.breaching}`, "Envelope, forecast and telemetry"],
+] as const) {
+  test(`${path}: another range keeps what is on screen until its answer arrives`, async ({
+    page,
+    api,
+  }) => {
+    await open(page, path, ready);
+    const figure = page.locator("figure").first();
+    await figure.scrollIntoViewIfNeeded();
+    // What the page takes away or puts up between the two ranges, and whether
+    // it moves under the reader.
+    await page.evaluate(() => {
+      const seen = { placeholders: 0, chartsGone: 0, heights: new Set<number>() };
+      (window as unknown as { __range: typeof seen }).__range = seen;
+      const main = document.querySelector("main")!;
+      new MutationObserver((records) => {
+        for (const record of records) {
+          for (const node of record.addedNodes)
+            if (node instanceof Element && node.matches('[role="status"].animate-pulse-soft'))
+              seen.placeholders++;
+          for (const node of record.removedNodes)
+            if (
+              node instanceof Element &&
+              (node.matches("figure, canvas") || node.querySelector("canvas"))
+            )
+              seen.chartsGone++;
+        }
+      }).observe(main, { subtree: true, childList: true });
+      const watch = () => {
+        seen.heights.add(main.scrollHeight);
+        requestAnimationFrame(watch);
+      };
+      watch();
+    });
+    // Slow enough that a placeholder would be seen, if there were one.
+    api.delayMs = 400;
+    const asked = page.waitForResponse((r) => /Get(Feeder|Site)Series/.test(r.url()));
+    await page
+      .getByRole("navigation", { name: "Time range" })
+      .getByRole("link", { name: "3 days" })
+      .click();
+    await expect(page).toHaveURL(/[?&]range=3d/);
+    await expect(figure.locator("canvas")).toBeVisible();
+    await asked;
+    await page.waitForTimeout(300);
+    const seen = await page.evaluate(() => {
+      const s = (
+        window as unknown as {
+          __range: { placeholders: number; chartsGone: number; heights: Set<number> };
+        }
+      ).__range;
+      return { placeholders: s.placeholders, chartsGone: s.chartsGone, heights: s.heights.size };
+    });
+    expect(seen).toEqual({ placeholders: 0, chartsGone: 0, heights: 1 });
+  });
+}
+
 test("when live updates stop, a banner says so and the figures stay; then they resume", async ({
   page,
   api,
@@ -996,6 +1055,38 @@ test("a mark says what it is on a card beside the pointer, and the card goes whe
   await row.locator(".meter").hover();
   await expect(card).toContainText("Export against its limit");
   await expect(card).toContainText(/Exporting 0\.4\skW of \d\.\d\skW allowed/);
+});
+
+test("a site's mark on the map says little: its status, its export against its limit, and one line", async ({
+  page,
+  api,
+}) => {
+  await open(page, "/?sub=SUB-001", "Ausgrid Lidcombe Zone");
+  const map = page.getByRole("region", { name: "Map of the fleet" });
+  const mark = map.locator(`[aria-label^="${MAP.within}"]`);
+  await expect(mark).toBeVisible();
+  // On a phone the map is below the fold: the pointer goes where the mark is.
+  await mark.scrollIntoViewIfNeeded();
+  const at = (await mark.boundingBox())!;
+  await page.mouse.move(at.x + at.width / 2 - 2, at.y + at.height / 2);
+  await page.mouse.move(at.x + at.width / 2, at.y + at.height / 2);
+  const card = page.locator(".card-over");
+  await expect(card).toContainText(`${MAP.within}, Battery`);
+  await expect(card).toContainText("Within limit");
+  // The last six hours of its export, drawn against its limit: asked for
+  // once the pointer has rested there.
+  await expect(card.getByText("Net export, last 6 hours", { exact: true })).toBeVisible();
+  await expect(card.locator(".spark path")).toHaveAttribute("d", /^M0 /);
+  await expect(card.locator(".spark line.limit")).toHaveCount(1);
+  expect(api.calls["TelemetryService/GetSiteSeries"]).toBe(1);
+  // One line of what it is doing, and none of the sentences of the panel.
+  await expect(card).toContainText(/Exporting 0\.4\skW of \d\.\d\skW/);
+  await expect(card).not.toContainText("to spare");
+  await expect(card).not.toContainText("Export limited to");
+  // Inside the window, at either width.
+  const box = (await card.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 });
 
 test("a site chosen on the first page shows the shape of its export, with words for it", async ({

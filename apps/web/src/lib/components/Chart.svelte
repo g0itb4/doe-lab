@@ -262,6 +262,7 @@
             const { left, top } = u.cursor;
             cursorAt =
               left !== undefined && top !== undefined && left >= 0 ? { left, top } : undefined;
+            markRange(u);
           },
         ],
         // The plot has a new size or a new range: the things laid over it move.
@@ -275,13 +276,15 @@
         ],
         setSelect: [
           (u) => {
-            if (u.select.width < 4) return;
-            // The click that ends a drag is not a click on a point.
-            dragged = true;
-            const from = u.posToVal(u.select.left, "x");
-            const to = u.posToVal(u.select.left + u.select.width, "x");
-            u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
-            onzoom?.([Math.round(from), Math.round(to)]);
+            if (u.select.width >= 4) {
+              // The click that ends a drag is not a click on a point.
+              dragged = true;
+              const from = u.posToVal(u.select.left, "x");
+              const to = u.posToVal(u.select.left + u.select.width, "x");
+              u.setSelect({ left: 0, top: 0, width: 0, height: 0 }, false);
+              onzoom?.([Math.round(from), Math.round(to)]);
+            }
+            markRange(u);
           },
         ],
         draw: [
@@ -358,6 +361,18 @@
     };
     nowLine = line("now", "now");
     pinLine = line("pin", "pinned");
+    // The range being dragged: uPlot's own box, with a time at each edge.
+    const box = u.over.querySelector<HTMLElement>(".u-select");
+    if (box) {
+      const edge = (name: string) => {
+        const label = document.createElement("span");
+        label.className = `edge ${name}`;
+        label.hidden = true;
+        box.append(label);
+        return label;
+      };
+      selection = { box, from: edge("from"), to: edge("to") };
+    }
     measure(u);
     placeLines(u);
     return u;
@@ -457,6 +472,25 @@
   });
   function togglePin(time: number) {
     onpin?.(time === pin ? undefined : time);
+  }
+
+  // The range a drag is selecting, made plain: the box is tinted and edged,
+  // and each edge says the time it is at, so the reader sees where the zoom
+  // will begin and end before letting go.
+  let selection: { box: HTMLElement; from: HTMLElement; to: HTMLElement } | undefined;
+  // True while a range is being dragged: the readout stands down, so that it
+  // does not lie over the box and its times.
+  let selecting = $state(false);
+  function markRange(u: uPlot) {
+    if (!selection) return;
+    const { left, width } = u.select;
+    const dragging = width >= 4;
+    selecting = dragging;
+    selection.box.classList.toggle("dragging", dragging);
+    selection.from.hidden = selection.to.hidden = !dragging;
+    if (!dragging) return;
+    selection.from.textContent = at(u.posToVal(left, "x")) ?? "";
+    selection.to.textContent = at(u.posToVal(left + width, "x")) ?? "";
   }
 
   function measure(u: uPlot) {
@@ -591,7 +625,9 @@
         ),
   );
   const tip = $derived(
-    (pointed || keyed) && cursorAt && hoverRow >= 0 ? place(cursorAt, frame) : undefined,
+    (pointed || keyed) && !selecting && cursorAt && hoverRow >= 0
+      ? place(cursorAt, frame)
+      : undefined,
   );
   const px = (value: number | undefined, offset: number) =>
     value === undefined ? undefined : `${value + offset}px`;
@@ -864,6 +900,41 @@
      scroll. */
   .plot :global(.u-over) {
     touch-action: pan-y;
+  }
+  /* The range a drag is selecting. uPlot's own box is a faint grey that a
+     dark page swallows: it is tinted with the accent and edged, and a time
+     stands outside each edge. */
+  .plot :global(.u-select.dragging) {
+    box-sizing: border-box;
+    border-inline: 2px solid var(--color-accent);
+    background: none;
+  }
+  .plot :global(.u-select.dragging::before) {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: var(--color-accent);
+    opacity: 0.18;
+  }
+  .plot :global(.u-select .edge) {
+    position: absolute;
+    top: 2px;
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-control);
+    padding: 0 4px;
+    background: var(--color-raised);
+    color: var(--color-text);
+    font-size: var(--text-micro);
+    line-height: 16px;
+    white-space: nowrap;
+  }
+  .plot :global(.u-select .edge.from) {
+    right: 100%;
+    margin-right: 4px;
+  }
+  .plot :global(.u-select .edge.to) {
+    left: 100%;
+    margin-left: 4px;
   }
   .plot :global(.pin) {
     position: absolute;

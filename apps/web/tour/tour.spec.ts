@@ -209,7 +209,29 @@ test("the tour of the UI, with a hand on the mouse", async ({ page, context }) =
   }
   await expect(page).toHaveURL(/[?&]sub=/);
   await expect(map.locator(".fleet-site").first()).toBeVisible();
-  await hand.read(10);
+  await hand.read(8);
+  // What a mark on the map says: its export against its limit, in a card.
+  // One that is wholly in the window: the pointer must not leave the frame.
+  const frame = (await map.boundingBox())!;
+  let inView: Box | undefined;
+  for (const site of await map.locator(".fleet-site").all()) {
+    const box = await site.boundingBox();
+    if (
+      box &&
+      box.y > frame.y + 30 &&
+      box.y + box.height < TOUR.viewport.height - 110 &&
+      box.x > frame.x + 60 &&
+      box.x + box.width < frame.x + frame.width - 60
+    ) {
+      inView = box;
+      break;
+    }
+  }
+  if (inView) {
+    await hand.to(inView);
+    await expect(page.locator(".card-over .spark")).toBeVisible();
+    await hand.read(9);
+  }
 
   // ── Its feeder, through time. ─────────────────────────────────────────────
   scene("feeder");

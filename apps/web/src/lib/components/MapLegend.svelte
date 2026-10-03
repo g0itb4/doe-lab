@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { Level } from "$lib/status.ts";
-  import Icon from "./Icon.svelte";
+  import StatusMark from "./StatusMark.svelte";
 
   // What the marks of the fleet map mean, in words beside each shape.
   const statuses: { level: Level; label: string; tone: string }[] = [
@@ -15,7 +15,7 @@
   <ul class="flex flex-wrap gap-x-4 gap-y-1" aria-label="Status of a mark">
     {#each statuses as s (s.level)}
       <li class="inline-flex items-center gap-1">
-        <span class={s.tone}><Icon name={s.level} size={14} /></span>
+        <span class="inline-flex {s.tone}"><StatusMark level={s.level} /></span>
         {s.label}
       </li>
     {/each}

@@ -273,7 +273,12 @@ import *args:
 # METRICS_ADDR is on all interfaces in development, so that the Prometheus
 # container of `just obs` can scrape the API on the host. Production keeps
 # metrics on loopback, and config.Load refuses anything else there.
-dev_env := "DOELAB_ENV=development METRICS_ADDR=0.0.0.0:9464 DEMO_CLOCK_SPEED=60 DEMO_CLOCK_ANCHOR=" + `date -u +%Y-%m-%dT00:00:00Z`
+today := `date -u +%Y-%m-%dT00:00:00Z`
+dev_env := "DOELAB_ENV=development METRICS_ADDR=0.0.0.0:9464 DEMO_CLOCK_SPEED=60 DEMO_CLOCK_ANCHOR=" + today
+
+# Where `just demo` notes the anchor of its feeder time, for `just resume`.
+# infra/data is local state, and ignored.
+demo_anchor := "infra/data/demo-anchor"
 
 # the API on :3100, restarted when a Go file changes (needs `just up`)
 api: _kill
@@ -298,7 +303,7 @@ dev: _kill up
 # A fresh database every time, on purpose: feeder time is anchored at the
 # start of today (UTC), so what an earlier day wrote would lie in this day's
 # future. Ctrl-C stops everything; the data stays until the next `just demo`
-# or `just nuke`.
+# or `just nuke`, and `just resume` picks it up again.
 #
 # the whole demo on a fresh database: API, web UI, engine and simulated devices
 demo: nuke up data import
@@ -306,6 +311,7 @@ demo: nuke up data import
     # The trap is taken off first: `kill 0` signals this shell too, and would
     # run the trap again, for ever.
     trap 'trap - INT TERM EXIT; kill 0' INT TERM EXIT
+    mkdir -p {{parent_directory(demo_anchor)}} && print -r -- "{{today}}" > {{demo_anchor}}
     (cd apps/api && {{dev_env}} go run ./cmd/api) &
     bun run --filter @doelab/web dev &
     tries=0
@@ -329,6 +335,44 @@ demo: nuke up data import
 # record the README's two clips of the UI again: docs/img/tour-*.gif
 tour:
     scripts/tour.sh
+
+# The demo as `just demo` left it: the same database, with its fleet and its
+# history. Nothing is downloaded, migrated or imported, and nothing is
+# destroyed, so it is up in seconds. It needs a database that `just demo`
+# (or `just up` and `just import`) has made.
+#
+# Feeder time carries on from the anchor the demo began with, which `just
+# demo` notes in infra/data: on a later day it is further on, and what the
+# demo wrote is still in its past. Without the note the anchor is the start
+# of today, as everywhere else.
+#
+# the demo again on the database it left: no download, no migration, no import
+resume: _kill
+    #!/usr/bin/env zsh
+    trap 'trap - INT TERM EXIT; kill 0' INT TERM EXIT
+    {{compose}} up -d --wait postgres
+    {{compose}} up -d s3
+    anchor={{today}}
+    [[ -r {{demo_anchor}} ]] && anchor=$(<{{demo_anchor}})
+    # In each command below the later assignment wins: the demo's own anchor,
+    # not today's.
+    (cd apps/api && {{dev_env}} DEMO_CLOCK_ANCHOR=$anchor go run ./cmd/api) &
+    bun run --filter @doelab/web dev &
+    tries=0
+    until curl -sf -X POST -H 'content-type: application/json' -d '{"service":""}' \
+        http://localhost:3100/grpc.health.v1.Health/Check | grep -q '"SERVING_STATUS_SERVING"'; do
+      (( ++tries > 240 )) && { echo "the API did not come up on :3100: is there a database? \`just demo\` makes one" >&2; exit 1; }
+      sleep 0.5
+    done
+    # A database with no fleet in it is not a demo to go on with.
+    curl -sf -X POST -H 'content-type: application/json' -d '{"pageSize":1}' \
+        http://localhost:3100/doelab.v1.FeederService/ListFeeders | grep -q '"feeders"' \
+      || { echo "the database has no fleet: run \`just demo\` once, or \`just import\`" >&2; exit 1; }
+    (cd apps/api && {{dev_env}} DEMO_CLOCK_ANCHOR=$anchor go run ./cmd/engine -once)
+    (cd apps/api && {{dev_env}} DEMO_CLOCK_ANCHOR=$anchor go run ./cmd/engine) &
+    (cd apps/api && {{dev_env}} DEMO_CLOCK_ANCHOR=$anchor go run ./cmd/dersim -rogue 0.04 -flaky 0.04) &
+    echo "doe-lab is running again: http://localhost:5273 (operator token: dev-operator-token), feeder time from $anchor. Ctrl-C stops it."
+    wait
 
 # the production build of the web UI on :4273 (needs the API up)
 preview: build-web

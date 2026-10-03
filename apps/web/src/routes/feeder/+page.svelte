@@ -28,7 +28,7 @@
   import { poll } from "$lib/poll.ts";
   import { queryParam, withQuery } from "$lib/query.ts";
   import { Resource } from "$lib/resource.svelte.ts";
-  import { hiddenOf, rangeKey, windowOf, withHidden, zoomOf } from "$lib/series.ts";
+  import { hiddenOf, type RangeKey, rangeKey, windowOf, withHidden, zoomOf } from "$lib/series.ts";
   import { upToLast } from "$lib/sparkline.ts";
   import { feederStatus } from "$lib/status.ts";
   import { date, timestamp } from "$lib/time.ts";
@@ -51,7 +51,6 @@
     const id = feeder.data?.id;
     // Not before the clock has settled: the window is in feeder time.
     if (!id || !clock.settled) return;
-    const key = range;
 
     const live = new Live<FleetSummary>(async function* (signal) {
       for await (const res of api.telemetry.watchFleet({ feederId: id }, { signal })) {
@@ -59,7 +58,7 @@
       }
     });
     const feederSeries = new Resource<Series>(async (signal) => {
-      const w = windowOf(key, clock.nowSeconds());
+      const w = windowOf(shownRange, clock.nowSeconds());
       if (sampleSite === undefined) {
         const sites = await api.sites.listSites({ feederId: id, pageSize: 500 }, { signal });
         sampleSite = sites.sites.find((s) => s.exportCapW > 0)?.id ?? "";
@@ -89,7 +88,6 @@
     report = daily;
 
     const stop = live.start();
-    void feederSeries.load();
     void daily.load();
     // The charts follow feeder time: every five minutes of it, and at most
     // every five seconds.
@@ -103,6 +101,16 @@
       feederSeries.cancel();
       daily.cancel();
     };
+  });
+
+  // The series is asked for when the feeder is there, and again when the
+  // reader chooses another range. The live figures and the charts on screen
+  // stay until the answer arrives: nothing gives way to a placeholder between
+  // two ranges, and the page does not jump.
+  let shownRange: RangeKey = "24h";
+  $effect(() => {
+    shownRange = range;
+    void series?.load();
   });
 
   const summary = $derived(fleet?.value);

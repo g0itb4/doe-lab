@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sparkPath, trendWords, upToLast } from "./sparkline.ts";
+import { limitDomain, sparkPath, sparkY, trendWords, upToLast } from "./sparkline.ts";
 
 const kw = (v: number) => `${(v / 1000).toFixed(1)} kW`;
 
@@ -55,5 +55,27 @@ describe("a series up to its last value", () => {
     expect(upToLast([1, 2])).toEqual([1, 2]);
     expect(upToLast([null, undefined])).toEqual([]);
     expect(upToLast([])).toEqual([]);
+  });
+});
+
+describe("a line drawn against a limit", () => {
+  it("is scaled from nothing up to the limit, so its height says how much of the limit is used", () => {
+    expect(limitDomain([1000, 2000], 4000)).toEqual([0, 4000]);
+    // Half the limit is half way up the box.
+    expect(sparkPath([2000, 2000], 100, 20, 0, [0, 4000])).toBe("M0 10L100 10");
+    expect(sparkY(4000, [0, 4000], 20, 0)).toBe(0);
+    expect(sparkY(0, [0, 4000], 20, 0)).toBe(20);
+  });
+
+  it("makes room for a value over the limit, and for an import under nothing", () => {
+    expect(limitDomain([1000, 5000], 4000)).toEqual([0, 5000]);
+    expect(limitDomain([-700, 300, null], 4000)).toEqual([-700, 4000]);
+    expect(limitDomain([], 4000)).toEqual([0, 4000]);
+    // The limit's own mark is then below the top.
+    expect(sparkY(4000, [0, 5000], 20, 0)).toBe(4);
+  });
+
+  it("is half way down for a scale of no height", () => {
+    expect(sparkY(0, [0, 0], 20)).toBe(10);
   });
 });

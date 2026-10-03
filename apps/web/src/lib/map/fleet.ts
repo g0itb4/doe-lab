@@ -153,6 +153,19 @@ export function siteStatus(site: Site, state: SiteState | undefined): Status {
   return { level: "ok", label: "Within limit", detail: `${flow}. ${why}` };
 }
 
+// What a site is doing, in a few words: which way the power flows, how much,
+// and of how much. Unset for a site that is not reporting: its status says
+// so already.
+export function flowWords(site: Pick<SiteMark, "exportW" | "use">): string | undefined {
+  if (site.exportW === undefined) return undefined;
+  // Within the band of a limit of nothing: a site at rest, as at night.
+  if (Math.abs(site.exportW) < LIMIT_BAND_W) return "Idle: nothing in or out";
+  const flow = site.exportW < 0 ? "Importing" : "Exporting";
+  return site.use
+    ? `${flow} ${kw(site.use.usedW)} of ${kw(site.use.limitW)}`
+    : `${flow} ${kw(Math.abs(site.exportW))}, no limit in force`;
+}
+
 // How much of an export limit is used, from 0 to 1: the ring of a mark. An
 // import uses none of it.
 function fillOf(use: Use | undefined): number {

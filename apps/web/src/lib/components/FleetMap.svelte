@@ -1,6 +1,7 @@
 <script lang="ts" module>
   import type { Kind } from "$lib/map/fleet.ts";
   import type { Level } from "$lib/status.ts";
+  import { MARKS } from "./StatusMark.svelte";
 
   // Where the streets come from: the raster tiles of OpenStreetMap, which
   // need no key. The host is the one exception in the app's content security
@@ -17,60 +18,69 @@
   // substations are drawn.
   export const SITES_FROM_ZOOM = 12;
 
-  // The equipment of a site, on the 20 px grid of Icon.svelte.
+  // The equipment of a site, on a 20 px grid: solid shapes, light on the
+  // dark of the mark, so each reads at a glance over a busy street map. The
+  // closed parts are filled and the open ones are strokes of the same colour.
   const KIND_PATHS: Record<Kind, string> = {
+    // A sun.
     solar:
-      "M10 6.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM10 1.5v2m0 13v2M1.5 10h2m13 0h2M4 4l1.4 1.4m9.2 9.2L16 16M4 16l1.4-1.4m9.2-9.2L16 4",
-    battery: "M3 6.5h12v7H3v-7Zm12 2h2v3h-2M6 10h2m3 0h2m-1-1v2",
-    ev: "M11.5 2 5 11h4.5l-1 7L15 9h-4.5l1-7Z",
+      "M10 6.6a3.4 3.4 0 1 0 0 6.8a3.4 3.4 0 0 0 0-6.8ZM10 1.9v1.5M10 16.6v1.5M1.9 10h1.5M16.6 10h1.5M4.3 4.3l1.05 1.05M14.65 14.65l1.05 1.05M4.3 15.7l1.05-1.05M14.65 5.35l1.05-1.05",
+    // A battery, on its side.
+    battery:
+      "M3.4 6.9h10.9a.9.9 0 0 1 .9.9v4.4a.9.9 0 0 1-.9.9H3.4a.9.9 0 0 1-.9-.9V7.8a.9.9 0 0 1 .9-.9ZM17.3 8.8v2.4",
+    // A bolt.
+    ev: "M11.4 2.3 5.3 10.8h3.8l-.9 6.9 6.5-8.6h-3.8l.5-6.8Z",
+    // The sun over the battery it fills.
     hybrid:
-      "M3 10.5h12v6.5H3v-6.5Zm12 2h2v2.5h-2M6.5 7.5a3.5 3.5 0 0 1 7 0M10 1.5v1.5M4.5 3.5l1 1.2m10-1.2-1 1.2",
+      "M3.4 10.9h10.9a.9.9 0 0 1 .9.9v3.6a.9.9 0 0 1-.9.9H3.4a.9.9 0 0 1-.9-.9v-3.6a.9.9 0 0 1 .9-.9ZM17.3 12.5v2.2M6.8 7.6a3.2 3.2 0 0 1 6.4 0ZM10 1.9v1.2M4.9 3.7l.85.95M15.1 3.7l-.85.95",
   };
-  // The status shapes of Icon.svelte: the shape says what the colour says.
-  const LEVEL_PATHS: Record<Level, string> = {
-    ok: "M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm-3.5 8.5 2.5 2.5 4.5-5",
-    info: "M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm0 7v5m0-8v.5",
-    warn: "M10 2.5 18 17H2L10 2.5Zm0 5.5v4m0 2.5v.5",
-    critical: "M6.5 2h7L18 6.5v7L13.5 18h-7L2 13.5v-7L6.5 2ZM10 6v5m0 2.5v.5",
-  };
+  // A substation: the two rings of a transformer, as a network's own
+  // drawings have it.
+  const SUBSTATION_PATH =
+    "M10 3.4a3.9 3.9 0 1 0 0 7.8a3.9 3.9 0 0 0 0-7.8ZM10 8.8a3.9 3.9 0 1 0 0 7.8a3.9 3.9 0 0 0 0-7.8Z";
+  // The status marks of the rest of the app (StatusMark.svelte): the shape
+  // says what the colour says.
+  const LEVEL_PATHS = MARKS;
 
   const RING = 2 * Math.PI * 14;
 
-  // A site: its equipment in a ring that fills as the site uses its limit,
-  // and for anything but "all is well" the status shape on its shoulder.
+  // For anything but "all is well", the status shape on a mark's shoulder.
+  const badge = (level: Level) =>
+    level === "ok"
+      ? ""
+      : `<svg class="fleet-badge" viewBox="0 0 12 12" width="14" height="14"><path fill-rule="evenodd" d="${LEVEL_PATHS[level]}"/></svg>`;
+
+  // A site: its equipment on a dark disc, in a ring that fills as the site
+  // uses its limit, with its status on its shoulder unless all is well.
   export function siteHtml(kind: Kind, level: Level, fill: number, selected: boolean): string {
-    const badge =
-      level === "ok"
-        ? ""
-        : `<svg class="fleet-badge" viewBox="0 0 20 20" width="14" height="14"><path d="${LEVEL_PATHS[level]}"/></svg>`;
     return (
       `<span class="fleet-site" data-level="${level}"${selected ? " data-selected" : ""}>` +
-      `<svg viewBox="0 0 32 32" width="32" height="32">` +
+      `<svg class="fleet-body" viewBox="0 0 32 32" width="32" height="32">` +
       `<circle class="fleet-disc" cx="16" cy="16" r="14"/>` +
       `<circle class="fleet-ring" cx="16" cy="16" r="14" transform="rotate(-90 16 16)" stroke-dasharray="${(fill * RING).toFixed(1)} ${RING.toFixed(1)}"/>` +
-      `<path class="fleet-glyph" transform="translate(7 7) scale(0.9)" d="${KIND_PATHS[kind]}"/>` +
-      `</svg>${badge}</span>`
+      `<path class="fleet-glyph" transform="translate(7.5 7.5) scale(0.85)" d="${KIND_PATHS[kind]}"/>` +
+      `</svg>${badge(level)}</span>`
     );
   }
 
-  // A substation: its status shape in a border that fills as its sites
-  // together use their export limits, and its name beneath. The border is
-  // measured in hundredths of its own length.
+  // A substation: a transformer's two rings on a dark square, in a border
+  // that fills as its sites together use their export limits, with its
+  // status on its shoulder unless all is well, and its name beneath. The
+  // border is measured in hundredths of its own length.
   export function substationHtml(
     name: string,
     level: Level,
     fill: number,
     selected: boolean,
   ): string {
-    const edge = 'x="1.5" y="1.5" width="33" height="33" rx="6.5"';
+    const edge = 'x="1.5" y="1.5" width="33" height="33" rx="8"';
     return (
       `<span class="fleet-substation" data-level="${level}"${selected ? " data-selected" : ""}>` +
-      `<svg class="fleet-edge" viewBox="0 0 36 36" width="36" height="36">` +
+      `<svg class="fleet-body" viewBox="0 0 36 36" width="36" height="36">` +
       `<rect class="fleet-disc" ${edge}/>` +
       `<rect class="fleet-ring" ${edge} pathLength="100" stroke-dasharray="${(fill * 100).toFixed(1)} 100"/>` +
-      `</svg>` +
-      `<svg class="fleet-status" viewBox="0 0 20 20" width="22" height="22"><path d="${LEVEL_PATHS[level]}"/></svg>` +
-      `</span><span class="fleet-name">${escape(name)}</span>`
+      `<path class="fleet-symbol" transform="translate(8 8)" d="${SUBSTATION_PATH}"/>` +
+      `</svg>${badge(level)}</span><span class="fleet-name">${escape(name)}</span>`
     );
   }
 
@@ -83,9 +93,9 @@
   import "leaflet/dist/leaflet.css";
   import L from "leaflet";
   import { onMount } from "svelte";
-  import { type Card, hint } from "$lib/hovercard.svelte.ts";
-  import type { Bounds, FleetView } from "$lib/map/fleet.ts";
-  import { KIND_WORDS } from "$lib/map/fleet.ts";
+  import { type Card, hint, type Plot } from "$lib/hovercard.svelte.ts";
+  import type { Bounds, FleetView, SiteMark } from "$lib/map/fleet.ts";
+  import { flowWords, KIND_WORDS } from "$lib/map/fleet.ts";
   import { theme } from "$lib/theme.svelte.ts";
 
   // The fleet on a street map: substations, and from a closer zoom the sites
@@ -97,6 +107,7 @@
     selected = "",
     tiles = TILES,
     onselect,
+    trace,
   }: {
     view: FleetView;
     // What to frame. The map moves when this changes, and not otherwise.
@@ -105,6 +116,9 @@
     selected?: string;
     tiles?: Tiles;
     onselect: (kind: "site" | "substation", key: string) => void;
+    // The plot for a site's card: what it has exported of late, against its
+    // limit. The page knows where that comes from; the map only shows it.
+    trace?: (site: SiteMark) => Plot;
   } = $props();
 
   let el: HTMLDivElement;
@@ -238,7 +252,12 @@
         substationHtml(s.place, s.status.level, s.fill, selected === s.code),
         36,
         `${s.name}: ${s.status.label}`,
-        { title: s.name, lines: [s.status.label, s.status.detail], level: s.status.level },
+        // A word for its status, and how many of its sites are heard.
+        {
+          title: s.name,
+          lines: [s.status.label, `${s.reporting} of ${s.sites} sites reporting`],
+          level: s.status.level,
+        },
         true,
         () => onselect("substation", s.code),
       );
@@ -255,10 +274,13 @@
         siteHtml(s.kind, s.status.level, s.fill, selected === s.nmi),
         32,
         `${s.nmi}, ${KIND_WORDS[s.kind]}: ${s.status.label}`,
+        // Little to read: its status, the shape of its export against its
+        // limit, and what it is doing now in a few words.
         {
           title: `${s.nmi}, ${KIND_WORDS[s.kind]}`,
-          lines: [s.status.label, s.status.detail, ...(s.use ? [s.use.text] : [])],
+          lines: [s.status.label, ...[flowWords(s)].filter((line) => line !== undefined)],
           level: s.status.level,
+          plot: trace?.(s),
         },
         false,
         () => onselect("site", s.nmi),
@@ -333,50 +355,52 @@
   .fleet-map :global([data-level="critical"]) {
     color: var(--color-critical);
   }
-  .fleet-map :global(.fleet-disc) {
-    fill: var(--color-surface);
-    stroke: var(--color-control);
-    stroke-width: 1.5;
+  /* A mark is dark with a light edge, as a pin on a map is: it reads over
+     any street, and its shadow lifts it off them. The edge is the track of
+     the ring that fills with the status colour. */
+  .fleet-map :global(.fleet-body) {
+    display: block;
+    overflow: visible;
+    filter: drop-shadow(0 1px 2px var(--color-shade-deep));
   }
+  .fleet-map :global(.fleet-disc) {
+    fill: var(--color-text);
+    stroke: var(--color-surface);
+    stroke-width: 3;
+  }
+  /* Square ends: a ring that is empty draws nothing at all. */
   .fleet-map :global(.fleet-ring) {
     fill: none;
     stroke: currentColor;
     stroke-width: 3;
   }
+  /* Solid shapes in the colour of the page, on the dark of the mark. */
   .fleet-map :global(.fleet-glyph) {
-    fill: none;
-    stroke: var(--color-text);
-    stroke-width: 1.7;
+    fill: var(--color-surface);
+    stroke: var(--color-surface);
+    stroke-width: 1.5;
     stroke-linecap: round;
     stroke-linejoin: round;
+  }
+  .fleet-map :global(.fleet-symbol) {
+    fill: none;
+    stroke: var(--color-surface);
+    stroke-width: 1.9;
   }
   .fleet-map :global(.fleet-badge) {
     position: absolute;
-    top: -3px;
+    top: -4px;
     right: -5px;
-    fill: var(--color-surface);
-    stroke: currentColor;
-    stroke-width: 2;
-    stroke-linecap: round;
+    /* A solid mark, edged in the surface so it stands off the ring. */
+    fill: currentColor;
+    stroke: var(--color-surface);
+    stroke-width: 2.5;
     stroke-linejoin: round;
+    paint-order: stroke;
   }
   .fleet-map :global(.fleet-substation) {
-    display: grid;
     width: 36px;
     height: 36px;
-    place-items: center;
-  }
-  .fleet-map :global(.fleet-edge) {
-    position: absolute;
-    inset: 0;
-  }
-  .fleet-map :global(.fleet-status) {
-    position: relative;
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 1.7;
-    stroke-linecap: round;
-    stroke-linejoin: round;
   }
   .fleet-map :global([data-selected]) {
     outline: 3px solid var(--color-accent);

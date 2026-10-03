@@ -1,7 +1,7 @@
 <script lang="ts">
   import { LEVEL_WORDS } from "$lib/map/schematic.ts";
   import type { Level } from "$lib/status.ts";
-  import Icon from "./Icon.svelte";
+  import StatusMark from "./StatusMark.svelte";
 
   // What the marks of the feeder's drawing mean: each shape with its words,
   // and each status with its own shape beside its colour.
@@ -79,7 +79,7 @@
   <ul class="flex flex-wrap gap-x-4 gap-y-1" aria-label="Status of a mark">
     {#each statuses as s (s.level)}
       <li class="inline-flex items-center gap-1">
-        <span class={s.tone}><Icon name={s.level} size={14} /></span>
+        <span class="inline-flex {s.tone}"><StatusMark level={s.level} /></span>
         {LEVEL_WORDS[s.level]}
       </li>
     {/each}

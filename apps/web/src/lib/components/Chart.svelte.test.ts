@@ -221,6 +221,68 @@ describe("Chart", () => {
     expect(onzoom).toHaveBeenLastCalledWith(undefined);
   });
 
+  it("shows the range a drag is selecting: a tinted box with an edge and a time at each end", async () => {
+    theme.set("light");
+    const onzoom = vi.fn();
+    const screen = await render(Chart, { ...props, onzoom });
+    await canvas(screen.container);
+    const over = screen.container.querySelector(".u-over") as HTMLElement;
+    const box = over.getBoundingClientRect();
+    const fire = (target: EventTarget, type: string, across: number) =>
+      target.dispatchEvent(
+        new MouseEvent(type, {
+          clientX: box.left + box.width * across,
+          clientY: box.top + box.height / 2,
+          bubbles: true,
+          button: 0,
+          movementX: 5,
+        }),
+      );
+    const select = over.querySelector(".u-select") as HTMLElement;
+    const [from, to] = [
+      select.querySelector(".from"),
+      select.querySelector(".to"),
+    ] as HTMLElement[];
+    // Before a drag there is nothing to see.
+    expect(select.classList.contains("dragging")).toBe(false);
+    expect(from!.hidden && to!.hidden).toBe(true);
+
+    over.dispatchEvent(new MouseEvent("mouseenter"));
+    fire(over, "mousemove", 0.25);
+    await vi.waitFor(() => expect(screen.container.querySelector(".tip")).not.toBeNull());
+    fire(over, "mousedown", 0.25);
+    fire(over, "mousemove", 0.75);
+    await vi.waitFor(() => expect(select.classList.contains("dragging")).toBe(true));
+    // The readout stands down while the range is dragged: the box and its
+    // times are what the reader is looking at.
+    await vi.waitFor(() => expect(screen.container.querySelector(".tip")).toBeNull());
+    // Half the plot wide, from a quarter of the way across.
+    const drawn = select.getBoundingClientRect();
+    expect(drawn.width).toBeGreaterThan(box.width * 0.45);
+    expect(drawn.width).toBeLessThan(box.width * 0.55);
+    expect(drawn.height).toBeCloseTo(box.height, 0);
+    // Edged in the accent, and tinted with it: on a dark page too.
+    const style = getComputedStyle(select);
+    expect(style.borderLeftColor).toBe(`rgb(${rgb("#0b5cad").replace(/,/g, ", ")})`);
+    expect(parseFloat(style.borderLeftWidth)).toBeGreaterThanOrEqual(2);
+    const tint = getComputedStyle(select, "::before");
+    expect(tint.backgroundColor).toBe(style.borderLeftColor);
+    expect(Number(tint.opacity)).toBeGreaterThan(0.1);
+    // The time at each edge, outside the box, in the feeder's zone: 3.5 hours
+    // from 11:00, a quarter and three quarters of the way in.
+    expect(from!.hidden || to!.hidden).toBe(false);
+    expect(from!.textContent).toMatch(/^Tue 3 Nov, 11:5\d$/);
+    expect(to!.textContent).toMatch(/^Tue 3 Nov, 13:3\d$/);
+    expect(from!.getBoundingClientRect().right).toBeLessThanOrEqual(drawn.left);
+    expect(to!.getBoundingClientRect().left).toBeGreaterThanOrEqual(drawn.right);
+
+    // Let go: the page has the range, and the box is put away.
+    fire(document, "mouseup", 0.75);
+    await vi.waitFor(() => expect(onzoom).toHaveBeenCalledOnce());
+    expect(select.classList.contains("dragging")).toBe(false);
+    expect(from!.hidden && to!.hidden).toBe(true);
+  });
+
   it("marks a period with a shade of the critical colour and a label", async () => {
     theme.set("light");
     const screen = await render(Chart, {

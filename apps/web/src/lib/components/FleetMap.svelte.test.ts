@@ -104,10 +104,34 @@ describe("the marks", () => {
     expect(new Set(shapes).size).toBe(4);
   });
 
-  it("draw a substation as its status and its name, whatever the name holds", () => {
+  it("draw every mark dark with a light edge and a solid shape, so it reads over any street", async () => {
+    await render(FleetMap, { view, bounds: near, tiles, onselect: () => {} });
+    await vi.waitFor(() => expect(mark("NMI00000017")).not.toBeNull());
+    const css = (el: Element) => getComputedStyle(el);
+    const body = getComputedStyle(document.body);
+    for (const el of [mark("NMI00000017")!, mark("Ausgrid Lidcombe Zone")!]) {
+      const disc = el.querySelector(".fleet-disc")!;
+      // The colour of text as the mark's own, and the page's as its edge.
+      expect(css(disc).fill).toBe(body.color);
+      expect(css(disc).stroke).not.toBe(css(disc).fill);
+      expect(css(el.querySelector(".fleet-body")!).filter).toContain("drop-shadow");
+    }
+    // A site's equipment is a solid shape in the colour of the edge.
+    const glyph = mark("NMI00000017")!.querySelector(".fleet-glyph")!;
+    expect(css(glyph).fill).toBe(css(mark("NMI00000017")!.querySelector(".fleet-disc")!).stroke);
+    // A substation is a transformer's two rings: lines, not a filled shape.
+    const symbol = mark("Ausgrid Lidcombe Zone")!.querySelector(".fleet-symbol")!;
+    expect(css(symbol).fill).toBe("none");
+    expect(css(symbol).stroke).toBe(css(glyph).fill);
+  });
+
+  it("draw a substation as a transformer with its name, whatever the name holds, and its status on its shoulder", () => {
     const html = substationHtml('Crows <Nest> & "Co"', "warn", 0, true);
     expect(html).toContain('data-level="warn"');
     expect(html).toContain("data-selected");
+    expect(html).toContain("fleet-symbol");
+    expect(html).toContain("fleet-badge");
+    expect(substationHtml("Lidcombe", "ok", 0, false)).not.toContain("fleet-badge");
     expect(html).toContain("Crows &#60;Nest&#62; &#38; &#34;Co&#34;");
     expect(substationHtml("Lidcombe", "ok", 0, false)).not.toContain("data-selected");
   });
@@ -238,16 +262,18 @@ describe("FleetMap", () => {
     // is now; and a substation, which the keyboard reaches, says it on focus.
     expect(before.hasAttribute("title")).toBe(false);
     before.dispatchEvent(new MouseEvent("mouseenter", { clientX: 40, clientY: 40 }));
-    expect(hovercard.card).toMatchObject({
+    // Little to read: its status, and what it is doing in a few words.
+    expect(hovercard.card).toEqual({
       title: "NMI00000017, Solar",
       level: "warn",
-      lines: ["At its limit", ""],
+      lines: ["At its limit", "Exporting 1.5\u00a0kW, no limit in force"],
+      plot: undefined,
     });
     before.dispatchEvent(new MouseEvent("mouseleave"));
     mark("Ausgrid Lidcombe Zone")!.dispatchEvent(new FocusEvent("focus"));
-    expect(hovercard.card).toMatchObject({
+    expect(hovercard.card).toEqual({
       title: "Ausgrid Lidcombe Zone",
-      lines: ["1 at its limit", ""],
+      lines: ["1 at its limit", "2 of 2 sites reporting"],
       level: "warn",
     });
     mark("Ausgrid Lidcombe Zone")!.dispatchEvent(new FocusEvent("blur"));
@@ -255,6 +281,31 @@ describe("FleetMap", () => {
     expect(mark("Ausgrid Lidcombe Zone")!.getAttribute("aria-label")).toBe(
       "Ausgrid Lidcombe Zone: 1 at its limit",
     );
+  });
+
+  it("gives a site's card the plot its page has for it, and a substation's none", async () => {
+    const trace = vi.fn((s: SiteMark) => ({
+      label: "Net export, last 6 hours",
+      values: () => [900, 1500],
+      limit: s.limitW,
+      format: (watts: number) => `${watts} W`,
+      ask: () => {},
+      rest: () => {},
+    }));
+    await render(FleetMap, { view, bounds: near, tiles, onselect: () => {}, trace });
+    await vi.waitFor(() => expect(mark("NMI00000017")).not.toBeNull());
+    mark("NMI00000017")!.dispatchEvent(new MouseEvent("mouseenter", { clientX: 40, clientY: 40 }));
+    expect(hovercard.card?.plot).toMatchObject({ label: "Net export, last 6 hours", limit: 3000 });
+    expect(hovercard.card?.plot?.values()).toEqual([900, 1500]);
+    // The lines of a site that exports against a limit: no more than this.
+    expect(hovercard.card?.lines).toEqual([
+      "Within limit",
+      "Exporting 1.5\u00a0kW, no limit in force",
+    ]);
+    mark("NMI00000017")!.dispatchEvent(new MouseEvent("mouseleave"));
+    mark("Ausgrid Lidcombe Zone")!.dispatchEvent(new FocusEvent("focus"));
+    expect(hovercard.card?.plot).toBeUndefined();
+    mark("Ausgrid Lidcombe Zone")!.dispatchEvent(new FocusEvent("blur"));
   });
 
   it("darkens its streets with the theme, and stays where it is with nothing to frame", async () => {

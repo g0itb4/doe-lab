@@ -47,6 +47,7 @@ Open <http://localhost:5273>.
 ```sh
 # run
 just demo           # everything below, on a fresh database
+just resume         # the demo again on the database it left: up in seconds
 just up             # Postgres with TimescaleDB, and an S3 gateway
 just data           # download the datasets and verify their checksums
 just import         # the fleet of data/fleet and a year of profiles into the database

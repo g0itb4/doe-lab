@@ -25,7 +25,7 @@
   import { queryParam, withQuery } from "$lib/query.ts";
   import { poll } from "$lib/poll.ts";
   import { Resource } from "$lib/resource.svelte.ts";
-  import { hiddenOf, rangeKey, windowOf, withHidden, zoomOf } from "$lib/series.ts";
+  import { hiddenOf, type RangeKey, rangeKey, windowOf, withHidden, zoomOf } from "$lib/series.ts";
   import { envelopeAt, siteChart } from "$lib/site.ts";
   import { enrolled, equipment, phaseName } from "$lib/sites.ts";
   import { date, timestamp } from "$lib/time.ts";
@@ -68,11 +68,10 @@
     const s = site?.data;
     // Not before the clock has settled: the window is in feeder time.
     if (!s || s === "missing" || !clock.settled) return;
-    const key = range;
     // The devices of a site do not change while its page is open: asked once.
     let devices: Device[] | undefined;
     const loaded = new Resource<Detail>(async (signal) => {
-      const w = windowOf(key, clock.nowSeconds());
+      const w = windowOf(shownRange, clock.nowSeconds());
       const [from, to] = [timestamp(w.from), timestamp(w.to)];
       const [envelopes, series, alerts, found] = await Promise.all([
         api.envelopes.listEnvelopes({ siteId: s.id, from, to, pageSize: 2000 }, { signal }),
@@ -84,12 +83,21 @@
       return { envelopes: envelopes.envelopes, series, alerts: alerts.alerts, devices };
     });
     detail = loaded;
-    void loaded.load();
     const stopPolling = poll(() => void loaded.load(), 300_000);
     return () => {
       stopPolling();
       loaded.cancel();
     };
+  });
+
+  // The range is asked for when the site is there, and again when the reader
+  // chooses another. What is on screen stays until the answer arrives: the
+  // chart does not give way to a placeholder between two ranges, and the
+  // page does not jump.
+  let shownRange: RangeKey = "24h";
+  $effect(() => {
+    shownRange = range;
+    void detail?.load();
   });
 
   // Every minute of feeder time is enough for the chart's "now" line.
