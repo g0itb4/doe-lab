@@ -38,29 +38,41 @@ export function count(n: number): string {
   return n.toLocaleString("en-AU");
 }
 
+// A formatter costs far more to make than to use, and a list of alerts would
+// make one per row per second: one is made for each zone, and kept.
+function perZone(options: Intl.DateTimeFormatOptions): (zone: string) => Intl.DateTimeFormat {
+  const made = new Map<string, Intl.DateTimeFormat>();
+  return (zone) => {
+    let format = made.get(zone);
+    if (!format) {
+      format = new Intl.DateTimeFormat("en-AU", { timeZone: zone, ...options });
+      made.set(zone, format);
+    }
+    return format;
+  };
+}
+
+const clockFormat = perZone({ hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const dayFormat = perZone({
+  weekday: "short",
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+const zoneFormat = perZone({ timeZoneName: "short" });
+
 // Times are shown in the feeder's zone, whatever the reader's own.
 export function clockTime(at: Date | undefined, zone: string): string {
   if (!at) return "–";
-  return new Intl.DateTimeFormat("en-AU", {
-    timeZone: zone,
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).format(at);
+  return clockFormat(zone).format(at);
 }
 
 export function dayAndTime(at: Date | undefined, zone: string): string {
   if (!at) return "–";
   // From the parts, not from format(): browsers disagree about the commas.
-  const parts = new Intl.DateTimeFormat("en-AU", {
-    timeZone: zone,
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(at);
+  const parts = dayFormat(zone).formatToParts(at);
   const part = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((p) => p.type === type)?.value ?? "";
   return `${part("weekday")} ${part("day")} ${part("month")}, ${part("hour")}:${part("minute")}`;
@@ -68,10 +80,7 @@ export function dayAndTime(at: Date | undefined, zone: string): string {
 
 // The short name of the zone at an instant: "AEST" or "AEDT" for Sydney.
 export function zoneName(at: Date, zone: string): string {
-  const parts = new Intl.DateTimeFormat("en-AU", {
-    timeZone: zone,
-    timeZoneName: "short",
-  }).formatToParts(at);
+  const parts = zoneFormat(zone).formatToParts(at);
   return parts.find((p) => p.type === "timeZoneName")?.value ?? zone;
 }
 

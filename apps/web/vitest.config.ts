@@ -15,7 +15,10 @@ export default defineConfig({
   // against the API's.
   server: { fs: { allow: [fileURLToPath(new URL("../..", import.meta.url))] } },
   test: {
-    include: ["src/**/*.test.ts"],
+    // tour/ holds the model of a hand that the recorded tour of the UI is
+    // driven by: plain functions, tested and held to the thresholds like the
+    // library.
+    include: ["src/**/*.test.ts", "tour/**/*.test.ts"],
     setupFiles: ["src/test-setup.ts"],
     browser: {
       enabled: true,
@@ -31,8 +34,8 @@ export default defineConfig({
       provider: "istanbul",
       // The library is held to the thresholds here. The pages in src/routes
       // are exercised by the Playwright suite in e2e/, against the built app.
-      include: ["src/lib/**/*.{ts,svelte}"],
-      exclude: ["src/**/*.test.ts", "src/**/*.test-utils.ts"],
+      include: ["src/lib/**/*.{ts,svelte}", "tour/human-path.ts"],
+      exclude: ["src/**/*.test.ts", "src/**/*.test-utils.ts", "tour/**/*.test.ts"],
       reporter: ["text-summary", "html", "json"],
       // Floors, as in apps/api/coverage.json: they only go up.
       thresholds: { lines: 99, functions: 98, statements: 98, branches: 90 },

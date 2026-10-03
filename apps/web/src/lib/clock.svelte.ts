@@ -8,6 +8,7 @@ class FeederClock {
   #anchorMs = $state<number>();
   #speed = $state(1);
   #tick = $state(Date.now());
+  #settled = $state(false);
   #timer: ReturnType<typeof setInterval> | undefined;
 
   // Asks the API how feeder time runs. Safe to call again: it asks once.
@@ -22,7 +23,16 @@ class FeederClock {
       // Until the API answers, feeder time is taken to be the wall clock.
       clearInterval(this.#timer);
       this.#timer = undefined;
+    } finally {
+      this.#settled = true;
     }
+  }
+
+  // True once the API has said how feeder time runs, or has failed to. A page
+  // waits for it before it asks for anything by feeder time: asked earlier, it
+  // would ask by the wall clock, and then again a moment later.
+  get settled(): boolean {
+    return this.#settled;
   }
 
   get ready(): boolean {

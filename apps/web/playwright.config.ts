@@ -5,6 +5,8 @@ import { defineConfig, devices } from "@playwright/test";
 // call to /rpc is answered in the browser by e2e/mock.ts.
 export default defineConfig({
   testDir: "e2e",
+  // The timings have a config of their own: playwright.perf.config.ts.
+  testIgnore: "perf.spec.ts",
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,

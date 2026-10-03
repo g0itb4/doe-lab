@@ -106,6 +106,9 @@ func run(log *slog.Logger) error {
 	// The fleet summary moves once a minute of feeder time, and at least
 	// four times a second of wall time.
 	telemetry.WatchEvery = min(time.Second, max(250*time.Millisecond, clock.Real(time.Minute)))
+	// What is read of a feeder is good for as long: the clients that watch it,
+	// and the pages that draw the whole fleet, share one read.
+	telemetry.SnapshotFor = telemetry.WatchEvery
 	go sweep(ctx, log, clock, compliance, backstops)
 	retention := service.NewRetention(store, clock, service.Keep{
 		Readings: cfg.KeepReadings, Envelopes: cfg.KeepEnvelopes, Alerts: cfg.KeepAlerts,

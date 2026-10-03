@@ -6,6 +6,7 @@
   import { page } from "$app/state";
   import { assistant } from "$lib/assistant.svelte.ts";
   import { clock } from "$lib/clock.svelte.ts";
+  import HoverCard from "$lib/components/HoverCard.svelte";
   import Icon from "$lib/components/Icon.svelte";
   import ThemeToggle from "$lib/components/ThemeToggle.svelte";
   import Toasts from "$lib/components/Toasts.svelte";
@@ -49,11 +50,13 @@
   );
 
   const links = [
-    { href: "/", label: "Overview" },
-    { href: "/map", label: "Map" },
+    // In the order an operator works: where the trouble is, the feeder it is
+    // on, the place on that feeder, what to do about it; then the lookups.
+    { href: "/", label: "Fleet" },
+    { href: "/feeder", label: "Feeder" },
     { href: "/network", label: "Network" },
-    { href: "/sites", label: "Sites" },
     { href: "/operations", label: "Operations" },
+    { href: "/sites", label: "Sites" },
     { href: "/config", label: "Config" },
   ];
 
@@ -63,6 +66,19 @@
   }
 
   const zone = $derived(feeder.data?.timezone ?? "Australia/Sydney");
+
+  // On a phone the links are one row that scrolls sideways: the link of the
+  // page in view is brought to the middle of it. Sideways only, so the page
+  // itself does not move.
+  let nav = $state<HTMLElement>();
+  const path = $derived(page.url.pathname);
+  $effect(() => {
+    void path;
+    const link = nav?.querySelector<HTMLElement>('[aria-current="page"]');
+    if (!nav || !link) return;
+    const [row, here] = [nav.getBoundingClientRect(), link.getBoundingClientRect()];
+    nav.scrollLeft += here.left - row.left - (row.width - here.width) / 2;
+  });
 </script>
 
 <a
@@ -72,17 +88,26 @@
   Skip to content
 </a>
 
-<header class="border-rule bg-surface border-b">
-  <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
-    <a href="/" class="text-lg font-bold tracking-tight">doe-lab</a>
-    <nav aria-label="Main" class="order-last w-full sm:order-none sm:w-auto">
-      <ul class="-mx-1 flex flex-wrap gap-1">
+<!-- In view from a tablet's width up: the feeder's clock and the way to
+     every page stay with the reader. On a phone it scrolls away, and leaves
+     the room to the page. -->
+<header class="border-rule bg-surface shadow-card z-30 border-b sm:sticky sm:top-0">
+  <div class="mx-auto flex max-w-[90rem] flex-wrap items-center gap-x-4 gap-y-1 px-4 pt-2 sm:py-0">
+    <a href="/" class="text-title font-bold tracking-tight">doe-lab</a>
+    <!-- One row at every width: on a phone it scrolls sideways inside itself,
+         and the page does not grow a second row of links. -->
+    <nav
+      bind:this={nav}
+      aria-label="Main"
+      class="order-last -mx-4 w-screen overflow-x-auto px-3 sm:order-none sm:mx-0 sm:w-auto sm:px-0"
+    >
+      <ul class="flex gap-1">
         {#each links as link (link.href)}
-          <li>
+          <li class="shrink-0">
             <a
               href={link.href}
               aria-current={current(link.href) ? "page" : undefined}
-              class="text-muted hover:bg-sunken aria-[current=page]:bg-sunken aria-[current=page]:text-text inline-flex min-h-9 items-center rounded-md px-3 text-sm font-medium aria-[current=page]:underline aria-[current=page]:underline-offset-4"
+              class="nav-link text-muted hover:text-text text-body aria-[current=page]:text-text inline-flex min-h-11 items-center px-3 font-medium aria-[current=page]:font-semibold"
             >
               {link.label}
             </a>
@@ -90,7 +115,9 @@
         {/each}
       </ul>
     </nav>
-    <div class="ml-auto flex items-center gap-3">
+    <!-- On a phone the choice of feeder, the clock and the theme take a
+         second row between them when one is too narrow. -->
+    <div class="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1">
       <!-- Only where there is a choice to make. -->
       {#if (feeders.data?.length ?? 0) > 1}
         <label class="flex items-center gap-2 text-sm">
@@ -108,8 +135,8 @@
       {/if}
       <!-- A fixed width, and a dash until the API has said how feeder time
            runs: the clock arrives without moving anything. -->
-      <p class="tabular text-muted min-w-40 text-right text-xs leading-tight">
-        <span class="text-text block text-sm font-semibold">
+      <p class="text-muted text-label min-w-36 text-right leading-tight sm:min-w-40">
+        <span class="text-text text-body block font-mono font-semibold">
           {#if clock.ready}{clockTime(clock.now, zone)} {zoneName(clock.now, zone)}{:else}–:–{/if}
         </span>
         <span>
@@ -121,11 +148,11 @@
   </div>
 </header>
 
-<main id="main" tabindex="-1" class="mx-auto min-h-screen max-w-6xl px-4 py-4 outline-none">
+<main id="main" tabindex="-1" class="mx-auto min-h-screen max-w-[90rem] px-4 py-4 outline-none">
   {@render children()}
 </main>
 
-<footer class="text-muted mx-auto max-w-6xl px-4 pt-4 pb-20 text-xs">
+<footer class="text-muted text-label mx-auto max-w-[90rem] px-4 pt-4 pb-20">
   <p>
     A simulation, not a real network. Feeder model: "Realistic Australian Medium Voltage Feeder with
     Associated Low Voltage Feeders", CSIRO Data Access Portal, © GridQube 2025, CC BY-NC-SA 4.0.
@@ -139,7 +166,7 @@
        under the last line of the page. -->
   <button
     type="button"
-    class="btn btn-primary fixed right-4 bottom-4 z-40 shadow-lg"
+    class="btn btn-primary shadow-raised fixed right-4 bottom-4 z-40"
     aria-haspopup="dialog"
     onclick={openAssistant}
   >
@@ -151,3 +178,22 @@
 {/if}
 
 <Toasts />
+<HoverCard />
+
+<style>
+  /* The page in view: a bar under its link, as well as the heavier word. */
+  .nav-link {
+    position: relative;
+    transition: color var(--duration-fast);
+  }
+  .nav-link[aria-current="page"]::after {
+    content: "";
+    position: absolute;
+    right: 0.5rem;
+    bottom: 0;
+    left: 0.5rem;
+    height: 2px;
+    border-radius: 1px;
+    background: var(--color-accent);
+  }
+</style>

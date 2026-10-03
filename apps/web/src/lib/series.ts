@@ -66,3 +66,66 @@ export function downsample(
     columns: columns.map((column) => index.map((i) => column[i] ?? null)),
   };
 }
+
+// The part of a series that a range shows: its points inside the range, and
+// one either side so that a line runs to the edge of the plot. A chart that
+// is zoomed in then spends its pixels on what is in view, and not on the
+// whole series it was cut from. `x` is ascending.
+export function windowed(
+  x: number[],
+  columns: Column[],
+  range: [number, number] | undefined,
+): { x: number[]; columns: Column[] } {
+  if (!range || x.length === 0) return { x, columns };
+  let from = 0;
+  while (from < x.length && x[from]! < range[0]) from++;
+  let to = x.length;
+  while (to > 0 && x[to - 1]! > range[1]) to--;
+  from = Math.max(0, from - 1);
+  to = Math.min(x.length, to + 1);
+  if (from === 0 && to === x.length) return { x, columns };
+  return { x: x.slice(from, to), columns: columns.map((column) => column.slice(from, to)) };
+}
+
+// Which series of which chart are hidden, from the address: "export.1,load.0"
+// hides the second series of the chart "export" and the first of "load".
+// Anything that is not of that shape is ignored.
+export function hiddenOf(value: string | null, chart: string): number[] {
+  const hidden = new Set<number>();
+  for (const part of (value ?? "").split(",")) {
+    const [id, index, ...rest] = part.split(".");
+    const i = Number(index);
+    if (id === chart && rest.length === 0 && index !== "" && Number.isInteger(i) && i >= 0)
+      hidden.add(i);
+  }
+  return [...hidden].sort((a, b) => a - b);
+}
+
+// The address's value with one chart's hidden series replaced: null when
+// nothing at all is hidden, so that the parameter goes.
+export function withHidden(value: string | null, chart: string, hidden: number[]): string | null {
+  const others = (value ?? "")
+    .split(",")
+    .filter((part) => part !== "" && part.split(".")[0] !== chart);
+  const own = [...new Set(hidden)].sort((a, b) => a - b).map((i) => `${chart}.${i}`);
+  return [...others, ...own].join(",") || null;
+}
+
+// What a click on a series of the legend does to the hidden set. A plain
+// click hides the series, or shows it again. With `alone`, it shows that
+// series alone; and when it is alone already, everything again.
+export function toggleHidden(
+  hidden: number[],
+  index: number,
+  count: number,
+  alone = false,
+): number[] {
+  if (!alone) {
+    return hidden.includes(index)
+      ? hidden.filter((i) => i !== index)
+      : [...hidden, index].sort((a, b) => a - b);
+  }
+  const others = Array.from({ length: count }, (_, i) => i).filter((i) => i !== index);
+  const isAlone = !hidden.includes(index) && others.every((i) => hidden.includes(i));
+  return isAlone ? [] : others;
+}

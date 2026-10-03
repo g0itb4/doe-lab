@@ -21,7 +21,10 @@ hooks = [
     { id = "check-json" },
     { id = "check-merge-conflict" },
     # Also the guard that keeps raw data out: the Ausgrid archive is 54 MB.
-    { id = "check-added-large-files", args = ["--maxkb=500"] },
+    # The README's two clips are the one exception: a recording of a hand
+    # moving smoothly is about a megabyte, and scripts/tour.sh holds each to
+    # a limit of its own.
+    { id = "check-added-large-files", args = ["--maxkb=500"], exclude = '^docs/img/tour-(fleet|network)\.gif$' },
     # ── Secrets (first line of defence; gitleaks is below) ──
     { id = "detect-private-key" },
 ]

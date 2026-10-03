@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,7 +25,33 @@ type Telemetry struct {
 	Metrics Recorder
 	// WatchEvery is how often WatchFleet sends a summary, on the wall clock.
 	WatchEvery time.Duration
-	after      func(time.Duration) <-chan time.Time
+	// SnapshotFor is how long what was read of a feeder stays good, on the
+	// wall clock. While it is, every WatchFleet client of the feeder and every
+	// reader of the fleet's state is answered from one read, so the queries
+	// grow with the feeders and not with the clients. Zero reads afresh for
+	// every caller.
+	SnapshotFor time.Duration
+	after       func(time.Duration) <-chan time.Time
+
+	mu        sync.Mutex
+	snapshots map[uuid.UUID]*snapshot
+}
+
+// fleetOf is what one read of a feeder gives.
+type fleetOf struct {
+	summary FleetSummary
+	sites   []SiteState
+	// alerts says that the sites carry their open alerts: only the fleet's
+	// state needs them, so they are read when it first asks.
+	alerts bool
+}
+
+// snapshot is what was last read of one feeder. Its lock is held for a read,
+// so callers that arrive together wait for one read and share it.
+type snapshot struct {
+	mu     sync.Mutex
+	readAt time.Time
+	fleetOf
 }
 
 // NewTelemetry builds the service.
@@ -132,13 +160,88 @@ type SiteState struct {
 
 // Summary returns the fleet of a feeder now.
 func (s *Telemetry) Summary(ctx context.Context, feederID uuid.UUID) (FleetSummary, error) {
-	var out FleetSummary
+	out, _, err := s.state(ctx, feederID, false)
+	return out, err
+}
+
+// state returns the fleet of a feeder: its summary, and the state of each of
+// its sites that has a place on the map, with the open alert of each when
+// withAlerts is set. It is read now, or, while SnapshotFor allows, it is what
+// was last read.
+func (s *Telemetry) state(ctx context.Context, feederID uuid.UUID, withAlerts bool) (FleetSummary, []SiteState, error) {
+	if s.SnapshotFor <= 0 {
+		fresh, err := s.read(ctx, feederID, withAlerts)
+		return fresh.summary, fresh.sites, err
+	}
+	s.mu.Lock()
+	if s.snapshots == nil {
+		s.snapshots = map[uuid.UUID]*snapshot{}
+	}
+	kept := s.snapshots[feederID]
+	if kept == nil {
+		kept = &snapshot{}
+		s.snapshots[feederID] = kept
+	}
+	s.mu.Unlock()
+
+	kept.mu.Lock()
+	defer kept.mu.Unlock()
+	switch {
+	case kept.readAt.IsZero() || time.Since(kept.readAt) >= s.SnapshotFor:
+		fresh, err := s.read(ctx, feederID, withAlerts)
+		if err != nil {
+			// Nothing is kept of a read that failed: a feeder that does not
+			// exist must not stay in the map.
+			s.mu.Lock()
+			delete(s.snapshots, feederID)
+			s.mu.Unlock()
+			kept.readAt = time.Time{}
+			return fresh.summary, nil, err
+		}
+		kept.fleetOf, kept.readAt = fresh, time.Now()
+	case withAlerts && !kept.alerts:
+		// What a watcher read is still good; only the alerts are missing.
+		if err := openAlerts(ctx, s.store, feederID, kept.sites); err != nil {
+			return kept.summary, nil, err
+		}
+		kept.alerts = true
+	}
+	// A copy: a caller appends to what it is given.
+	return kept.summary, slices.Clone(kept.sites), nil
+}
+
+// read reads the fleet of a feeder from the store, in one transaction.
+func (s *Telemetry) read(ctx context.Context, feederID uuid.UUID, withAlerts bool) (fleetOf, error) {
+	var out fleetOf
 	err := s.store.Tx(ctx, func(ctx context.Context, r Repos) error {
 		var err error
-		out, _, err = s.feederState(ctx, r, feederID, s.clock.Now())
-		return err
+		if out.summary, out.sites, err = s.feederState(ctx, r, feederID, s.clock.Now()); err != nil || !withAlerts {
+			return err
+		}
+		out.alerts = true
+		return openAlerts(ctx, r, feederID, out.sites)
 	})
 	return out, err
+}
+
+// openAlerts gives each site the open alert that matters most. The alerts
+// come newest first: a site shows the gravest of its own, and of two as grave
+// the newer.
+func openAlerts(ctx context.Context, r Repos, feederID uuid.UUID, sites []SiteState) error {
+	alerts, _, err := r.ListAlerts(ctx, feederID, AlertFilter{OpenOnly: true}, domain.Page{Size: maxOpenAlerts})
+	if err != nil {
+		return err
+	}
+	gravest := map[uuid.UUID]*domain.Alert{}
+	for _, alert := range alerts {
+		if have := gravest[alert.SiteID]; have == nil || severityRank[alert.Severity] > severityRank[have.Severity] {
+			gravest[alert.SiteID] = &alert
+		}
+	}
+	for i := range sites {
+		sites[i].OpenAlert = gravest[sites[i].SiteID]
+	}
+	return nil
 }
 
 // feederState reads the fleet of a feeder at now: its summary, and the state
@@ -266,41 +369,23 @@ var severityRank = map[domain.AlertSeverity]int{
 // each site that has a place on the map.
 func (s *Telemetry) FleetState(ctx context.Context) (FleetState, error) {
 	out := FleetState{At: s.clock.Now()}
-	err := s.store.Tx(ctx, func(ctx context.Context, r Repos) error {
-		for token := ""; ; {
-			feeders, next, err := r.ListFeeders(ctx, domain.Page{Size: 500, Token: token})
-			if err != nil {
-				return err
-			}
-			for _, feeder := range feeders {
-				summary, sites, err := s.feederState(ctx, r, feeder.ID, out.At)
-				if err != nil {
-					return fmt.Errorf("feeder %s: %w", feeder.Code, err)
-				}
-				// The open alerts, newest first: a site shows the gravest of
-				// its own, and of two as grave the newer.
-				alerts, _, err := r.ListAlerts(ctx, feeder.ID, AlertFilter{OpenOnly: true}, domain.Page{Size: maxOpenAlerts})
-				if err != nil {
-					return fmt.Errorf("feeder %s: %w", feeder.Code, err)
-				}
-				gravest := map[uuid.UUID]*domain.Alert{}
-				for _, alert := range alerts {
-					if have := gravest[alert.SiteID]; have == nil || severityRank[alert.Severity] > severityRank[have.Severity] {
-						gravest[alert.SiteID] = &alert
-					}
-				}
-				for i := range sites {
-					sites[i].OpenAlert = gravest[sites[i].SiteID]
-				}
-				out.Feeders = append(out.Feeders, summary)
-				out.Sites = append(out.Sites, sites...)
-			}
-			if token = next; token == "" {
-				return nil
-			}
+	for token := ""; ; {
+		feeders, next, err := s.store.ListFeeders(ctx, domain.Page{Size: 500, Token: token})
+		if err != nil {
+			return out, err
 		}
-	})
-	return out, err
+		for _, feeder := range feeders {
+			summary, sites, err := s.state(ctx, feeder.ID, true)
+			if err != nil {
+				return out, fmt.Errorf("feeder %s: %w", feeder.Code, err)
+			}
+			out.Feeders = append(out.Feeders, summary)
+			out.Sites = append(out.Sites, sites...)
+		}
+		if token = next; token == "" {
+			return out, nil
+		}
+	}
 }
 
 // Watch calls send with the summary of a feeder now, and again every
@@ -496,7 +581,21 @@ func (s *Telemetry) SiteSeries(ctx context.Context, siteID uuid.UUID, from, to t
 	// The same mapping as the feeder's forecast: each half hour reads the
 	// half hour of the profile year with the same local date and time.
 	year := profile.Year{Start: profile.DefaultYearStart, Location: zone}
-	rows, _, err := s.store.ListSiteProfiles(ctx, siteID, year.From(), year.To(), domain.Page{Size: int32(year.HalfHours())}) //nolint:gosec // G115: 17,568 at most
+	// Only the part of the profile year that the range reads: a chart of a
+	// day asks for a day of it, not for the year. A range that runs across
+	// 1 July reads from both ends of the year, and so the whole of it.
+	first, last := year.To(), year.From()
+	for at := from.Truncate(halfHour); at.Before(to); at = at.Add(halfHour) {
+		read := year.At(at)
+		if read.Before(first) {
+			first = read
+		}
+		if read.After(last) {
+			last = read
+		}
+	}
+	halfHours := int32(last.Sub(first)/halfHour) + 1 //nolint:gosec // G115: 17,568 at most
+	rows, _, err := s.store.ListSiteProfiles(ctx, siteID, first, last.Add(halfHour), domain.Page{Size: halfHours})
 	if err != nil {
 		return out, err
 	}

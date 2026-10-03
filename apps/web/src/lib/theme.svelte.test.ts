@@ -48,6 +48,44 @@ describe("the theme", () => {
     expect(dark).not.toBe(light);
   });
 
+  it("says which theme is in force, for the stylesheet and for a map's tiles", () => {
+    theme.set("dark");
+    expect(theme.scheme).toBe("dark");
+    expect(document.documentElement.dataset.scheme).toBe("dark");
+    theme.set("light");
+    expect(theme.scheme).toBe("light");
+    expect(document.documentElement.dataset.scheme).toBe("light");
+  });
+
+  it("follows the system while the visitor has not chosen, and when the system changes", () => {
+    let listener = () => {};
+    const system = {
+      matches: true,
+      addEventListener: (_: string, run: () => void) => (listener = run),
+    };
+    vi.spyOn(window, "matchMedia").mockImplementation(() => system as unknown as MediaQueryList);
+    localStorage.removeItem("doelab.theme");
+    theme.init();
+    expect(theme.scheme).toBe("dark");
+    system.matches = false;
+    listener();
+    expect(theme.scheme).toBe("light");
+    // A choice holds, whatever the system then does.
+    theme.set("dark");
+    listener();
+    expect(theme.scheme).toBe("dark");
+  });
+
+  it("asks the browser for a token once, until the theme changes", () => {
+    theme.set("light");
+    const asked = vi.spyOn(window, "getComputedStyle");
+    expect(token("--color-accent")).toBe(token("--color-accent"));
+    expect(asked).toHaveBeenCalledTimes(1);
+    theme.set("dark");
+    token("--color-accent");
+    expect(asked).toHaveBeenCalledTimes(2);
+  });
+
   it("bumps its version when the colours change, so a canvas can redraw", () => {
     const before = theme.version;
     theme.set("dark");

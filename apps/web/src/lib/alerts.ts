@@ -41,10 +41,13 @@ export function sortAlerts(alerts: Alert[]): Alert[] {
 export function breachSpans(
   alerts: Alert[],
   nowSeconds: number,
-): { from: number; to: number; label: string }[] {
+): { id: string; from: number; to: number; label: string }[] {
   return alerts
     .filter((a) => a.kind === AlertKind.CONSTRAINT_BREACH)
     .map((a) => ({
+      // The alert it is the period of: a chart and a list can point at each
+      // other's.
+      id: a.id,
       from: seconds(a.openedAt),
       to: a.resolvedAt ? seconds(a.resolvedAt) : nowSeconds,
       label: "breach",

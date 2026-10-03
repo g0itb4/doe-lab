@@ -23,8 +23,11 @@ describe("feeder time", () => {
         },
       });
     });
+    expect(clock.settled).toBe(false);
     await clock.start();
     expect(clock.ready).toBe(false);
+    // It has its answer all the same: a page need not wait any longer.
+    expect(clock.settled).toBe(true);
     expect(clock.at(1234)).toBe(1234);
     expect(Math.abs(clock.now.getTime() - Date.now())).toBeLessThan(2000);
   });
@@ -41,6 +44,7 @@ describe("feeder time", () => {
     });
     await clock.start();
     expect(clock.ready).toBe(true);
+    expect(clock.settled).toBe(true);
     expect(clock.speed).toBe(60);
     // Ten seconds on the wall are ten minutes on the feeder.
     expect(clock.at(anchor.getTime() + 10_000)).toBe(anchor.getTime() + 600_000);

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { render } from "vitest-browser-svelte";
 import type { FleetView, SiteMark, SubstationMark } from "$lib/map/fleet.ts";
+import { hovercard } from "$lib/hovercard.svelte.ts";
 import { theme } from "$lib/theme.svelte.ts";
 import FleetMap, { siteHtml, SITES_FROM_ZOOM, substationHtml, TILES } from "./FleetMap.svelte";
 import MapLegend from "./MapLegend.svelte";
@@ -26,6 +27,7 @@ const substation = (fields: Partial<SubstationMark> = {}): SubstationMark => ({
   longitude: 151.0621,
   status: { level: "ok", label: "Normal", detail: "" },
   feeders: 1,
+  feederCodes: ["LV10"],
   sites: 2,
   reporting: 2,
   use: undefined,
@@ -232,7 +234,24 @@ describe("FleetMap", () => {
     await vi.waitFor(() =>
       expect(before.getAttribute("aria-label")).toBe("NMI00000017, Solar: At its limit"),
     );
-    expect(before.getAttribute("title")).toBe("NMI00000017, Solar: At its limit");
+    // To the pointer the mark says the same on a card, with its status as it
+    // is now; and a substation, which the keyboard reaches, says it on focus.
+    expect(before.hasAttribute("title")).toBe(false);
+    before.dispatchEvent(new MouseEvent("mouseenter", { clientX: 40, clientY: 40 }));
+    expect(hovercard.card).toMatchObject({
+      title: "NMI00000017, Solar",
+      level: "warn",
+      lines: ["At its limit", ""],
+    });
+    before.dispatchEvent(new MouseEvent("mouseleave"));
+    mark("Ausgrid Lidcombe Zone")!.dispatchEvent(new FocusEvent("focus"));
+    expect(hovercard.card).toMatchObject({
+      title: "Ausgrid Lidcombe Zone",
+      lines: ["1 at its limit", ""],
+      level: "warn",
+    });
+    mark("Ausgrid Lidcombe Zone")!.dispatchEvent(new FocusEvent("blur"));
+    expect(hovercard.card).toBeUndefined();
     expect(mark("Ausgrid Lidcombe Zone")!.getAttribute("aria-label")).toBe(
       "Ausgrid Lidcombe Zone: 1 at its limit",
     );

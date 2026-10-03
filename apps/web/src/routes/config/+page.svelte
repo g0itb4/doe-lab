@@ -72,7 +72,7 @@
 
 <div class="space-y-4">
   <div>
-    <h1 class="text-xl font-bold">Envelope config</h1>
+    <h1 class="h-page">Envelope config</h1>
     <p class="text-muted text-sm">
       The limits the engine keeps the feeder inside, and how it shares the headroom. A config is
       never edited: saving makes a new version, and the next engine run uses it.
@@ -86,7 +86,7 @@
     />
   {:else if versions?.data && active}
     <section aria-labelledby="edit-heading" class="card p-3">
-      <h2 id="edit-heading" class="mb-3 font-semibold">
+      <h2 id="edit-heading" class="h-section mb-3">
         Version {active.version} is in force<span class="text-muted text-sm font-normal"
           >, saved {ago(date(active.createdAt), new Date())} by {active.createdBy}</span
         >
@@ -95,7 +95,7 @@
     </section>
 
     <section aria-labelledby="history-heading" class="space-y-2">
-      <h2 id="history-heading" class="font-semibold">Version history</h2>
+      <h2 id="history-heading" class="h-section">Version history</h2>
       <ol class="card divide-rule divide-y" reversed>
         {#each history as { config, changes } (config.id)}
           <li class="px-3 py-2 text-sm">

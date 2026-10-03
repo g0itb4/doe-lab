@@ -2,7 +2,11 @@ import { AlertKind, EnvelopeSource } from "@doelab/gen/doelab/v1/common_pb.js";
 import type { Feeder } from "@doelab/gen/doelab/v1/feeder_pb.js";
 import type { Site } from "@doelab/gen/doelab/v1/site_pb.js";
 import type { Substation } from "@doelab/gen/doelab/v1/substation_pb.js";
-import type { GetFleetStateResponse, SiteState } from "@doelab/gen/doelab/v1/telemetry_pb.js";
+import type {
+  FleetSummary,
+  GetFleetStateResponse,
+  SiteState,
+} from "@doelab/gen/doelab/v1/telemetry_pb.js";
 import { severityLevel } from "../alerts.ts";
 import { exportSentence, kw } from "../format.ts";
 import { LIMIT_BAND_W, type Use, useOf } from "../limit.ts";
@@ -63,6 +67,8 @@ export type SubstationMark = {
   longitude: number;
   status: Status;
   feeders: number;
+  // The codes of its feeders, in order: the way to each one's own page.
+  feederCodes: string[];
   sites: number;
   reporting: number;
   // The export of the sites that have both a reading and a limit, against
@@ -269,6 +275,7 @@ export function fleetView(
           )
         : waiting,
       feeders: own.length,
+      feederCodes: own.map((f) => f.code),
       sites: marks.length,
       reporting: marks.filter((s) => s.exportW !== undefined).length,
       use,
@@ -283,6 +290,136 @@ const waiting: Status = {
   label: "Loading",
   detail: "Waiting for the fleet's state.",
 };
+
+// The whole fleet in a few figures: the sums of what each feeder says of
+// itself, and one status for the lot.
+export type FleetTotals = {
+  feeders: number;
+  enrolledSites: number;
+  reportingSites: number;
+  devices: number;
+  devicesOnline: number;
+  exportW: number;
+  importW: number;
+  // The sum of the export limits in force, and the export of the reporting
+  // sites that have one: like against like.
+  exportLimitW: number;
+  controlledExportW: number;
+  sitesOverLimit: number;
+  // How many feeders have a site over its limit, an open alert, a backstop
+  // in force.
+  feedersOverLimit: number;
+  openAlerts: number;
+  feedersWithAlerts: number;
+  backstops: number;
+  // The controlled export against the limits: unset for a fleet of nothing.
+  use: Use | undefined;
+  status: Status;
+};
+
+export function fleetTotals(feeders: FleetSummary[]): FleetTotals {
+  const sum = (pick: (f: FleetSummary) => number) => feeders.reduce((n, f) => n + pick(f), 0);
+  const count = (is: (f: FleetSummary) => boolean) => feeders.filter(is).length;
+  const totals = {
+    feeders: feeders.length,
+    enrolledSites: sum((f) => f.enrolledSites),
+    reportingSites: sum((f) => f.reportingSites),
+    devices: sum((f) => f.devices),
+    devicesOnline: sum((f) => f.devicesOnline),
+    exportW: sum((f) => f.exportW),
+    importW: sum((f) => f.importW),
+    exportLimitW: sum((f) => f.exportLimitW),
+    controlledExportW: sum((f) => f.controlledExportW),
+    sitesOverLimit: sum((f) => f.sitesOverLimit),
+    feedersOverLimit: count((f) => f.sitesOverLimit > 0),
+    openAlerts: sum((f) => f.openAlerts),
+    feedersWithAlerts: count((f) => f.openAlerts > 0),
+    backstops: count((f) => f.backstopEventId !== undefined),
+  };
+  const waitingForRun = count((f) => f.latestRunId === undefined);
+  const use =
+    feeders.length > 0
+      ? useOf(totals.controlledExportW, totals.exportLimitW, undefined)
+      : undefined;
+  const detail =
+    `${totals.reportingSites} of ${plural(totals.enrolledSites, "site", "sites")} reporting ` +
+    `on ${plural(totals.feeders, "feeder", "feeders")}. ${use?.text ?? NO_USE}`;
+  let status: Status;
+  if (totals.backstops > 0) {
+    status = {
+      level: "critical",
+      label: `Backstop active on ${plural(totals.backstops, "feeder", "feeders")}`,
+      detail,
+    };
+  } else if (totals.sitesOverLimit > 0) {
+    const whose = totals.sitesOverLimit === 1 ? "its" : "their";
+    status = {
+      level: "warn",
+      label: `${plural(totals.sitesOverLimit, "site", "sites")} over ${whose} limit`,
+      detail,
+    };
+  } else if (totals.openAlerts > 0) {
+    status = {
+      level: "warn",
+      label: plural(totals.openAlerts, "open alert", "open alerts"),
+      detail,
+    };
+  } else if (feeders.length === 0 || waitingForRun > 0) {
+    status = { level: "info", label: "No envelopes yet", detail };
+  } else {
+    status = { level: "ok", label: "Normal", detail };
+  }
+  return { ...totals, use, status };
+}
+
+// What asks for an operator's eye: one row of the list beside the map.
+export type Attention = {
+  kind: "site" | "substation";
+  // What selects it: a site's NMI, a substation's code.
+  key: string;
+  name: string;
+  // Where it is: a site's substation and feeder, a substation's network.
+  where: string;
+  status: Status;
+  use: Use | undefined;
+};
+
+// The marks that need attention, the gravest first: a substation under a
+// backstop, then the sites over their limit by how far, then those at their
+// limit or with a device gone quiet. A site that is merely silent, or has no
+// envelope, is not here: the table lists every site.
+export function attention(view: FleetView): Attention[] {
+  const place = new Map(view.substations.map((s) => [s.code, s.place]));
+  const rows: Attention[] = [
+    ...view.substations
+      .filter((s) => s.status.level === "critical")
+      .map((s) => ({
+        kind: "substation" as const,
+        key: s.code,
+        name: s.name,
+        where: `${s.dnsp}, ${s.state}`,
+        status: s.status,
+        use: s.use,
+      })),
+    ...view.sites
+      .filter((s) => RANK[s.status.level] >= RANK.warn)
+      .sort(
+        (a, b) =>
+          RANK[b.status.level] - RANK[a.status.level] ||
+          (a.use?.headroomW ?? Infinity) - (b.use?.headroomW ?? Infinity) ||
+          a.nmi.localeCompare(b.nmi),
+      )
+      .map((s) => ({
+        kind: "site" as const,
+        key: s.nmi,
+        name: s.nmi,
+        where: [place.get(s.substationCode), s.feederCode].filter(Boolean).join(" · "),
+        status: s.status,
+        use: s.use,
+      })),
+  ];
+  return rows;
+}
 
 // A box on the map: south-west corner, then north-east.
 export type Bounds = [[number, number], [number, number]];

@@ -55,12 +55,25 @@ type plan struct {
 	mu    sync.Mutex
 	fail  string
 	calls int
+	// seen is how many times each call was made, failing or not.
+	seen map[string]int
+}
+
+// count returns how many times a call was made since the store was built.
+func (f *faulty) count(method string) int {
+	f.plan.mu.Lock()
+	defer f.plan.mu.Unlock()
+	return f.plan.seen[method]
 }
 
 // down returns the failure for a call of method, if the plan has one.
 func (p *plan) down(method string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	if p.seen == nil {
+		p.seen = map[string]int{}
+	}
+	p.seen[method]++
 	name, nth, counted := strings.Cut(p.fail, "#")
 	if method != name {
 		return nil

@@ -5,8 +5,8 @@ import type { Page, Route } from "@playwright/test";
 // little state, so that a backstop that was triggered is then active and a
 // config that was saved is then in force.
 //
-// Feeder time is the wall clock here (speed 1), so the fixtures are built
-// around now.
+// Feeder time is the wall clock here (speed 1) unless a test asks for the
+// demo's speed, so the fixtures are built around now.
 
 const FEEDER = "0199c0de-0000-7000-8000-000000000001";
 const SITES = [
@@ -125,7 +125,85 @@ export type Mock = {
   feeders: 1 | 2;
   // How many tiles of the map were asked for.
   tiles: number;
+  // How many times each procedure was called: "Service/Method".
+  calls: Record<string, number>;
+  // How fast feeder time runs. The demo runs at 60.
+  speed: number;
+  // Extra milliseconds before the clock's answer: the page then has its
+  // feeder before it knows how feeder time runs.
+  clockDelayMs: number;
+  // The feeder's network: three buses, or a tree the size of the real one.
+  network: "small" | "large";
+  // The located sites: three, or as many as the demo's fleet has.
+  fleet: "small" | "large";
 };
+
+// The size of the real feeder, and of the demo's fleet.
+const LARGE_BUSES = 223;
+const LARGE_SITES = 76;
+
+// The same numbers on every run: a test must see the same network twice.
+function sequence(seed: number): () => number {
+  let state = seed;
+  return () => (state = (state * 1103515245 + 12345) % 2147483648) / 2147483648;
+}
+
+// A tree of buses the size of the real feeder: runs of buses with branches
+// off them, each line with a length, and a load at every bus so that the
+// power in a line is that of everything beyond it.
+function largeNetwork() {
+  const rand = sequence(7);
+  const hex = (kind: string, i: number) =>
+    `0199c0de-0000-7000-8000-${kind}${String(i).padStart(11, "0")}`;
+  const parent: number[] = [-1];
+  for (let i = 1; i < LARGE_BUSES; i++) {
+    parent.push(Math.max(0, i - 1 - Math.floor(rand() * rand() * rand() * i)));
+  }
+  const depth = parent.map(() => 0);
+  for (let i = 1; i < LARGE_BUSES; i++) depth[i] = depth[parent[i]!]! + 1;
+  const deepest = Math.max(...depth);
+  // Everything beyond a bus, itself included: children come after parents.
+  const beyond = parent.map(() => 1);
+  for (let i = LARGE_BUSES - 1; i > 0; i--) beyond[parent[i]!]! += beyond[i]!;
+  const nodeId = (i: number) => (i === 0 ? FEEDER : hex("a", i));
+  const nodes = parent.map((p, i) => ({
+    id: nodeId(i),
+    feederId: FEEDER,
+    name: `B${i + 1}`,
+    ...(p >= 0 ? { parentNodeId: nodeId(p) } : {}),
+  }));
+  const lines = parent.slice(1).map((p, k) => ({
+    id: hex("b", k + 1),
+    feederId: FEEDER,
+    linecode: "e2e",
+    name: `L${k + 1}`,
+    fromNodeId: nodeId(p),
+    toNodeId: nodeId(k + 1),
+    lengthM: Math.round(15 + 40 * rand()),
+    ampacityA: 200,
+  }));
+  return { nodes, lines, depth, deepest, beyond };
+}
+
+// As many located sites as the demo's fleet has, around the first
+// substation: some within their limit, some over it, some silent.
+function largeFleet() {
+  const rand = sequence(11);
+  return Array.from({ length: LARGE_SITES }, (_, i) => ({
+    id: `0199c0de-0000-7000-8000-c${String(i).padStart(11, "0")}`,
+    feederId: FEEDER,
+    nodeId: FEEDER,
+    nmi: `NMI${String(10_000 + i).padStart(8, "0")}`,
+    name: `Ld${i + 1}`,
+    phase: 1 + (i % 3),
+    pvKw: i % 4 === 0 ? 0 : 3 + (i % 5),
+    hasBattery: i % 4 === 0,
+    exportCapW: 5000,
+    importCapW: 14000,
+    latitudeDeg: SUBSTATIONS[0]!.latitudeDeg + (rand() - 0.5) * 0.05,
+    longitudeDeg: SUBSTATIONS[0]!.longitudeDeg + (rand() - 0.5) * 0.06,
+  }));
+}
 
 export async function mockApi(page: Page): Promise<Mock> {
   const mock: Mock = {
@@ -136,7 +214,16 @@ export async function mockApi(page: Page): Promise<Mock> {
     asked: [],
     feeders: 1,
     tiles: 0,
+    calls: {},
+    speed: 1,
+    clockDelayMs: 0,
+    network: "small",
+    fleet: "small",
   };
+  let large: ReturnType<typeof largeNetwork> | undefined;
+  const network = () => (large ??= largeNetwork());
+  let manySites: ReturnType<typeof largeFleet> | undefined;
+  const located = () => (mock.fleet === "large" ? (manySites ??= largeFleet()) : LOCATED);
   const start = Math.floor(Date.now() / HALF_HOUR) * HALF_HOUR;
 
   let backstop: Row | undefined;
@@ -242,11 +329,29 @@ export async function mockApi(page: Page): Promise<Mock> {
     latestRunStatus: "RUN_STATUS_COMPLETED",
   });
 
+  const smallFleet = () => [
+    {
+      siteId: LOCATED[0]!.id,
+      envelope: envelope(LOCATED[0]!, start),
+      reporting: true,
+      netExportW: 400,
+    },
+    {
+      siteId: LOCATED[1]!.id,
+      envelope: envelope(LOCATED[1]!, start),
+      reporting: true,
+      netExportW: 2740,
+      overLimit: true,
+      openAlert: { ...alerts[0], siteId: LOCATED[1]!.id },
+    },
+    { siteId: LOCATED[2]!.id, envelope: envelope(LOCATED[2]!, start), reporting: false },
+  ];
+
   const unary: Record<string, (req: Message, token: string | null) => unknown> = {
     "ClockService/GetClock": () => ({
       now: iso(Date.now()),
       anchor: iso(Date.now()),
-      speed: 1,
+      speed: mock.speed,
       wallNow: iso(Date.now()),
     }),
     "FeederService/ListFeeders": (req) => ({ feeders: feeders().slice(0, req.pageSize || 100) }),
@@ -258,31 +363,37 @@ export async function mockApi(page: Page): Promise<Mock> {
     // The network of the feeder: the transformer's bus, where the fixture's
     // sites are, a junction 300 m out and a far end 200 m beyond it.
     "FeederService/ListFeederNodes": () => ({
-      feederNodes: [
-        { id: FEEDER, feederId: FEEDER, name: "B1" },
-        { id: NODES.mid, feederId: FEEDER, name: "B2", parentNodeId: FEEDER },
-        { id: NODES.far, feederId: FEEDER, name: "B3", parentNodeId: NODES.mid },
-      ],
+      feederNodes:
+        mock.network === "large"
+          ? network().nodes
+          : [
+              { id: FEEDER, feederId: FEEDER, name: "B1" },
+              { id: NODES.mid, feederId: FEEDER, name: "B2", parentNodeId: FEEDER },
+              { id: NODES.far, feederId: FEEDER, name: "B3", parentNodeId: NODES.mid },
+            ],
     }),
     "FeederService/ListFeederLines": () => ({
-      feederLines: [
-        {
-          id: LINES.main,
-          name: "L_main",
-          fromNodeId: FEEDER,
-          toNodeId: NODES.mid,
-          lengthM: 300,
-          ampacityA: 100,
-        },
-        {
-          id: LINES.far,
-          name: "L_far",
-          fromNodeId: NODES.mid,
-          toNodeId: NODES.far,
-          lengthM: 200,
-          ampacityA: 50,
-        },
-      ].map((l) => ({ feederId: FEEDER, linecode: "e2e", ...l })),
+      feederLines:
+        mock.network === "large"
+          ? network().lines
+          : [
+              {
+                id: LINES.main,
+                name: "L_main",
+                fromNodeId: FEEDER,
+                toNodeId: NODES.mid,
+                lengthM: 300,
+                ampacityA: 100,
+              },
+              {
+                id: LINES.far,
+                name: "L_far",
+                fromNodeId: NODES.mid,
+                toNodeId: NODES.far,
+                lengthM: 200,
+                ampacityA: 50,
+              },
+            ].map((l) => ({ feederId: FEEDER, linecode: "e2e", ...l })),
     }),
     "TelemetryService/GetFeederState": (req) => {
       // The half hour that holds the instant asked for; now when none is.
@@ -305,14 +416,24 @@ export async function mockApi(page: Page): Promise<Mock> {
         envelopePowerW: -watts,
         staticPowerW: -2 * watts,
       });
+      // On the large network the voltage rises with the distance from the
+      // transformer, and a line carries the load of everything beyond it.
+      const big = mock.network === "large" ? network() : undefined;
       return {
         at: iso(Date.now()),
-        nodes: [
-          node(FEEDER, 1.04, 1.05, 1.06),
-          node(NODES.mid, 1.05, 1.08, 1.11),
-          node(NODES.far, 1.06, 1.095, 1.13),
-        ],
-        lines: [line(LINES.main, 30, 6000), line(LINES.far, 14, 3000)],
+        nodes: big
+          ? big.nodes.map((n, i) => {
+              const rise = (0.05 * big.depth[i]!) / big.deepest;
+              return node(n.id, 1.03 + rise, 1.04 + rise, 1.05 + 1.4 * rise);
+            })
+          : [
+              node(FEEDER, 1.04, 1.05, 1.06),
+              node(NODES.mid, 1.05, 1.08, 1.11),
+              node(NODES.far, 1.06, 1.095, 1.13),
+            ],
+        lines: big
+          ? big.lines.map((l, k) => line(l.id, 0.6 * big.beyond[k + 1]!, 400 * big.beyond[k + 1]!))
+          : [line(LINES.main, 30, 6000), line(LINES.far, 14, 3000)],
         vMinPu: 0.94,
         vMaxPu: 1.1,
         lineLimitPct: 100,
@@ -320,27 +441,21 @@ export async function mockApi(page: Page): Promise<Mock> {
       };
     },
     "SubstationService/ListSubstations": () => ({ substations: SUBSTATIONS }),
-    "SiteService/ListLocatedSites": () => ({ sites: LOCATED }),
+    "SiteService/ListLocatedSites": () => ({ sites: located() }),
     "TelemetryService/GetFleetState": () => ({
       at: iso(Date.now()),
       feeders: [summary()],
-      sites: [
-        {
-          siteId: LOCATED[0]!.id,
-          envelope: envelope(LOCATED[0]!, start),
-          reporting: true,
-          netExportW: 400,
-        },
-        {
-          siteId: LOCATED[1]!.id,
-          envelope: envelope(LOCATED[1]!, start),
-          reporting: true,
-          netExportW: 2740,
-          overLimit: true,
-          openAlert: { ...alerts[0], siteId: LOCATED[1]!.id },
-        },
-        { siteId: LOCATED[2]!.id, envelope: envelope(LOCATED[2]!, start), reporting: false },
-      ],
+      sites:
+        mock.fleet === "large"
+          ? located().map((site, i) => ({
+              siteId: site.id,
+              envelope: envelope(site, start),
+              // One in nine is silent, and one in seven over its limit.
+              reporting: i % 9 !== 0,
+              ...(i % 9 !== 0 ? { netExportW: i % 7 === 0 ? 2740 : 300 + 20 * (i % 40) } : {}),
+              ...(i % 9 !== 0 && i % 7 === 0 ? { overLimit: true } : {}),
+            }))
+          : smallFleet(),
     }),
     "SiteService/ListSites": () => ({ sites: SITES }),
     "SiteService/GetSite": (req) => {
@@ -532,7 +647,10 @@ export async function mockApi(page: Page): Promise<Mock> {
     const request = route.request();
     const url = new URL(request.url());
     const procedure = url.pathname.replace("/rpc/doelab.v1.", "");
+    mock.calls[procedure] = (mock.calls[procedure] ?? 0) + 1;
     if (mock.delayMs > 0) await new Promise((r) => setTimeout(r, mock.delayMs));
+    if (procedure === "ClockService/GetClock" && mock.clockDelayMs > 0)
+      await new Promise((r) => setTimeout(r, mock.clockDelayMs));
 
     // The one server stream the pages use: a summary, then a clean end. The
     // page reopens it after a moment, which is how the figures stay live.

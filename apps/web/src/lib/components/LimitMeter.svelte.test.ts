@@ -1,3 +1,4 @@
+import { hovercard } from "$lib/hovercard.svelte.ts";
 import { describe, expect, it } from "vitest";
 import { render } from "vitest-browser-svelte";
 import { useOf } from "$lib/limit.ts";
@@ -67,9 +68,21 @@ describe("LimitMeter", () => {
     expect(sentence).toMatch(
       /^Importing 1\.2\skW of 4\.8\skW allowed: 25\s%, 3\.6\skW to spare\.$/,
     );
-    expect(meter().title).toBe(sentence);
+    // The pointer gets the sentence on a card, not from the browser's own
+    // tooltip.
+    expect(meter().hasAttribute("title")).toBe(false);
+    meter().dispatchEvent(new MouseEvent("mouseenter", { clientX: 20, clientY: 20 }));
+    expect(hovercard.card).toEqual({ title: "Import against its limit", lines: [sentence] });
+    meter().dispatchEvent(new MouseEvent("mouseleave"));
+    expect(hovercard.card).toBeUndefined();
+
     expect(meter().querySelector(".sr-only")!.textContent).toBe(sentence);
     expect(meter().querySelector("[aria-hidden=true] + .sr-only")).not.toBeNull();
+    // An export says so on its card.
+    await screen.rerender({ use: useOf(1200, 3000, 4800) });
+    meter().dispatchEvent(new MouseEvent("mouseenter", { clientX: 20, clientY: 20 }));
+    expect(hovercard.card?.title).toBe("Export against its limit");
+    meter().dispatchEvent(new MouseEvent("mouseleave"));
   });
 
   it("says so when there is nothing to compare", async () => {
@@ -80,7 +93,9 @@ describe("LimitMeter", () => {
     expect(document.querySelector(".tick")).toBeNull();
     expect(getComputedStyle(bar().querySelector(".track")!).borderTopStyle).toBe("dashed");
 
-    expect(meter().hasAttribute("title")).toBe(false);
+    // With nothing to compare the pointer gets no card.
+    meter().dispatchEvent(new MouseEvent("mouseenter", { clientX: 20, clientY: 20 }));
+    expect(hovercard.card).toBeUndefined();
 
     await screen.rerender({ empty: "No limit in force" });
     await expect.element(screen.getByText("No limit in force")).toBeVisible();

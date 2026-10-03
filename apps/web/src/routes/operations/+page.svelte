@@ -18,6 +18,7 @@
   import { feeder } from "$lib/feeder.svelte.ts";
   import { ago, count, dayAndTime, kw } from "$lib/format.ts";
   import { operator } from "$lib/operator.svelte.ts";
+  import { poll } from "$lib/poll.ts";
   import { queryParam, withQuery } from "$lib/query.ts";
   import { Resource } from "$lib/resource.svelte.ts";
   import { enrolled } from "$lib/sites.ts";
@@ -44,7 +45,8 @@
 
   $effect(() => {
     const id = feeder.data?.id;
-    if (!id) return;
+    // Not before the clock has settled: it sets how often to ask again.
+    if (!id || !clock.settled) return;
     const which = filter;
     const size = limit;
     const loaded = new Resource<Ops>(async (signal) => {
@@ -72,12 +74,9 @@
     });
     ops = loaded;
     void loaded.load();
-    const every = Math.max(5000, 300_000 / clock.speed);
-    const timer = setInterval(() => {
-      if (document.visibilityState !== "hidden") void loaded.load();
-    }, every);
+    const stopPolling = poll(() => void loaded.load(), 300_000);
     return () => {
-      clearInterval(timer);
+      stopPolling();
       loaded.cancel();
     };
   });
@@ -148,7 +147,7 @@
 <svelte:head><title>Operations · doe-lab</title></svelte:head>
 
 <div class="space-y-4">
-  <h1 class="text-xl font-bold">Operations</h1>
+  <h1 class="h-page">Operations</h1>
 
   {#if (feeder.error && !feeder.data) || (ops?.error && !ops.data)}
     <ErrorState
@@ -173,7 +172,7 @@
 
     <section aria-labelledby="alerts-heading" class="space-y-2">
       <div class="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="alerts-heading" class="font-semibold">Alerts</h2>
+        <h2 id="alerts-heading" class="h-section">Alerts</h2>
         <nav aria-label="Which alerts">
           <ul class="border-control inline-flex overflow-hidden rounded-md border">
             {#each Object.entries(FILTERS) as [key, label] (key)}
@@ -246,7 +245,7 @@
     </section>
 
     <section aria-labelledby="runs-heading" class="space-y-2">
-      <h2 id="runs-heading" class="font-semibold">Engine runs</h2>
+      <h2 id="runs-heading" class="h-section">Engine runs</h2>
       {#if ops.data.runs.length === 0}
         <EmptyState title="The engine has not run">
           Start a run with <code>just engine</code>. Until then the sites have no envelopes and fall
@@ -254,40 +253,44 @@
         </EmptyState>
       {:else}
         <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-        <div class="card overflow-x-auto" tabindex="0" role="region" aria-label="Engine runs">
-          <table class="tabular w-full min-w-[760px] text-sm">
+        <div
+          class="card max-h-[70vh] overflow-auto"
+          tabindex="0"
+          role="region"
+          aria-label="Engine runs"
+        >
+          <table class="data-table min-w-[760px]">
             <thead>
-              <tr class="border-rule border-b text-left">
-                <th scope="col" class="px-3 py-2 font-semibold">Horizon from</th>
-                <th scope="col" class="px-3 py-2 font-semibold">Status</th>
-                <th scope="col" class="px-3 py-2 text-right font-semibold">Sites</th>
-                <th scope="col" class="px-3 py-2 text-right font-semibold">Envelopes</th>
-                <th scope="col" class="px-3 py-2 text-right font-semibold">Took</th>
-                <th scope="col" class="px-3 py-2 font-semibold">Ran</th>
-                <th scope="col" class="px-3 py-2 font-semibold">Envelopes as CSV</th>
+              <tr>
+                <th scope="col">Horizon from</th>
+                <th scope="col">Status</th>
+                <th scope="col" class="text-right">Sites</th>
+                <th scope="col" class="text-right">Envelopes</th>
+                <th scope="col" class="text-right">Took</th>
+                <th scope="col">Ran</th>
+                <th scope="col">Envelopes as CSV</th>
               </tr>
             </thead>
             <tbody>
               {#each ops.data.runs as run (run.id)}
-                <tr class="border-rule border-b align-top last:border-b-0">
-                  <th scope="row" class="px-3 py-2 text-left font-normal whitespace-nowrap">
+                <tr class="align-top">
+                  <th scope="row" class="text-left font-normal whitespace-nowrap">
                     {dayAndTime(date(run.horizonFrom), zone)}
                   </th>
-                  <td class="px-3 py-2">
+                  <td>
                     <StatusBadge
                       level={runLevel[run.status] ?? "info"}
                       label={runWord[run.status] ?? "Unknown"}
                     />
                     {#if run.error}<p class="text-muted mt-1 max-w-md text-xs">{run.error}</p>{/if}
                   </td>
-                  <td class="px-3 py-2 text-right">{count(run.siteCount)}</td>
-                  <td class="px-3 py-2 text-right">{count(run.envelopeCount)}</td>
-                  <td class="px-3 py-2 text-right"
+                  <td class="text-right">{count(run.siteCount)}</td>
+                  <td class="text-right">{count(run.envelopeCount)}</td>
+                  <td class="text-right"
                     >{run.durationMs === undefined ? "–" : `${count(run.durationMs)} ms`}</td
                   >
-                  <td class="px-3 py-2 whitespace-nowrap">{ago(date(run.startedAt), new Date())}</td
-                  >
-                  <td class="px-3 py-2 whitespace-nowrap">
+                  <td class="whitespace-nowrap">{ago(date(run.startedAt), new Date())}</td>
+                  <td class="whitespace-nowrap">
                     {#if exported[run.id]}
                       <a
                         class="link inline-flex min-h-6 items-center"
@@ -318,7 +321,7 @@
     </section>
 
     <section aria-labelledby="history-heading" class="space-y-2">
-      <h2 id="history-heading" class="font-semibold">Backstop history</h2>
+      <h2 id="history-heading" class="h-section">Backstop history</h2>
       {#if ops.data.backstops.length === 0}
         <EmptyState title="No backstop has been triggered"
           >The engine has been in control since the feeder was set up.</EmptyState

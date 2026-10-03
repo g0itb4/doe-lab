@@ -10,12 +10,14 @@ end to end:
 - a **web UI** shows an operator what is happening, on a map of the fleet
   and on a drawing of each feeder
 
-![A tour of the operator UI at midday: the overview of a feeder, the map from Sydney down to one site at Crows Nest, that site's feeder as forecast, at the envelopes and at one fixed limit, then alerts and engine runs](docs/img/tour.gif)
+![The operator UI at midday: the fleet's figures and what needs attention, a site at Crows Nest chosen from the list and framed on the map, then its feeder's charts with a readout under the pointer, a range dragged to zoom and a series hidden](docs/img/tour-fleet.gif)
 
 A home with solar usually gets one fixed export limit, often 5 kW. On several
 of these feeders that limit would push voltage past the upper limit in most
 half hours of the day if every participating site used it. The envelopes hold
 the highest voltage at the limit, and still let most of the solar out.
+
+![The same feeder's network: every bus past the voltage band at one fixed limit, a slider that moves the instant a few hours on, the drawing zoomed and dragged along, what a bus says under the pointer, then operations](docs/img/tour-network.gif)
 
 A simulation, not a real network. Not affiliated with CSIRO, GridQube,
 Ausgrid or any network operator. The NMIs are synthetic; there is no customer
@@ -59,7 +61,11 @@ just check          # every git hook on every file, as CI does
 just test           # everything: hooks, both Go tiers, the engine's time budget, e2e
 just test-db        # the Go tier that needs a real TimescaleDB
 just e2e            # the built web app in Playwright, with an axe scan
+just perf           # what each page of the web app costs while it is open
 just bench          # engine benchmarks
+
+# the recording above, made again on a stack and database of its own
+just tour
 
 # optional: the assistant, off unless the API has a key
 ANTHROPIC_API_KEY=<key> just demo
@@ -115,11 +121,6 @@ flowchart LR
 | `infra` | Compose for development; [Ansible and deploy for one server](infra/prod/README.md) |
 | `CONTRIBUTING.md` | [Layering, conventions, hook rules](CONTRIBUTING.md) |
 | `llm` | [The index a coding agent reads first](llm/index.md) |
-
-| | |
-| --- | --- |
-| ![The map: a substation, its sites with DER and what each is doing against its limit](docs/img/map.jpg) | ![The network: a feeder at one fixed limit, every bus past the voltage band](docs/img/network.png) |
-| ![A site: its envelope, forecast, telemetry and a marked breach](docs/img/site.png) | ![Operations: the backstop control, alerts and engine runs](docs/img/operations.png) |
 
 ## The model
 

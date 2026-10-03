@@ -539,6 +539,85 @@ func TestFleetState(t *testing.T) {
 	}
 }
 
+// With SnapshotFor set, the callers of a feeder share what was read of it:
+// the queries grow with the feeders, not with the clients.
+func TestFleetSnapshot(t *testing.T) {
+	t.Parallel()
+	o := newOps(t)
+	ctx := repotest.Ctx()
+	feeder := o.f.Feeder.ID
+	o.telemetry.SnapshotFor = time.Hour
+	reads := func() int { return o.store.count("ListAllSites") }
+	before, alertsBefore := reads(), o.store.count("ListAlerts")
+
+	// Many watchers at once, then one more: one read between them.
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			if got, err := o.telemetry.Summary(ctx, feeder); err != nil || got.FeederID != feeder {
+				t.Errorf("a watcher: %+v, %v", got, err)
+			}
+		})
+	}
+	wg.Wait()
+	if _, err := o.telemetry.Summary(ctx, feeder); err != nil || reads() != before+1 {
+		t.Errorf("nine summaries took %d reads, %v; want 1", reads()-before, err)
+	}
+
+	// The fleet's state uses the same read, and adds the alerts once.
+	for range 2 {
+		got, err := o.telemetry.FleetState(ctx)
+		if err != nil || len(got.Feeders) != 1 || got.Feeders[0].FeederID != feeder {
+			t.Fatalf("the fleet's state: %+v, %v", got, err)
+		}
+		// What a caller is given is its own: adding to it leaves the next
+		// caller's alone.
+		got.Sites = append(got.Sites, service.SiteState{})
+	}
+	if reads() != before+1 || o.store.count("ListAlerts") != alertsBefore+1 {
+		t.Errorf("then two fleet states: %d reads and %d reads of alerts; want 1 and 1",
+			reads()-before, o.store.count("ListAlerts")-alertsBefore)
+	}
+
+	// A reading that arrives does not show until the snapshot is old.
+	if _, err := o.store.InsertReadings(ctx, []domain.Reading{repotest.Reading(o.solar.ID, 0, 3000)}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := o.telemetry.Summary(ctx, feeder); err != nil || got.ReportingSites != 0 {
+		t.Errorf("within the snapshot: %+v, %v", got, err)
+	}
+	o.telemetry.SnapshotFor = time.Nanosecond
+	time.Sleep(time.Millisecond)
+	if got, err := o.telemetry.Summary(ctx, feeder); err != nil || got.ReportingSites != 1 || reads() != before+2 {
+		t.Errorf("once it is old: %+v, %v, after %d reads", got, err, reads()-before)
+	}
+
+	// A read that fails keeps nothing: the next caller reads again.
+	o.telemetry.SnapshotFor = time.Hour
+	if _, err := o.telemetry.Summary(ctx, uuid.New()); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("an unknown feeder: %v", err)
+	}
+	fresh := newOps(t)
+	fresh.telemetry.SnapshotFor = time.Hour
+	fresh.store.failAt("ListAllSites")
+	if _, err := fresh.telemetry.Summary(ctx, fresh.f.Feeder.ID); !errors.Is(err, errDown) {
+		t.Errorf("with the read failing: %v", err)
+	}
+	fresh.store.failAt("")
+	if got, err := fresh.telemetry.Summary(ctx, fresh.f.Feeder.ID); err != nil || got.FeederID != fresh.f.Feeder.ID {
+		t.Errorf("after the failure: %+v, %v", got, err)
+	}
+	// And the alerts alone can fail, on a snapshot that is still good.
+	fresh.store.failAt("ListAlerts")
+	if _, err := fresh.telemetry.FleetState(ctx); !errors.Is(err, errDown) {
+		t.Errorf("with the alerts failing: %v", err)
+	}
+	fresh.store.failAt("")
+	if got, err := fresh.telemetry.FleetState(ctx); err != nil || len(got.Feeders) != 1 {
+		t.Errorf("after the alerts failed: %+v, %v", got, err)
+	}
+}
+
 func TestWatchFleet(t *testing.T) {
 	t.Parallel()
 	o := newOps(t)
@@ -683,6 +762,34 @@ func (o *ops) useConfig(t *testing.T, change func(*domain.EnvelopeConfig)) {
 	change(&c)
 	if _, err := service.NewEnvelopeConfigs(o.store).Create(repotest.Ctx(), c); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A range that runs across 1 July reads the end of the profile year and its
+// beginning: the forecast is still there for every half hour of it.
+func TestSiteSeriesAcrossTheProfileYear(t *testing.T) {
+	t.Parallel()
+	o := newOps(t)
+	ctx := repotest.Ctx()
+	zone := sydney(t)
+	year := profile.Year{Start: profile.DefaultYearStart, Location: zone}
+	// The last half hour of the profile year, and its first.
+	rows := []domain.SiteProfile{
+		{TS: year.To().Add(-30 * time.Minute).UTC(), LoadW: 700},
+		{TS: year.From().UTC(), LoadW: 900},
+	}
+	if err := o.store.ReplaceSiteProfiles(ctx, o.f.SiteA.ID, rows); err != nil {
+		t.Fatal(err)
+	}
+	midnight := time.Date(2026, time.July, 1, 0, 0, 0, 0, zone)
+	series, err := o.telemetry.SiteSeries(ctx, o.f.SiteA.ID, midnight.Add(-30*time.Minute), midnight.Add(30*time.Minute))
+	if err != nil || len(series.Forecast) != 2 || series.Forecast[0].LoadW != 700 || series.Forecast[1].LoadW != 900 {
+		t.Errorf("across 1 July: %+v, %v", series.Forecast, err)
+	}
+	// A range inside the year reads its own part of it and nothing else.
+	series, err = o.telemetry.SiteSeries(ctx, o.f.SiteA.ID, midnight, midnight.Add(time.Hour))
+	if err != nil || len(series.Forecast) != 1 || series.Forecast[0].LoadW != 900 {
+		t.Errorf("after 1 July: %+v, %v", series.Forecast, err)
 	}
 }
 

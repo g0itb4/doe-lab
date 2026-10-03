@@ -42,6 +42,25 @@ const PAIRS: [fg: string, bg: string, min: number][] = [
   ["--color-accent", "--color-sunken", 3],
   ["--color-warn", "--color-sunken", 3],
   ["--color-critical", "--color-sunken", 3],
+  // What floats over the page: a tooltip, a hover card.
+  ["--color-text", "--color-raised", 4.5],
+  ["--color-muted", "--color-raised", 4.5],
+  ["--color-accent", "--color-raised", 4.5],
+  ["--color-control", "--color-raised", 3],
+  ["--color-series-1", "--color-raised", 3],
+  ["--color-series-2", "--color-raised", 3],
+  ["--color-series-3", "--color-raised", 3],
+  ["--color-series-4", "--color-raised", 3],
+  ["--color-series-ref", "--color-raised", 3],
+  // A status as text on its own tint, and plain text on a tinted row.
+  ["--color-ok", "--color-ok-soft", 4.5],
+  ["--color-warn", "--color-warn-soft", 4.5],
+  ["--color-critical", "--color-critical-soft", 4.5],
+  ["--color-accent", "--color-accent-soft", 4.5],
+  ["--color-text", "--color-ok-soft", 4.5],
+  ["--color-text", "--color-warn-soft", 4.5],
+  ["--color-text", "--color-critical-soft", 4.5],
+  ["--color-text", "--color-accent-soft", 4.5],
 ];
 
 afterEach(() => theme.set("system"));
@@ -56,30 +75,46 @@ describe.each(["light", "dark"] as const)("the %s theme", (choice) => {
   });
 });
 
-describe("the two dark blocks in app.css", () => {
-  it("are the same: a visitor who chose dark sees what the system's dark shows", () => {
-    // The media-query block cannot be switched on from a test, but both
-    // blocks are in the stylesheet as text.
+describe("the dark values in app.css", () => {
+  it("are written once, under the theme in force", () => {
+    // Twice, they could drift apart: a visitor who chose dark would not see
+    // what the system's dark shows.
     const rules = [...document.styleSheets].flatMap((sheet) => [...sheet.cssRules]);
     const blocks: string[] = [];
     const visit = (rule: CSSRule) => {
-      if (
-        rule instanceof CSSStyleRule &&
-        rule.selectorText.includes("data-theme") &&
-        rule.style.getPropertyValue("--color-bg")
-      ) {
-        blocks.push(
-          [...rule.style]
-            .filter((name) => name.startsWith("--color-"))
-            .sort()
-            .map((name) => `${name}:${rule.style.getPropertyValue(name).trim()}`)
-            .join(";"),
-        );
+      if (rule instanceof CSSStyleRule && rule.style.getPropertyValue("--color-bg")) {
+        blocks.push(rule.selectorText);
       }
       if ("cssRules" in rule) [...(rule as CSSGroupingRule).cssRules].forEach(visit);
     };
     rules.forEach(visit);
+    // The light values, and the dark ones.
+    expect(blocks.filter((selector) => selector.includes("data-scheme"))).toEqual([
+      ':root[data-scheme="dark"]',
+    ]);
     expect(blocks).toHaveLength(2);
-    expect(blocks[0]).toBe(blocks[1]);
+  });
+
+  it("give every colour token of the light theme a dark value, or keep it on purpose", () => {
+    const colours = (selector: (rule: CSSStyleRule) => boolean) => {
+      const names = new Set<string>();
+      const visit = (rule: CSSRule) => {
+        if (rule instanceof CSSStyleRule && selector(rule)) {
+          for (const name of rule.style) if (name.startsWith("--color-")) names.add(name);
+        }
+        if ("cssRules" in rule) [...(rule as CSSGroupingRule).cssRules].forEach(visit);
+      };
+      [...document.styleSheets].flatMap((sheet) => [...sheet.cssRules]).forEach(visit);
+      return names;
+    };
+    const dark = colours((rule) => rule.selectorText.includes("data-scheme"));
+    const light = colours(
+      (rule) =>
+        !rule.selectorText.includes("data-scheme") &&
+        rule.style.getPropertyValue("--color-bg") !== "",
+    );
+    // The scrim is the same in both themes.
+    const kept = ["--color-scrim"];
+    expect([...light].filter((name) => !dark.has(name) && !kept.includes(name))).toEqual([]);
   });
 });

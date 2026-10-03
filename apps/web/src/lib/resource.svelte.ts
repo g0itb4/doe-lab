@@ -4,15 +4,26 @@ import { describeError, isAbort } from "./errors.ts";
 // draw: loading (nothing yet), ready, and failed. A reload keeps the data it
 // has while it fetches, and after a failure: old data marked as old is more
 // use to an operator than a spinner.
+//
+// A reload that brings back what is already here changes nothing: with
+// `same`, the data on screen stays the object it was, and nothing that was
+// worked out from it is worked out again.
+export type ResourceOptions<T> = {
+  // True when a new answer says what the one on screen says.
+  same?: (shown: T, next: T) => boolean;
+};
+
 export class Resource<T> {
   #data = $state<T>();
   #error = $state<string>();
   #loading = $state(false);
   #fetch: (signal: AbortSignal) => Promise<T>;
   #inFlight: AbortController | undefined;
+  #same: ResourceOptions<T>["same"];
 
-  constructor(fetch: (signal: AbortSignal) => Promise<T>) {
+  constructor(fetch: (signal: AbortSignal) => Promise<T>, options: ResourceOptions<T> = {}) {
     this.#fetch = fetch;
+    this.#same = options.same;
   }
 
   get data(): T | undefined {
@@ -44,7 +55,7 @@ export class Resource<T> {
     try {
       const data = await this.#fetch(controller.signal);
       if (controller.signal.aborted) return;
-      this.#data = data;
+      if (this.#data === undefined || !this.#same?.(this.#data, data)) this.#data = data;
       this.#error = undefined;
     } catch (e) {
       if (controller.signal.aborted || isAbort(e)) return;

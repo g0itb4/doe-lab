@@ -44,6 +44,14 @@ export function stepFrom(at: number | undefined, nowSeconds: number, steps: numb
   return from + steps * STEP_SECONDS;
 }
 
+// How a mark stands against its limits, in words.
+export const LEVEL_WORDS: Record<Level, string> = {
+  ok: "Inside its limits",
+  warn: "Near a limit",
+  critical: "Past a limit",
+  info: "Not solved",
+};
+
 // A voltage this close to a limit, per unit, is a warning; so is a line
 // carrying this share of its rating.
 export const NEAR_PU = 0.01;
@@ -72,6 +80,10 @@ export type LineMark = {
   // The corners of the line as drawn: out of the parent along its lane's
   // height, then across.
   points: [number, number][];
+  // The same corners as the `points` of a polyline, and where the line's
+  // arrow sits: the middle of its last, level stretch.
+  path: string;
+  arrow: { x: number; y: number };
   isSwitch: boolean;
   // Share of the line's rating in use, as a percentage of the config's limit;
   // unset for a line with no rating, or not solved.
@@ -136,17 +148,25 @@ function nodeStatus(
   return { level: "ok", label };
 }
 
-// `sample` is the envelope in force at one site that takes part: every site
-// of an interval shares what binds it.
-export function schematic(
-  nodes: FeederNode[],
-  lines: FeederLine[],
-  sites: Site[],
-  state: GetFeederStateResponse | undefined,
-  sample: Envelope | undefined,
-  point: Point,
-  nominalV: number,
-): Schematic {
+// A feeder placed on the drawing and not yet judged: where every bus and line
+// is, and which sites are at each bus. It depends on the network alone, which
+// does not change while a page is open, so a page works it out once.
+export type Placed = {
+  nodes: Pick<NodeMark, "id" | "name" | "x" | "y" | "leaf" | "sites" | "enrolled">[];
+  lines: (Pick<LineMark, "id" | "name" | "points" | "path" | "arrow" | "isSwitch"> & {
+    ampacityA: number | undefined;
+  })[];
+  // Every line of the network, drawn or not: the busiest of them sets the
+  // weight of the rest.
+  lineIds: string[];
+  // The transformer's bus.
+  rootId: string | undefined;
+  width: number;
+  height: number;
+  lengthM: number;
+};
+
+export function place(nodes: FeederNode[], lines: FeederLine[], sites: Site[]): Placed {
   const placed = layout(
     nodes.map((n) => ({ id: n.id, name: n.name, parentId: n.parentNodeId })),
     lines.map((l) => ({ id: l.id, toNodeId: l.toNodeId, lengthM: l.lengthM })),
@@ -158,44 +178,82 @@ export function schematic(
       { x: MARGIN + n.distanceM * scale, y: MARGIN + (n.lane + 0.5) * LANE },
     ]),
   );
+  const sitesAt = new Map<string, Site[]>();
+  for (const site of sites) sitesAt.set(site.nodeId, [...(sitesAt.get(site.nodeId) ?? []), site]);
+
+  return {
+    nodes: placed.nodes.map((n) => {
+      const here = sitesAt.get(n.id) ?? [];
+      return {
+        id: n.id,
+        name: n.name,
+        ...at.get(n.id)!,
+        leaf: n.leaf,
+        sites: here.map((s) => s.nmi),
+        enrolled: here.some((s) => s.exportCapW > 0 || s.importCapW > 0),
+      };
+    }),
+    lines: lines.flatMap((l) => {
+      const from = at.get(l.fromNodeId);
+      const to = at.get(l.toNodeId);
+      if (!from || !to) return [];
+      // Down or up the parent's side to the far end's height, then across.
+      const points: [number, number][] = [
+        [from.x, from.y],
+        [from.x, to.y],
+        [to.x, to.y],
+      ];
+      return [
+        {
+          id: l.id,
+          name: l.name,
+          points,
+          path: points.map(([x, y]) => `${x},${y}`).join(" "),
+          arrow: { x: (from.x + to.x) / 2, y: to.y },
+          isSwitch: l.isSwitch,
+          ampacityA: l.ampacityA,
+        },
+      ];
+    }),
+    lineIds: lines.map((l) => l.id),
+    rootId: nodes.find((n) => n.parentNodeId === undefined)?.id,
+    width: WIDTH,
+    height: 2 * MARGIN + Math.max(placed.lanes, 1) * LANE,
+    lengthM: placed.lengthM,
+  };
+}
+
+// Judges a placed feeder against the limits, at one operating point.
+// `sample` is the envelope in force at one site that takes part: every site
+// of an interval shares what binds it.
+export function colour(
+  placed: Placed,
+  state: GetFeederStateResponse | undefined,
+  sample: Envelope | undefined,
+  point: Point,
+  nominalV: number,
+): Schematic {
   const nodeState = new Map(state?.nodes.map((s) => [s.nodeId, s]));
   const lineState = new Map(state?.lines.map((s) => [s.lineId, s]));
   const vMin = state?.vMinPu ?? 0;
   const vMax = state?.vMaxPu ?? 0;
   const lineLimit = (state?.lineLimitPct ?? 100) / 100;
 
-  const sitesAt = new Map<string, Site[]>();
-  for (const site of sites) sitesAt.set(site.nodeId, [...(sitesAt.get(site.nodeId) ?? []), site]);
-
   const nodeMarks = placed.nodes.map((n): NodeMark => {
     const vPu = pick(nodeState.get(n.id), point, (p) => `${p}VPu` as const);
-    const here = sitesAt.get(n.id) ?? [];
-    return {
-      id: n.id,
-      name: n.name,
-      ...at.get(n.id)!,
-      leaf: n.leaf,
-      vPu,
-      ...nodeStatus(vPu, vMin, vMax, nominalV),
-      sites: here.map((s) => s.nmi),
-      enrolled: here.some((s) => s.exportCapW > 0 || s.importCapW > 0),
-    };
+    return { ...n, vPu, ...nodeStatus(vPu, vMin, vMax, nominalV) };
   });
 
-  const powers = lines.map((l) =>
-    Math.abs(pick(lineState.get(l.id), point, (p) => `${p}PowerW` as const) ?? 0),
-  );
-  const busiest = Math.max(0, ...powers);
-  const lineMarks = lines.flatMap((l, i): LineMark[] => {
-    const from = at.get(l.fromNodeId);
-    const to = at.get(l.toNodeId);
-    if (!from || !to) return [];
+  const power = (id: string) =>
+    Math.abs(pick(lineState.get(id), point, (p) => `${p}PowerW` as const) ?? 0);
+  const busiest = Math.max(0, ...placed.lineIds.map(power));
+  const lineMarks = placed.lines.map(({ ampacityA, ...l }): LineMark => {
     const s = lineState.get(l.id);
     const current = pick(s, point, (p) => `${p}CurrentA` as const);
     const powerW = pick(s, point, (p) => `${p}PowerW` as const);
     const loadingPct =
-      current && l.ampacityA !== undefined && l.ampacityA > 0
-        ? (100 * Math.max(...current)) / (l.ampacityA * lineLimit)
+      current && ampacityA !== undefined && ampacityA > 0
+        ? (100 * Math.max(...current)) / (ampacityA * lineLimit)
         : undefined;
     let level: Level = "ok";
     if (!s) level = "info";
@@ -204,36 +262,57 @@ export function schematic(
     const flow = powerW === undefined ? "Not solved" : kw(Math.abs(powerW));
     const direction = powerW !== undefined && powerW < 0 ? " towards the transformer" : "";
     const rated = loadingPct === undefined ? "" : `, ${percent(loadingPct)} of its rating`;
-    return [
-      {
-        id: l.id,
-        name: l.name,
-        // Down or up the parent's side to the far end's height, then across.
-        points: [
-          [from.x, from.y],
-          [from.x, to.y],
-          [to.x, to.y],
-        ],
-        isSwitch: l.isSwitch,
-        loadingPct,
-        powerW,
-        weight: busiest > 0 ? powers[i]! / busiest : 0,
-        level,
-        label: `${flow}${direction}${rated}`,
-      },
-    ];
+    return {
+      ...l,
+      loadingPct,
+      powerW,
+      weight: busiest > 0 ? power(l.id) / busiest : 0,
+      level,
+      label: `${flow}${direction}${rated}`,
+    };
   });
 
   return {
     nodes: nodeMarks,
     lines: lineMarks,
-    width: WIDTH,
-    height: 2 * MARGIN + Math.max(placed.lanes, 1) * LANE,
+    width: placed.width,
+    height: placed.height,
     lengthM: placed.lengthM,
     solved: (state?.nodes.length ?? 0) > 0,
-    binding: bindingOf(sample, nodeMarks, lineMarks, nodes),
+    binding: bindingOf(sample, nodeMarks, lineMarks, placed.rootId),
     worst: worstOf(nodeMarks, lineMarks),
   };
+}
+
+// What a solved state is: the run that solved it, the interval, the limits it
+// is judged against and the envelope that says what binds. Two answers with
+// the same key draw the same feeder.
+export function solvedKey(state: GetFeederStateResponse, sample: Envelope | undefined): string {
+  const first = state.nodes[0];
+  return [
+    first?.envelopeRunId,
+    first?.validFrom?.seconds,
+    state.nodes.length,
+    state.lines.length,
+    state.vMinPu,
+    state.vMaxPu,
+    state.lineLimitPct,
+    state.transformerLimitPct,
+    sample?.id,
+  ].join("|");
+}
+
+// The two together: a feeder drawn and judged in one go.
+export function schematic(
+  nodes: FeederNode[],
+  lines: FeederLine[],
+  sites: Site[],
+  state: GetFeederStateResponse | undefined,
+  sample: Envelope | undefined,
+  point: Point,
+  nominalV: number,
+): Schematic {
+  return colour(place(nodes, lines, sites), state, sample, point, nominalV);
 }
 
 // What holds the feeder's export limits down: the element that the envelope
@@ -242,7 +321,7 @@ function bindingOf(
   envelope: Envelope | undefined,
   nodeMarks: NodeMark[],
   lineMarks: LineMark[],
-  nodes: FeederNode[],
+  rootId: string | undefined,
 ): Schematic["binding"] {
   if (
     !envelope ||
@@ -257,7 +336,7 @@ function bindingOf(
   }
   const words = bindingWords(envelope.exportBinding, envelope.exportBindingElement);
   if (envelope.exportBinding === BindingConstraint.TRANSFORMER) {
-    return { words, nodeId: nodes.find((n) => n.parentNodeId === undefined)?.id };
+    return { words, nodeId: rootId };
   }
   if (envelope.exportBinding === BindingConstraint.LINE) {
     return { words, lineId: lineMarks.find((l) => l.name === envelope.exportBindingElement)?.id };

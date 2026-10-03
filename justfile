@@ -214,6 +214,16 @@ build-web:
 e2e: build-web
     cd apps/web && bunx playwright test
 
+# The same build and the same mock, at the demo's speed and the size of the
+# real feeder, on a processor slowed four times: what each page costs while it
+# is open, and the frames the moving dashes get. The numbers are printed and
+# written to apps/web/test-results/perf/results.json. Not a hook: a timing
+# depends on the machine.
+#
+# run-time measurements of the web app
+perf: build-web
+    cd apps/web && bunx playwright test -c playwright.perf.config.ts
+
 # every Go test of the offline tier, including the slow ones, with the race detector
 test-go:
     cd apps/api && go test -race ./...
@@ -310,6 +320,15 @@ demo: nuke up data import
     (cd apps/api && {{dev_env}} go run ./cmd/dersim -rogue 0.04 -flaky 0.04) &
     echo "doe-lab is running: http://localhost:5273 (operator token: dev-operator-token). Ctrl-C stops it."
     wait
+
+# A stack of its own beside the dev one: a database of its own in the dev
+# Postgres, and the API, the engine, the devices and the built web app on
+# ports of their own. It leaves the dev database alone, and takes everything
+# down when it ends. Needs `just up`, `just data` and ffmpeg.
+#
+# record the README's two clips of the UI again: docs/img/tour-*.gif
+tour:
+    scripts/tour.sh
 
 # the production build of the web UI on :4273 (needs the API up)
 preview: build-web

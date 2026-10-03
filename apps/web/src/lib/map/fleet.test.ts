@@ -16,7 +16,17 @@ import {
   SiteStateSchema,
 } from "@doelab/gen/doelab/v1/telemetry_pb.js";
 import { describe, expect, it } from "vitest";
-import { boundsOf, fleetView, frame, kindOf, placeName, regionsOf, siteStatus } from "./fleet.ts";
+import {
+  attention,
+  boundsOf,
+  fleetTotals,
+  fleetView,
+  frame,
+  kindOf,
+  placeName,
+  regionsOf,
+  siteStatus,
+} from "./fleet.ts";
 
 type Init<S> = Parameters<typeof create<S extends Parameters<typeof create>[0] ? S : never>>[1];
 
@@ -266,6 +276,7 @@ describe("the fleet as marks", () => {
       place: "Lidcombe",
       state: "NSW",
       feeders: 2,
+      feederCodes: ["LV10", "SUB-001-LV2"],
       sites: 3,
       reporting: 2,
     });
@@ -415,5 +426,167 @@ describe("what the map frames", () => {
 
   it("has no box around nothing", () => {
     expect(boundsOf([])).toBeUndefined();
+  });
+});
+
+describe("the fleet in a few figures", () => {
+  const quiet = summary("f-a", {
+    enrolledSites: 4,
+    reportingSites: 3,
+    devices: 6,
+    devicesOnline: 5,
+    exportW: 4000,
+    importW: 300,
+    exportLimitW: 6000,
+    controlledExportW: 3000,
+  });
+
+  it("sums what each feeder says of itself", () => {
+    const totals = fleetTotals([
+      quiet,
+      summary("f-b", {
+        enrolledSites: 2,
+        reportingSites: 2,
+        devices: 2,
+        devicesOnline: 2,
+        exportW: 1000,
+        importW: 200,
+        exportLimitW: 4000,
+        controlledExportW: 1000,
+      }),
+    ]);
+    expect(totals).toMatchObject({
+      feeders: 2,
+      enrolledSites: 6,
+      reportingSites: 5,
+      devices: 8,
+      devicesOnline: 7,
+      exportW: 5000,
+      importW: 500,
+      exportLimitW: 10_000,
+      controlledExportW: 4000,
+      sitesOverLimit: 0,
+      feedersOverLimit: 0,
+      openAlerts: 0,
+      feedersWithAlerts: 0,
+      backstops: 0,
+    });
+    expect(totals.use).toMatchObject({ direction: "export", usedW: 4000, limitW: 10_000 });
+    expect(totals.status).toEqual({
+      level: "ok",
+      label: "Normal",
+      detail:
+        "5 of 6 sites reporting on 2 feeders. Exporting 4.0 kW of 10.0 kW allowed: 40 %, 6.0 kW to spare.",
+    });
+  });
+
+  it("names the gravest thing in the fleet: a backstop, then a site over its limit, then an alert", () => {
+    const label = (...feeders: ReturnType<typeof summary>[]) => {
+      const { status } = fleetTotals(feeders);
+      return `${status.level}: ${status.label}`;
+    };
+    const over = summary("f-b", { sitesOverLimit: 2, openAlerts: 2 });
+    const alerting = summary("f-v", { openAlerts: 1 });
+    const held = summary("f-x", { backstopEventId: "b-1", sitesOverLimit: 1 });
+    expect(label(quiet, over, alerting, held)).toBe("critical: Backstop active on 1 feeder");
+    expect(label(held, summary("f-y", { backstopEventId: "b-2" }))).toBe(
+      "critical: Backstop active on 2 feeders",
+    );
+    expect(label(quiet, over, alerting)).toBe("warn: 2 sites over their limit");
+    expect(label(quiet, summary("f-b", { sitesOverLimit: 1 }))).toBe("warn: 1 site over its limit");
+    expect(label(quiet, alerting)).toBe("warn: 1 open alert");
+    expect(label(quiet, summary("f-b", { openAlerts: 3 }))).toBe("warn: 3 open alerts");
+    // And on how many feeders each is.
+    expect(fleetTotals([quiet, over, alerting, held])).toMatchObject({
+      sitesOverLimit: 3,
+      feedersOverLimit: 2,
+      openAlerts: 3,
+      feedersWithAlerts: 2,
+      backstops: 1,
+    });
+  });
+
+  it("says when the engine has not run everywhere, and when there is no fleet", () => {
+    const waiting = fleetTotals([quiet, summary("f-b", { latestRunId: undefined })]);
+    expect(waiting.status).toMatchObject({ level: "info", label: "No envelopes yet" });
+    const none = fleetTotals([]);
+    expect(none).toMatchObject({ feeders: 0, use: undefined });
+    expect(none.status).toEqual({
+      level: "info",
+      label: "No envelopes yet",
+      detail: "0 of 0 sites reporting on 0 feeders. No site has both a reading and a limit.",
+    });
+  });
+});
+
+describe("what needs attention", () => {
+  it("is nothing while every site is inside its limit or merely silent", () => {
+    const calm = state([
+      { siteId: "s-1", envelope: envelope(3000), netExportW: 1500 },
+      { siteId: "s-3", envelope: envelope(2000), reporting: false, netExportW: undefined },
+    ]);
+    expect(attention(fleetView(substations, feeders, sites, calm))).toEqual([]);
+  });
+
+  it("lists a site over its limit, with where it is", () => {
+    const rows = attention(fleetView(substations, feeders, sites, busy));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      kind: "site",
+      key: "NMI00000025",
+      name: "NMI00000025",
+      where: "Lidcombe · SUB-001-LV2",
+      status: { level: "warn", label: "Over limit" },
+      use: { headroomW: -500 },
+    });
+  });
+
+  it("puts a substation under a backstop first, then the gravest site, then the furthest over", () => {
+    const troubled = state(
+      [
+        // At its limit: a warning with a little to spare.
+        { siteId: "s-1", envelope: envelope(3000), netExportW: 2980 },
+        { siteId: "s-2", envelope: envelope(2000), netExportW: 2500, overLimit: true },
+        // Further over than s-2, and no graver.
+        { siteId: "s-3", envelope: envelope(2000), netExportW: 3500, overLimit: true },
+        // Over by less, and critical: an alert says so.
+        {
+          siteId: "s-4",
+          envelope: envelope(4000),
+          netExportW: 4200,
+          overLimit: true,
+          openAlert: alert(AlertKind.CONSTRAINT_BREACH, AlertSeverity.CRITICAL),
+        },
+        // On a feeder that hangs from no substation, and on one that is gone:
+        // offline, with nothing to compare.
+        {
+          siteId: "s-5",
+          reporting: false,
+          netExportW: undefined,
+          openAlert: alert(AlertKind.DEVICE_OFFLINE, AlertSeverity.WARNING),
+        },
+        {
+          siteId: "s-6",
+          reporting: false,
+          netExportW: undefined,
+          openAlert: alert(AlertKind.DEVICE_OFFLINE, AlertSeverity.WARNING),
+        },
+      ],
+      [summary("f-a"), summary("f-b"), summary("f-v", { backstopEventId: "b-1" })],
+    );
+    const rows = attention(fleetView(substations, feeders, sites, troubled));
+    expect(rows.map((r) => `${r.kind} ${r.key}: ${r.status.label}`)).toEqual([
+      "substation SUB-007: Backstop active",
+      "site NMI00000674: Over limit",
+      "site NMI00000033: Over limit",
+      "site NMI00000025: Over limit",
+      "site NMI00000017: At its limit",
+      "site NMI00000900: Offline",
+      "site NMI00000901: Offline",
+    ]);
+    expect(rows[0]).toMatchObject({ name: "Jemena Footscray Zone", where: "Jemena, VIC" });
+    // A site with no substation says its feeder; with neither, nothing.
+    expect(rows[5]!.where).toBe("LOOSE");
+    expect(rows[6]!.where).toBe("");
   });
 });

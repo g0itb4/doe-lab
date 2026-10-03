@@ -8,6 +8,8 @@
   --color-bg: #f4f6f9;
   --color-surface: #ffffff;
   --color-sunken: #e9edf2;
+  /* What floats over the page: a tooltip, a hover card. */
+  --color-raised: #ffffff;
   /* rule is decoration; control is the border of something you can use. */
   --color-rule: #d5dbe3;
   --color-control: #6b7685;
@@ -19,6 +21,14 @@
   --color-warn: #8a5300;
   --color-critical: #b3261e;
   --color-critical-text: #ffffff;
+  /* A tint of each status, behind its own colour as text: a badge, a row. */
+  --color-ok-soft: #e3f3ea;
+  --color-warn-soft: #fbefd8;
+  --color-critical-soft: #fbe6e4;
+  --color-accent-soft: #e2eefa;
+  /* What a shadow is made of: the page's darkest, mostly see-through. */
+  --color-shade: #0b0f1414;
+  --color-shade-deep: #0b0f1433;
   /* What dims the page behind a dialog; the same in both themes. */
   --color-scrim: #0b0f1499;
   /* Chart series: told apart by dash pattern as well, never by hue alone. */
@@ -31,6 +41,38 @@
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* The type scale: six sizes, each with its line. A figure is the largest
+     thing on a page, a page's title next, and nothing is smaller than micro. */
+  --text-micro: 0.6875rem;
+  --text-micro--line-height: 1rem;
+  --text-label: 0.75rem;
+  --text-label--line-height: 1rem;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.25rem;
+  --text-title: 1rem;
+  --text-title--line-height: 1.5rem;
+  --text-page: 1.375rem;
+  --text-page--line-height: 1.75rem;
+  --text-figure: 1.75rem;
+  --text-figure--line-height: 2rem;
+
+  /* Shape and depth. A card lies on the page; what is raised floats over it. */
+  --radius-control: 0.375rem;
+  --radius-card: 0.625rem;
+  --shadow-card: 0 1px 2px var(--color-shade);
+  --shadow-raised: 0 8px 24px var(--color-shade-deep), 0 1px 3px var(--color-shade);
+
+  /* Rhythm: the padding of a card, the gap between two, the gap between two
+     sections of a page. */
+  --spacing-card: 0.875rem;
+  --spacing-gutter: 0.75rem;
+  --spacing-section: 1.5rem;
+
+  /* Motion is short, and only ever of opacity, transform or background. */
+  --duration-fast: 80ms;
+  --duration-base: 160ms;
+  --ease-out: cubic-bezier(0.2, 0, 0, 1);
 
   --animate-pulse-soft: pulse-soft 1.6s ease-in-out infinite;
   @keyframes pulse-soft {
@@ -45,37 +87,15 @@
     color-scheme: light;
   }
 
-  /* The dark values, twice: once for a visitor whose system asks for dark and
-     who has not chosen, once for a visitor who chose dark. CSS has no way to
-     say that in one rule. Keep the two blocks identical. */
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      color-scheme: dark;
-      --color-bg: #0f141a;
-      --color-surface: #171d25;
-      --color-sunken: #1f2731;
-      --color-rule: #2c3643;
-      --color-control: #8593a5;
-      --color-text: #e8edf3;
-      --color-muted: #a9b4c2;
-      --color-accent: #6cb2ff;
-      --color-accent-text: #0f141a;
-      --color-ok: #5fd39a;
-      --color-warn: #f2b84b;
-      --color-critical: #ff8a80;
-      --color-critical-text: #0f141a;
-      --color-series-1: #6cb2ff;
-      --color-series-2: #ff9d5c;
-      --color-series-3: #5fd39a;
-      --color-series-4: #d6a2f5;
-      --color-series-ref: #a9b4c2;
-    }
-  }
-  :root[data-theme="dark"] {
+  /* The dark values, once. `data-scheme` is the theme in force: the
+     visitor's choice, or else the system's. The inline script of app.html
+     sets it before the first paint, and theme.svelte.ts keeps it in step. */
+  :root[data-scheme="dark"] {
     color-scheme: dark;
     --color-bg: #0f141a;
     --color-surface: #171d25;
     --color-sunken: #1f2731;
+    --color-raised: #222b37;
     --color-rule: #2c3643;
     --color-control: #8593a5;
     --color-text: #e8edf3;
@@ -86,6 +106,14 @@
     --color-warn: #f2b84b;
     --color-critical: #ff8a80;
     --color-critical-text: #0f141a;
+    --color-ok-soft: #14301f;
+    --color-warn-soft: #33270f;
+    --color-critical-soft: #3a1c1a;
+    --color-accent-soft: #16283d;
+    /* On a dark page a shadow is nearly lost; the lighter surface and its
+       border do the lifting. */
+    --color-shade: #00000040;
+    --color-shade-deep: #00000080;
     --color-series-1: #6cb2ff;
     --color-series-2: #ff9d5c;
     --color-series-3: #5fd39a;
@@ -96,8 +124,17 @@
   html {
     background-color: var(--color-bg);
   }
+  /* The header stays in view from a tablet's width up: what is scrolled to,
+     or focused, must not end up under it. */
+  @media (min-width: 40rem) {
+    html {
+      scroll-padding-top: 4.5rem;
+    }
+  }
   body {
     @apply bg-bg text-text font-sans antialiased;
+    /* Numbers line up, wherever they are. */
+    font-variant-numeric: tabular-nums;
     /* The page body never scrolls sideways; a wide table scrolls inside its
        own container. */
     overflow-x: hidden;
@@ -130,10 +167,10 @@
   /* Controls share a shape, and are at least 24 px in both directions (most
      are 36). */
   .btn {
-    @apply border-control bg-surface text-text inline-flex min-h-9 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium;
+    @apply border-control bg-surface text-text rounded-control text-body inline-flex min-h-9 cursor-pointer items-center justify-center gap-2 border px-3 py-1.5 font-medium;
     transition:
-      background-color 80ms,
-      transform 80ms;
+      background-color var(--duration-fast),
+      transform var(--duration-fast);
   }
   .btn:hover:not(:disabled) {
     @apply bg-sunken;
@@ -157,13 +194,45 @@
     @apply bg-critical opacity-90;
   }
   .field {
-    @apply border-control bg-surface text-text min-h-9 w-full rounded-md border px-3 py-1.5 text-sm;
+    @apply border-control bg-surface text-text rounded-control text-body min-h-9 w-full border px-3 py-1.5;
   }
   .field[aria-invalid="true"] {
     @apply border-critical;
   }
   .card {
-    @apply border-rule bg-surface rounded-lg border;
+    @apply border-rule bg-surface rounded-card shadow-card border;
+  }
+  /* What floats over the page, and says so with a shadow. */
+  .raised {
+    @apply border-rule bg-raised text-text rounded-card shadow-raised border;
+  }
+  /* Headings: a page's title, a section's, and that of a panel inside one. */
+  .h-page {
+    @apply text-page font-bold tracking-tight;
+  }
+  .h-section {
+    @apply text-title font-semibold;
+  }
+  .h-panel {
+    @apply text-body font-semibold;
+  }
+  /* A table of data: a head that stays while the rows scroll under it, and a
+     row that answers the pointer. */
+  .data-table {
+    @apply text-body w-full;
+  }
+  .data-table thead th {
+    @apply bg-surface border-rule text-muted text-label sticky top-0 z-10 border-b px-3 py-2 text-left font-semibold;
+  }
+  .data-table tbody tr {
+    @apply border-rule border-b last:border-b-0;
+    transition: background-color var(--duration-fast);
+  }
+  .data-table tbody tr:hover {
+    @apply bg-sunken;
+  }
+  .data-table tbody :is(td, th) {
+    @apply px-3 py-1.5;
   }
   .link {
     @apply text-accent underline underline-offset-2;

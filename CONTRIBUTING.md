@@ -17,6 +17,8 @@ just lint         # every linter
 just cover-go     # Go unit tier with -race, then the per-package coverage gate
 just cover-web    # web unit and component tests in headless Chromium, with thresholds
 just e2e          # the built web app in Playwright: smoke, keyboard, axe (WCAG 2.2 AA)
+just perf         # what each page costs while it is open, at the demo's speed and size
+just tour         # record the README's tour again, on a stack and database of its own
 just demo         # the whole stack on a fresh database, until Ctrl-C
 just dev          # the database, the API and the web UI, in watch mode
 just data         # download the raw datasets and verify their checksums
@@ -145,8 +147,37 @@ server at run time. It reaches the API at `/rpc`.
   feeder's zone.
 - The form rules of `/config` mirror the protovalidate rules, and
   `config-rules.test.ts` fails when they differ. Change the `.proto` first.
+- A page asks for nothing by feeder time until `clock.settled`, and asks
+  again through `poll`, which takes its pace from the clock at each round.
+  A reload that brings back what is on screen changes nothing: give the
+  `Resource` a `same`. The e2e tests at the demo's speed count the calls and
+  watch for mutations.
+- What a mark says to the pointer is a card (`use:hint`), never a `title`:
+  the browser's own tooltip is slow, cannot be styled and never comes on a
+  phone. The card is an aid for the eye; the words must also be where a
+  screen reader finds them.
+- A chart's range, pinned instant and hidden series, a drawing's zoom and a
+  table's order live in the address like every other state of a view. A
+  gesture that makes many values a second (a wheel, a drag) tells the
+  address the last one only.
+- Motion is of opacity, transform or background, for 160 ms at the most
+  (`--duration-fast`, `--duration-base`), and never on data or on a readout.
+  Motion that runs on has a sheet of its own, so that painting it leaves the
+  rest alone (`FeederSchematic.svelte`).
+- `just perf` measures what each page costs while it is open. It is not a
+  hook: a timing depends on the machine. Run it before and after a change
+  to a page's data flow, and put the numbers in `docs/ux-audit.md`.
 - `docs/ux-audit.md` maps each UX rule to the test that checks it. A new
   rule needs a check; a changed page needs `just e2e`.
+
+The README's tour (`docs/img/tour-fleet.gif` and `docs/img/tour-network.gif`,
+two clips of one take) is recorded by `just tour`: a stack
+and a database of its own beside the dev one, the pointer moved by
+`tour/human-path.ts`, a model of a hand that is tested like the library.
+Record it again when a page it shows has changed to the eye, and not
+otherwise: every take is two more files in the repo's history. The two clips
+are the one exception to the 500 kB of the large-file hook (`prek.toml`); the
+script refuses a clip above a limit of its own.
 
 ## Data and licences
 

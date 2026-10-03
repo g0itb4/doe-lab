@@ -23,8 +23,9 @@
   import { bindingWords, dayAndTime, exportSentence, kw } from "$lib/format.ts";
   import { useOf } from "$lib/limit.ts";
   import { queryParam, withQuery } from "$lib/query.ts";
+  import { poll } from "$lib/poll.ts";
   import { Resource } from "$lib/resource.svelte.ts";
-  import { rangeKey, windowOf, zoomOf } from "$lib/series.ts";
+  import { hiddenOf, rangeKey, windowOf, withHidden, zoomOf } from "$lib/series.ts";
   import { envelopeAt, siteChart } from "$lib/site.ts";
   import { enrolled, equipment, phaseName } from "$lib/sites.ts";
   import { date, timestamp } from "$lib/time.ts";
@@ -65,32 +66,28 @@
 
   $effect(() => {
     const s = site?.data;
-    if (!s || s === "missing") return;
+    // Not before the clock has settled: the window is in feeder time.
+    if (!s || s === "missing" || !clock.settled) return;
     const key = range;
+    // The devices of a site do not change while its page is open: asked once.
+    let devices: Device[] | undefined;
     const loaded = new Resource<Detail>(async (signal) => {
       const w = windowOf(key, clock.nowSeconds());
       const [from, to] = [timestamp(w.from), timestamp(w.to)];
-      const [envelopes, series, alerts, devices] = await Promise.all([
+      const [envelopes, series, alerts, found] = await Promise.all([
         api.envelopes.listEnvelopes({ siteId: s.id, from, to, pageSize: 2000 }, { signal }),
         api.telemetry.getSiteSeries({ siteId: s.id, from, to }, { signal }),
         api.alerts.listAlerts({ feederId: s.feederId, siteId: s.id, pageSize: 100 }, { signal }),
-        api.devices.listDevices({ siteId: s.id, pageSize: 50 }, { signal }),
+        devices ?? api.devices.listDevices({ siteId: s.id, pageSize: 50 }, { signal }),
       ]);
-      return {
-        envelopes: envelopes.envelopes,
-        series,
-        alerts: alerts.alerts,
-        devices: devices.devices,
-      };
+      devices = Array.isArray(found) ? found : found.devices;
+      return { envelopes: envelopes.envelopes, series, alerts: alerts.alerts, devices };
     });
     detail = loaded;
     void loaded.load();
-    const every = Math.max(5000, 300_000 / clock.speed);
-    const timer = setInterval(() => {
-      if (document.visibilityState !== "hidden") void loaded.load();
-    }, every);
+    const stopPolling = poll(() => void loaded.load(), 300_000);
     return () => {
-      clearInterval(timer);
+      stopPolling();
       loaded.cancel();
     };
   });
@@ -105,12 +102,49 @@
   );
   const spans = $derived(detail?.data ? breachSpans(detail.data.alerts, nowSeconds) : []);
   const alerts = $derived(detail?.data ? sortAlerts(detail.data.alerts) : []);
+  // The breach that the chart and the list point at together: the pointer on
+  // its mark lights its row, and the pointer or the focus on its row makes
+  // its mark heavier.
+  let lit = $state<string>();
   const latest = $derived(detail?.data?.series.power.at(-1));
   // The last reading against the limit in force now.
   const use = $derived(useOf(latest?.avgNetExportW, current?.exportLimitW, current?.importLimitW));
   const active = $derived(
     (detail?.data?.envelopes ?? []).filter((e) => e.supersededAt === undefined),
   );
+
+  // The series a reader has hidden, in the address like the range and the zoom.
+  const hide = $derived(queryParam(page.url, "hide"));
+  function setHidden(hidden: number[]) {
+    void goto(withQuery(page.url, { hide: withHidden(hide, "site", hidden) }), {
+      replaceState: true,
+      keepFocus: true,
+      noScroll: true,
+    });
+  }
+
+  // An instant pinned on the charts, in the address: its values stay in the
+  // legends, and a link leads to the network as it was then.
+  const pin = $derived.by(() => {
+    const value = Number(queryParam(page.url, "pin"));
+    return Number.isInteger(value) && value > 0 ? value : undefined;
+  });
+  function setPin(time: number | undefined) {
+    void goto(withQuery(page.url, { pin: time === undefined ? null : String(time) }), {
+      replaceState: true,
+      keepFocus: true,
+      noScroll: true,
+    });
+  }
+  const networkAt = (time: number) => ({
+    href: `/network?feeder=${feeder.data?.code ?? ""}&at=${Math.floor(time / 1800) * 1800}`,
+    label: "See the network then",
+  });
+  // Two hours either side of now, on whole minutes.
+  function aroundNow() {
+    const minute = Math.floor(clock.nowSeconds() / 60) * 60;
+    setZoom([minute - 7200, minute + 7200]);
+  }
 
   function setZoom(next: [number, number] | undefined) {
     const changes = next
@@ -142,10 +176,10 @@
   <p class="text-sm"><a class="link" href="/sites">All sites</a></p>
 
   {#if site?.error && !site.data}
-    <h1 class="text-xl font-bold">Site {nmi}</h1>
+    <h1 class="h-page">Site {nmi}</h1>
     <ErrorState message={site.error} onretry={() => site?.load()} />
   {:else if site?.data === "missing"}
-    <h1 class="text-xl font-bold">Site {nmi}</h1>
+    <h1 class="h-page">Site {nmi}</h1>
     <EmptyState title="There is no site with this NMI">
       "{nmi}" is not a connection point of this feeder. Check the NMI, or
       <a class="link" href="/sites">find the site in the list</a>.
@@ -153,7 +187,7 @@
   {:else if site?.data}
     {@const s = site.data}
     <div>
-      <h1 class="text-xl font-bold">Site {s.nmi}</h1>
+      <h1 class="h-page">Site {s.nmi}</h1>
       <p class="text-muted text-sm">
         {s.name}, phase {phaseName(s.phase)}. {equipment(s)}.
         {enrolled(s) ? "Takes part in envelopes." : "Passive: it is forecast, not controlled."}
@@ -230,11 +264,12 @@
 
     <section aria-labelledby="chart-heading" class="space-y-3">
       <div class="flex flex-wrap items-center justify-between gap-2">
-        <h2 id="chart-heading" class="font-semibold">The site through time</h2>
+        <h2 id="chart-heading" class="h-section">The site through time</h2>
         <div class="flex flex-wrap items-center gap-2">
           {#if zoom}
             <button type="button" class="btn" onclick={() => setZoom(undefined)}>Reset zoom</button>
           {/if}
+          <button type="button" class="btn" onclick={aroundNow}>Now ± 2 h</button>
           <RangePicker current={range} />
         </div>
       </div>
@@ -251,13 +286,20 @@
             : ''}"
           x={chart.x}
           series={chart.series}
+          hidden={hiddenOf(hide, "site")}
+          onhide={setHidden}
           format={(v) => kw(v)}
           axisFormat={(v) => kw(v, 0)}
           {zone}
           {zoom}
           onzoom={setZoom}
           now={nowSeconds}
+          {pin}
+          onpin={setPin}
+          pinHref={networkAt}
           {spans}
+          emphasis={lit}
+          onspan={(id) => (lit = id)}
           height={280}
         />
       {:else if chart}
@@ -272,7 +314,7 @@
 
     {#if detail?.data}
       <section aria-labelledby="alerts-heading">
-        <h2 id="alerts-heading" class="mb-2 font-semibold">Alerts at this site</h2>
+        <h2 id="alerts-heading" class="h-section mb-2">Alerts at this site</h2>
         {#if alerts.length === 0}
           <EmptyState title="No alerts"
             >This site has stayed inside its limits and its devices have kept reporting.</EmptyState
@@ -280,7 +322,16 @@
         {:else}
           <ul class="card divide-rule divide-y">
             {#each alerts as alert (alert.id)}
-              <li class="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
+              <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+              <li
+                class="alert flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm"
+                data-lit={lit === alert.id ? "" : undefined}
+                tabindex="0"
+                onmouseenter={() => (lit = alert.id)}
+                onmouseleave={() => (lit = undefined)}
+                onfocus={() => (lit = alert.id)}
+                onblur={() => (lit = undefined)}
+              >
                 <StatusBadge
                   level={severityLevel(alert.severity)}
                   label={severityWord(alert.severity)}
@@ -334,7 +385,7 @@
       </details>
 
       <section aria-labelledby="devices-heading">
-        <h2 id="devices-heading" class="mb-2 font-semibold">Devices</h2>
+        <h2 id="devices-heading" class="h-section mb-2">Devices</h2>
         {#if detail.data.devices.length === 0}
           <EmptyState title="No devices"
             >Nothing at this site reports telemetry or takes an envelope.</EmptyState
@@ -353,7 +404,16 @@
       </section>
     {/if}
   {:else}
-    <h1 class="text-xl font-bold">Site {nmi}</h1>
+    <h1 class="h-page">Site {nmi}</h1>
     <Skeleton label="the site" class="h-40 w-full" />
   {/if}
 </div>
+
+<style>
+  /* The alert whose mark on the chart is under the pointer, or which points
+     at its mark: a bar at its edge as well as a tint. */
+  .alert[data-lit] {
+    background: var(--color-critical-soft);
+    box-shadow: inset 3px 0 0 var(--color-critical);
+  }
+</style>

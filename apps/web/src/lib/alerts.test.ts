@@ -71,8 +71,8 @@ describe("alerts", () => {
       900,
     );
     expect(spans).toEqual([
-      { from: 100, to: 200, label: "breach" },
-      { from: 500, to: 900, label: "breach" },
+      { id: "resolved", from: 100, to: 200, label: "breach" },
+      { id: "open", from: 500, to: 900, label: "breach" },
     ]);
   });
 });

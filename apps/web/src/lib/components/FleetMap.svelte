@@ -83,6 +83,7 @@
   import "leaflet/dist/leaflet.css";
   import L from "leaflet";
   import { onMount } from "svelte";
+  import { type Card, hint } from "$lib/hovercard.svelte.ts";
   import type { Bounds, FleetView } from "$lib/map/fleet.ts";
   import { KIND_WORDS } from "$lib/map/fleet.ts";
   import { theme } from "$lib/theme.svelte.ts";
@@ -112,16 +113,16 @@
   const siteLayer = L.layerGroup();
   // Each mark by its key, with the HTML it was last drawn with: a poll that
   // changes nothing touches nothing, so the keyboard focus stays where it is.
-  type Mark = { marker: L.Marker; html: string; label: string };
+  // And what its card says, and the element the card is hung on.
+  type Mark = {
+    marker: L.Marker;
+    html: string;
+    label: string;
+    card: Card;
+    hinted?: { on: Element; action: ReturnType<typeof hint> };
+  };
   const drawn = new Map<string, Mark>();
   const spokes = new Map<string, L.Polyline>();
-
-  function dark(): boolean {
-    return (
-      theme.choice === "dark" ||
-      (theme.choice === "system" && matchMedia("(prefers-color-scheme: dark)").matches)
-    );
-  }
 
   onMount(() => {
     const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -151,11 +152,7 @@
   });
 
   // The streets, and whether the theme asks for them dark.
-  let night = $state(false);
-  $effect(() => {
-    void theme.version;
-    night = dark();
-  });
+  const night = $derived(theme.scheme === "dark");
   $effect(() => {
     if (!map) return;
     const streets = L.tileLayer(tiles.url, { attribution: tiles.attribution, maxZoom: 19 });
@@ -174,10 +171,12 @@
     html: string,
     size: number,
     label: string,
+    card: Card,
     focusable: boolean,
     onclick: () => void,
   ) {
     const had = drawn.get(key);
+    if (had) had.card = card;
     if (had?.html === html) {
       // The same picture can have a new name: "Loading" and "Not reporting"
       // look alike.
@@ -200,8 +199,8 @@
       name(had);
       return;
     }
-    const marker = L.marker(at, { icon, keyboard: focusable, title: label }).on("click", onclick);
-    const mark = { marker, html, label };
+    const marker = L.marker(at, { icon, keyboard: focusable }).on("click", onclick);
+    const mark: Mark = { marker, html, label, card };
     // A mark has an element only while its layer is on the map: the sites
     // come and go with the zoom.
     marker.on("add", () => name(mark));
@@ -216,7 +215,12 @@
     // are pictures with a name: a name on a plain element is not allowed.
     if (el && !el.hasAttribute("role")) el.setAttribute("role", "img");
     el?.setAttribute("aria-label", mark.label);
-    el?.setAttribute("title", mark.label);
+    // And what it says to the pointer, or to the keyboard on a button: a card,
+    // hung once on each element a mark has.
+    if (el && mark.hinted?.on !== el) {
+      mark.hinted?.action.destroy();
+      mark.hinted = { on: el, action: hint(el, () => mark.card) };
+    }
   }
 
   // The marks, kept in step with the view.
@@ -234,6 +238,7 @@
         substationHtml(s.place, s.status.level, s.fill, selected === s.code),
         36,
         `${s.name}: ${s.status.label}`,
+        { title: s.name, lines: [s.status.label, s.status.detail], level: s.status.level },
         true,
         () => onselect("substation", s.code),
       );
@@ -250,6 +255,11 @@
         siteHtml(s.kind, s.status.level, s.fill, selected === s.nmi),
         32,
         `${s.nmi}, ${KIND_WORDS[s.kind]}: ${s.status.label}`,
+        {
+          title: `${s.nmi}, ${KIND_WORDS[s.kind]}`,
+          lines: [s.status.label, s.status.detail, ...(s.use ? [s.use.text] : [])],
+          level: s.status.level,
+        },
         false,
         () => onselect("site", s.nmi),
       );
@@ -267,8 +277,9 @@
         );
       }
     }
-    for (const [key, { marker }] of drawn) {
+    for (const [key, { marker, hinted }] of drawn) {
       if (keys.has(key)) continue;
+      hinted?.action.destroy();
       marker.remove();
       drawn.delete(key);
       spokes.get(key)?.remove();
@@ -279,7 +290,7 @@
 
 <div
   bind:this={el}
-  class="fleet-map border-rule h-[30rem] w-full rounded-lg border"
+  class="fleet-map border-rule rounded-card h-80 w-full border sm:h-[30rem]"
   data-night={night ? "" : undefined}
   role="region"
   aria-label="Map of the fleet"

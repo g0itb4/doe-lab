@@ -28,8 +28,13 @@ const test = base.extend<{ api: Mock; errors: string[] }>({
 
 // The pages, and the heading and the content that say each has loaded.
 const PAGES = [
-  { path: "/", h1: "Feeder overview", nav: "Overview", ready: "Export: allowed and measured" },
-  { path: "/map", h1: "Map", nav: "Map", ready: "Ausgrid Lidcombe Zone" },
+  { path: "/", h1: "Fleet", nav: "Fleet", ready: "Ausgrid Lidcombe Zone" },
+  {
+    path: "/feeder",
+    h1: "Feeder overview",
+    nav: "Feeder",
+    ready: "Export: allowed and measured",
+  },
   { path: "/network", h1: "Network: LV10", nav: "Network", ready: "Closest to a limit" },
   { path: "/sites", h1: "Sites", nav: "Sites", ready: NMI.enrolled },
   {
@@ -42,16 +47,24 @@ const PAGES = [
   { path: "/config", h1: "Envelope config", nav: "Config", ready: "Version history" },
 ];
 
+// A chart is drawn once its library has loaded and the reader has come near
+// it. On a phone the feeder's first chart is below the fold, and how far
+// depends on the fonts the machine has: go to it as a reader would, and back.
+async function chartDrawn(page: Page) {
+  const figure = page.locator("figure").first();
+  await figure.scrollIntoViewIfNeeded();
+  await expect(figure.locator("canvas")).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
+}
+
 async function open(page: Page, path: string, ready: string) {
   await page.goto(path);
   await expect(page.getByText(ready).first()).toBeVisible();
-  // The charts are drawn after their library has loaded.
-  if (path === "/" || path.startsWith("/sites/"))
-    await expect(page.locator("canvas").first()).toBeVisible();
+  if (path.startsWith("/feeder") || path.startsWith("/sites/")) await chartDrawn(page);
   // The network is drawn once its state has arrived.
   if (path.startsWith("/network")) await expect(page.getByText("Constrained")).toBeVisible();
-  // The map is drawn after its library has loaded.
-  if (path.startsWith("/map"))
+  // The map of the fleet's page is drawn after its library has loaded.
+  if (path === "/" || path.startsWith("/?"))
     await expect(page.getByRole("button", { name: /^Ausgrid Lidcombe Zone:/ })).toBeVisible();
 }
 
@@ -114,17 +127,24 @@ for (const p of PAGES) {
   });
 }
 
-test("the overview states the status in words, and the figures, before any chart", async ({
+test("the feeder's overview states the status in words, and the figures, before any chart", async ({
   page,
   api,
 }) => {
   void api;
-  await open(page, "/", "Export: allowed and measured");
+  await open(page, "/feeder", "Export: allowed and measured");
   await expect(
     page.getByText("Constrained: high voltage at XDLAB000022", { exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: "1 open alert" })).toBeVisible();
   const figures = page.locator("dl").first();
+  // Beside what every site exports, its shape over the range on show, with
+  // the same in words.
+  const all = figures.locator(".card", { hasText: "Export, all sites" });
+  await expect(all.locator(".spark path")).toHaveAttribute("d", /^M0 /);
+  await expect(all.locator(".spark .sr-only")).toHaveText(
+    /^Measured export: (Up|Down|Steady|Now) /,
+  );
   // What the sites with a limit export, against the sum of those limits, as
   // a number and a bar; and beside it what every site exports.
   const controlled = figures.locator(".card", { hasText: "Controlled export" });
@@ -154,13 +174,13 @@ test("a first visit gets the intro panel, and dismissing it is remembered", asyn
   await page.getByRole("button", { name: "Got it" }).click();
   await expect(page.getByText("What you are looking at.")).toBeHidden();
   await page.reload();
-  await expect(page.getByText("Export: allowed and measured")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Needs attention" })).toBeVisible();
   await expect(page.getByText("What you are looking at.")).toBeHidden();
 });
 
 test("each chart has a summary and a table with the same series", async ({ page, api }) => {
   void api;
-  await open(page, "/", "Export: allowed and measured");
+  await open(page, "/feeder", "Export: allowed and measured");
   const figure = page.locator("figure", { hasText: "Customer voltage" });
   await expect(figure.locator("figcaption p")).toContainText("the limit is 253.0 V");
   await figure.getByRole("button", { name: "View as table" }).click();
@@ -178,9 +198,179 @@ test("each chart has a summary and a table with the same series", async ({ page,
   await expect(table.locator("tbody tr").first().locator("td").nth(4)).toHaveText("253.0 V");
 });
 
+test("a chart floats a readout beside the pointer, and the charts beside it follow", async ({
+  page,
+  api,
+}) => {
+  void api;
+  await open(page, "/feeder", "Export: allowed and measured");
+  const first = page.locator("figure", { hasText: "Export: allowed and measured" });
+  const second = page.locator("figure", { hasText: "Customer voltage" });
+  await second.scrollIntoViewIfNeeded();
+  await expect(second.locator("canvas")).toBeVisible();
+  await first.scrollIntoViewIfNeeded();
+  const plot = (await first.locator(".u-over").boundingBox())!;
+  await page.mouse.move(plot.x + plot.width * 0.3, plot.y + plot.height * 0.5);
+  // The time, and each series with its value and its unit.
+  const tip = first.locator(".tip");
+  await expect(tip).toBeVisible();
+  await expect(tip).toContainText(/^\w{3} \d{1,2} \w{3}, \d\d:\d\d/);
+  await expect(tip).toContainText(/Allowed by the envelopes\s*\d+\.\d\u00a0kW/);
+  // It stays inside its chart, at either width.
+  const box = (await tip.boundingBox())!;
+  const frame = (await first.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(frame.x);
+  expect(box.x + box.width).toBeLessThanOrEqual(frame.x + frame.width);
+  // The chart beside it shares the cursor: its legend has the values, and
+  // nothing floats there.
+  await expect(second.getByRole("button", { name: /Upper limit\s+253\.0\sV/ })).toBeVisible();
+  await expect(second.locator(".tip")).toHaveCount(0);
+  // When the pointer leaves, the readout goes.
+  await page.mouse.move(2, 2);
+  await expect(tip).toHaveCount(0);
+});
+
+test("a chart's cursor moves from the keyboard, and each point is said in words", async ({
+  page,
+  api,
+}) => {
+  void api;
+  await open(page, "/feeder", "Export: allowed and measured");
+  const slider = page.getByRole("slider", { name: /^Export: allowed and measured: a cursor/ });
+  await slider.focus();
+  await expect(slider).toHaveAttribute("aria-valuetext", /No point chosen\.$/);
+  await page.keyboard.press("ArrowRight");
+  await expect(slider).toHaveAttribute(
+    "aria-valuetext",
+    /^\w{3} \d{1,2} \w{3}, \d\d:\d\d\. Allowed by the envelopes \d+\.\d\u00a0kW, /,
+  );
+  const first = await slider.getAttribute("aria-valuetext");
+  await page.keyboard.press("ArrowRight");
+  await expect(slider).not.toHaveAttribute("aria-valuetext", first!);
+  // The same readout a pointer gets, for a sighted reader at the keyboard.
+  await expect(page.locator("figure .tip")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("figure .tip")).toHaveCount(0);
+});
+
+test("a series hidden from a chart's legend is hidden in the address too", async ({
+  page,
+  api,
+}) => {
+  void api;
+  await open(page, "/feeder", "Export: allowed and measured");
+  const figure = page.locator("figure", { hasText: "Export: allowed and measured" });
+  const fixed = figure.getByRole("button", { name: /^Allowed by a fixed limit/ });
+  await expect(fixed).toHaveAttribute("aria-pressed", "true");
+  await fixed.click();
+  await expect(page).toHaveURL(/[?&]hide=export\.1/);
+  await expect(fixed).toHaveAttribute("aria-pressed", "false");
+  // Shared as a link: the same view. And the table still has the series.
+  await page.goto("/feeder?hide=export.1,voltage.0");
+  await expect(fixed).toHaveAttribute("aria-pressed", "false");
+  await expect(
+    page
+      .locator("figure", { hasText: "Customer voltage" })
+      .getByRole("button", { name: /^Highest, at the envelopes/ }),
+  ).toHaveAttribute("aria-pressed", "false");
+  await figure.getByRole("button", { name: "View as table" }).click();
+  await expect(
+    figure.getByRole("columnheader", { name: "Allowed by a fixed limit" }),
+  ).toBeVisible();
+});
+
+test("a chart zooms with Ctrl and the wheel, and around now, and the range is in the address", async ({
+  page,
+  api,
+}) => {
+  void api;
+  await open(page, "/feeder", "Export: allowed and measured");
+  const first = page.locator("figure", { hasText: "Export: allowed and measured" });
+  await first.scrollIntoViewIfNeeded();
+  const plot = (await first.locator(".u-over").boundingBox())!;
+  await page.mouse.move(plot.x + plot.width / 2, plot.y + plot.height / 2);
+  // A plain wheel is the page's: it scrolls, and the chart keeps its range.
+  await page.mouse.wheel(0, 40);
+  await page.waitForTimeout(350);
+  await expect(page).not.toHaveURL(/from=/);
+  await page.mouse.wheel(0, -40);
+
+  await page.keyboard.down("Control");
+  await page.mouse.wheel(0, -300);
+  await page.mouse.wheel(0, -300);
+  await page.keyboard.up("Control");
+  // Told once, when the wheel has stopped.
+  await expect(page).toHaveURL(/[?&]from=\d+&to=\d+/);
+  const range = () => {
+    const url = new URL(page.url());
+    return Number(url.searchParams.get("to")) - Number(url.searchParams.get("from"));
+  };
+  expect(range()).toBeLessThan(12 * 3600);
+  await page.getByRole("button", { name: "Reset zoom" }).click();
+  await expect(page).not.toHaveURL(/from=/);
+
+  // Two hours either side of now, in one press.
+  await page.getByRole("button", { name: "Now ± 2 h" }).click();
+  await expect(page).toHaveURL(/[?&]from=\d+&to=\d+/);
+  expect(range()).toBe(4 * 3600);
+  // And from the keyboard: out to everything.
+  await page.getByRole("slider", { name: /^Export: allowed and measured/ }).focus();
+  await page.keyboard.press("0");
+  await expect(page).not.toHaveURL(/from=/);
+});
+
+test("a click on a chart pins an instant, in the address, with the way to the network then", async ({
+  page,
+  api,
+}) => {
+  void api;
+  await open(page, "/feeder", "Export: allowed and measured");
+  const first = page.locator("figure", { hasText: "Export: allowed and measured" });
+  await first.scrollIntoViewIfNeeded();
+  const plot = (await first.locator(".u-over").boundingBox())!;
+  await page.mouse.click(plot.x + plot.width * 0.3, plot.y + plot.height / 2);
+  await expect(page).toHaveURL(/[?&]pin=\d+/);
+  const pin = Number(new URL(page.url()).searchParams.get("pin"));
+  await expect(first.getByText(/^Pinned at \w{3} \d{1,2} \w{3}, \d\d:\d\d/)).toBeVisible();
+  await expect(first.getByRole("link", { name: "See the network then" })).toHaveAttribute(
+    "href",
+    `/network?feeder=LV10&at=${Math.floor(pin / 1800) * 1800}`,
+  );
+  // Shared as a link: the same instant, with its values in the legend and no
+  // pointer on the chart.
+  await page.goto(`/feeder?pin=${pin}`);
+  await chartDrawn(page);
+  await expect(
+    first.getByRole("button", { name: /^Allowed by the envelopes\s+\d+\.\d\skW/ }),
+  ).toBeVisible();
+  await first.getByRole("button", { name: "Unpin" }).click();
+  await expect(page).not.toHaveURL(/pin=/);
+});
+
+test("a breach on a site's chart and its alert in the list point at each other", async ({
+  page,
+  api,
+}) => {
+  void api;
+  await open(page, `/sites/${NMI.breaching}`, "Envelope, forecast and telemetry");
+  const row = page.locator("li.alert", { hasText: "Exporting 2.7 kW against a limit of 1.5 kW" });
+  await expect(row).not.toHaveAttribute("data-lit");
+  // The pointer on the breach's mark lights its alert.
+  const figure = page.locator("figure").first();
+  await figure.scrollIntoViewIfNeeded();
+  const plot = (await figure.locator(".u-over").boundingBox())!;
+  await page.mouse.move(plot.x + plot.width * 0.47, plot.y + plot.height / 2);
+  await expect(row).toHaveAttribute("data-lit", "");
+  await page.mouse.move(plot.x + plot.width * 0.9, plot.y + plot.height / 2);
+  await expect(row).not.toHaveAttribute("data-lit");
+  // And the alert, from the keyboard, points at its mark.
+  await row.focus();
+  await expect(row).toHaveAttribute("data-lit", "");
+});
+
 test("the time range lives in the address", async ({ page, api }) => {
   void api;
-  await open(page, "/", "Export: allowed and measured");
+  await open(page, "/feeder", "Export: allowed and measured");
   await page
     .getByRole("navigation", { name: "Time range" })
     .getByRole("link", { name: "6 hours" })
@@ -190,7 +380,7 @@ test("the time range lives in the address", async ({ page, api }) => {
     "6 hours",
   );
   // Shared as a link: the same view.
-  await page.goto("/?range=3d");
+  await page.goto("/feeder?range=3d");
   await expect(page.locator('nav[aria-label="Time range"] a[aria-current="true"]')).toHaveText(
     "3 days",
   );
@@ -200,7 +390,7 @@ test("when live updates stop, a banner says so and the figures stay; then they r
   page,
   api,
 }) => {
-  await open(page, "/", "Export: allowed and measured");
+  await open(page, "/feeder", "Export: allowed and measured");
   await expect(page.locator("dl").first()).toContainText("2.8 kW");
   api.streamsDown = true;
   await expect(page.getByText("Live updates paused, reconnecting…")).toBeVisible({
@@ -261,6 +451,47 @@ test("the sites list filters by what is typed, and keeps the filter in the addre
   await expect(page.getByText("No site matches")).toBeVisible();
   await page.goto("/sites?enrolled=1");
   await expect(page.getByText("2 of 3 sites")).toBeVisible();
+});
+
+test("a table is put in order from its headings, and the order is in the address", async ({
+  page,
+  api,
+}) => {
+  void api;
+  await open(page, "/sites", NMI.enrolled);
+  const table = page.getByRole("region", { name: "Sites" });
+  const first = () => table.locator("tbody tr").first();
+  const heading = (name: string) => table.getByRole("columnheader", { name });
+  // By NMI to begin with, and the heading says so.
+  await expect(heading("NMI")).toHaveAttribute("aria-sort", "ascending");
+  await expect(first()).toContainText(NMI.enrolled);
+
+  // By connection limit: the site with none is last, whichever way.
+  await heading("Connection limit, export").getByRole("link").click();
+  await expect(page).toHaveURL(/[?&]sort=cap&dir=asc/);
+  await expect(heading("Connection limit, export")).toHaveAttribute("aria-sort", "ascending");
+  await expect(heading("NMI")).toHaveAttribute("aria-sort", "none");
+  await expect(table.locator("tbody tr").last()).toContainText(NMI.passive);
+  await heading("Connection limit, export").getByRole("link").click();
+  await expect(page).toHaveURL(/[?&]sort=cap&dir=desc/);
+  await expect(table.locator("tbody tr").last()).toContainText(NMI.passive);
+
+  // Shared as a link: the same order. And back to the table's own order, the
+  // address says nothing of it.
+  await page.goto("/sites?sort=name&dir=desc");
+  await expect(first()).toContainText("Ld3_LOAD_C");
+  await heading("NMI").getByRole("link").click();
+  await expect(page).not.toHaveURL(/sort=/);
+  await expect(first()).toContainText(NMI.enrolled);
+
+  // The heading stays in view while a long table scrolls under it.
+  expect(await heading("NMI").evaluate((th) => getComputedStyle(th).position)).toBe("sticky");
+
+  // The fleet's table the same way: the fullest use of a limit first.
+  await open(page, "/?sub=SUB-001&sort=use&dir=desc", "Ausgrid Lidcombe Zone");
+  const fleet = page.getByRole("region", { name: "Sites on the map" });
+  await expect(fleet.locator("tbody tr").first()).toContainText(MAP.over);
+  await expect(fleet.locator("tbody tr").last()).toContainText(MAP.charger);
 });
 
 test("the theme toggle switches the theme and remembers it", async ({ page, api }) => {
@@ -473,12 +704,16 @@ test("nothing animates for a reader who asked for reduced motion", async ({ page
   expect((await animated()).length).toBeGreaterThan(0);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
+  await page.goto("/feeder");
   await expect(loading).toBeVisible();
   expect(await animated()).toEqual([]);
   api.delayMs = 0;
-  await expect(page.locator("canvas").first()).toBeVisible();
+  await chartDrawn(page);
   await page.getByRole("button", { name: /^Theme:/ }).hover();
+  expect(await animated()).toEqual([]);
+  // A card beside the pointer comes without moving in.
+  await page.locator(".meter").first().hover();
+  await expect(page.locator(".card-over")).toBeVisible();
   expect(await animated()).toEqual([]);
 });
 
@@ -497,25 +732,30 @@ test("the network's dashes stand down for a reader who asked for reduced motion"
   await expect(page.getByRole("link", { name: "Stop the moving dashes" })).toBeHidden();
 });
 
-test("a page keeps its layout while it loads", async ({ page, api }) => {
-  api.delayMs = 300;
-  await page.addInitScript(() => {
-    let shift = 0;
-    new PerformanceObserver((list) => {
-      for (const entry of list.getEntries() as (PerformanceEntry & {
-        value: number;
-        hadRecentInput: boolean;
-      })[]) {
-        if (!entry.hadRecentInput) shift += entry.value;
-      }
-      (window as unknown as { __cls: number }).__cls = shift;
-    }).observe({ type: "layout-shift", buffered: true });
+for (const [path, ready] of [
+  ["/", "Ausgrid Lidcombe Zone"],
+  ["/feeder", "Export: allowed and measured"],
+] as const) {
+  test(`${path} keeps its layout while it loads`, async ({ page, api }) => {
+    api.delayMs = 300;
+    await page.addInitScript(() => {
+      let shift = 0;
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries() as (PerformanceEntry & {
+          value: number;
+          hadRecentInput: boolean;
+        })[]) {
+          if (!entry.hadRecentInput) shift += entry.value;
+        }
+        (window as unknown as { __cls: number }).__cls = shift;
+      }).observe({ type: "layout-shift", buffered: true });
+    });
+    await open(page, path, ready);
+    await page.waitForTimeout(500);
+    const cls = await page.evaluate(() => (window as unknown as { __cls?: number }).__cls ?? 0);
+    expect(cls, "cumulative layout shift").toBeLessThan(0.1);
   });
-  await open(page, "/", "Export: allowed and measured");
-  await page.waitForTimeout(500);
-  const cls = await page.evaluate(() => (window as unknown as { __cls?: number }).__cls ?? 0);
-  expect(cls, "cumulative layout shift").toBeLessThan(0.1);
-});
+}
 
 test("the assistant answers a question about the site on screen, from the keyboard", async ({
   page,
@@ -571,7 +811,7 @@ for (const scheme of ["light", "dark"] as const) {
   }) => {
     void api;
     await page.emulateMedia({ colorScheme: scheme });
-    await open(page, "/", "Export: allowed and measured");
+    await open(page, "/feeder", "Export: allowed and measured");
     await page.getByRole("button", { name: "Ask", exact: true }).click();
     const drawer = page.getByRole("dialog", { name: "Ask about LV10" });
     await drawer.getByRole("button", { name: "Which sites are over their limit now?" }).click();
@@ -589,7 +829,7 @@ for (const scheme of ["light", "dark"] as const) {
 
 test("a server with no assistant offers no way to ask", async ({ page, api }) => {
   api.assistant = "off";
-  await open(page, "/", "Export: allowed and measured");
+  await open(page, "/feeder", "Export: allowed and measured");
   await expect(page.getByRole("button", { name: "Ask", exact: true })).toHaveCount(0);
 });
 
@@ -598,7 +838,7 @@ test("the map shows the substations, and a substation's sites when it is chosen"
   api,
   errors,
 }) => {
-  await open(page, "/map?region=all", "Ausgrid Lidcombe Zone");
+  await open(page, "/?region=all", "Ausgrid Lidcombe Zone");
   const map = page.getByRole("region", { name: "Map of the fleet" });
   // Both regions in one frame: the substations, and no site yet.
   await expect(page.getByRole("link", { name: "All regions" })).toHaveAttribute(
@@ -644,7 +884,168 @@ test("the map shows the substations, and a substation's sites when it is chosen"
     "href",
     `/sites/${MAP.over}?feeder=LV10`,
   );
+  // And the way to the feeder it is on, and to that feeder's network.
+  await expect(page.getByRole("link", { name: "Open its feeder" })).toHaveAttribute(
+    "href",
+    "/feeder?feeder=LV10",
+  );
+  await expect(page.getByRole("link", { name: "See its network" })).toHaveAttribute(
+    "href",
+    "/network?feeder=LV10",
+  );
   expect(errors).toEqual([]);
+});
+
+test("the first page says how the whole fleet is, in words and figures, before the map", async ({
+  page,
+  api,
+}) => {
+  void api;
+  await open(page, "/", "Ausgrid Lidcombe Zone");
+  // The gravest thing in the fleet, and the sums of its feeders.
+  const status = page.locator("section", {
+    has: page.getByRole("heading", { name: "Status now" }),
+  });
+  await expect(status).toContainText("1 open alert");
+  await expect(status).toContainText(
+    /2 of 2 sites reporting on 1 feeder\. Exporting 2\.5\u00a0kW of/,
+  );
+  const figures = page.locator("dl").first();
+  const controlled = figures.locator(".card", { hasText: "Controlled export" });
+  await expect(controlled).toContainText("2.5 kW");
+  await expect(controlled).toContainText("of 3.5 kW allowed");
+  await expect(controlled).toContainText("73\u00a0%");
+  await expect(controlled.locator(".bar .fill")).toBeVisible();
+  await expect(figures.locator(".card", { hasText: "Sites reporting" })).toContainText("2 of 2");
+  await expect(figures.locator(".card", { hasText: "Open alerts" })).toContainText(
+    "on 1 of 1 feeders",
+  );
+  await expect(figures.locator(".card", { hasText: "Backstops" })).toContainText("None");
+  // The figures come before the map in the page.
+  const before = await page.evaluate(() => {
+    const figures = document.querySelector("dl")!;
+    const map = document.querySelector('[aria-label="Map of the fleet"]')!;
+    return !!(figures.compareDocumentPosition(map) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  expect(before).toBe(true);
+});
+
+test("what needs attention is listed beside the map, and a row of it selects on the map", async ({
+  page,
+  api,
+}) => {
+  void api;
+  await open(page, "/", "Ausgrid Lidcombe Zone");
+  const panel = page.locator("section", {
+    has: page.getByRole("heading", { level: 2, name: "Needs attention" }),
+  });
+  // The site over its limit, where it is, and its reading against its limit.
+  const row = panel.getByRole("listitem").filter({ hasText: MAP.over });
+  await expect(row).toContainText("Over limit");
+  await expect(row).toContainText("Lidcombe · LV10");
+  await expect(row).toContainText(/Exporting 2\.7\u00a0kW of \d\.\d\u00a0kW allowed: /);
+  await expect(row.locator(".bar .fill").first()).toBeVisible();
+  // The silent charger is not a thing to act on: it is in the table.
+  await expect(panel.getByRole("listitem")).toHaveCount(1);
+
+  // The row is a link, so the keyboard reaches it: it chooses the site, and
+  // frames its substation so that the site is on the map.
+  await row.getByRole("link", { name: MAP.over }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(new RegExp(`[?&]site=${MAP.over}`));
+  await expect(page).toHaveURL(/[?&]sub=SUB-001/);
+  await expect(page.getByRole("heading", { level: 2, name: MAP.over })).toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "Map of the fleet" })
+      .locator(`[aria-label="${MAP.over}, Solar: Over limit"]`),
+  ).toBeVisible();
+
+  // And back to the list.
+  await page.getByRole("link", { name: "Back to what needs attention" }).click();
+  await expect(page).not.toHaveURL(/site=|sub=/);
+  await expect(page.getByRole("heading", { level: 2, name: "Needs attention" })).toBeVisible();
+});
+
+test("a mark says what it is on a card beside the pointer, and the card goes when the pointer does", async ({
+  page,
+  api,
+}) => {
+  void api;
+  await open(page, "/network", "Closest to a limit");
+  const drawing = page.getByRole("img", { name: /500 metres of cable away/ });
+  const card = page.locator(".card-over");
+  await expect(card).toHaveCount(0);
+  await drawing.locator('[data-bus="B2"] .hit').hover();
+  await expect(card).toBeVisible();
+  await expect(card).toContainText("Bus B2");
+  await expect(card).toContainText("Inside its limits");
+  await expect(card).toContainText(/\d{3}\.\d\sV/);
+  // Inside the window, at either width.
+  const box = (await card.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await page.mouse.move(2, 2);
+  await expect(card).toHaveCount(0);
+
+  // A reading against its limit says its sentence the same way.
+  await open(page, "/?sub=SUB-001", "Ausgrid Lidcombe Zone");
+  const row = page
+    .getByRole("region", { name: "Sites on the map" })
+    .getByRole("row", { name: new RegExp(MAP.within) });
+  await row.locator(".meter").hover();
+  await expect(card).toContainText("Export against its limit");
+  await expect(card).toContainText(/Exporting 0\.4\skW of \d\.\d\skW allowed/);
+});
+
+test("a site chosen on the first page shows the shape of its export, with words for it", async ({
+  page,
+  api,
+}) => {
+  await open(page, `/?sub=SUB-001&site=${MAP.over}`, "Ausgrid Lidcombe Zone");
+  const panel = page.locator("section", { has: page.getByRole("heading", { name: MAP.over }) });
+  await expect(panel.getByText("Net export, last 6 hours")).toBeVisible();
+  await expect(panel.locator(".spark path")).toHaveAttribute("d", /^M0 /);
+  await expect(panel.locator(".spark .sr-only")).toHaveText(/^Net export: (Up|Down|Steady|Now) /);
+  // Asked for once, for the site that was chosen.
+  expect(api.calls["TelemetryService/GetSiteSeries"]).toBe(1);
+});
+
+test("a substation on the first page leads to each of its feeders", async ({ page, api }) => {
+  void api;
+  await open(page, "/?sub=SUB-001", "Ausgrid Lidcombe Zone");
+  await expect(page.getByRole("link", { name: "Open feeder LV10" })).toHaveAttribute(
+    "href",
+    "/feeder?feeder=LV10",
+  );
+  await expect(page.getByRole("link", { name: "See the network of LV10" })).toHaveAttribute(
+    "href",
+    "/network?feeder=LV10",
+  );
+});
+
+test("the old address of the map leads to the fleet, with what it had chosen", async ({
+  page,
+  api,
+}) => {
+  void api;
+  await page.goto("/map?sub=SUB-001&site=" + MAP.over);
+  await expect(page).toHaveURL(new RegExp(`/\\?sub=SUB-001&site=${MAP.over}$`));
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Fleet");
+  await expect(page.getByRole("heading", { level: 2, name: MAP.over })).toBeVisible();
+});
+
+test("the pages are in the order an operator works in", async ({ page, api }) => {
+  void api;
+  await open(page, "/sites", NMI.enrolled);
+  await expect(page.locator('nav[aria-label="Main"] a')).toHaveText([
+    "Fleet",
+    "Feeder",
+    "Network",
+    "Operations",
+    "Sites",
+    "Config",
+  ]);
 });
 
 test("every site of the map can be reached from the keyboard, through the table", async ({
@@ -652,7 +1053,7 @@ test("every site of the map can be reached from the keyboard, through the table"
   api,
 }) => {
   void api;
-  await open(page, "/map?region=all", "Ausgrid Lidcombe Zone");
+  await open(page, "/?region=all", "Ausgrid Lidcombe Zone");
   const table = page.getByRole("region", { name: "Sites on the map" });
   await expect(table.getByRole("row")).toHaveCount(4);
   const row = table.getByRole("row", { name: new RegExp(MAP.charger) });
@@ -684,6 +1085,16 @@ test("with more than one feeder the header offers the choice, and the choice is 
   await open(page, "/sites", NMI.enrolled);
   const picker = page.getByLabel("Feeder");
   await expect(picker).toHaveValue("LV10");
+  // With the choice in it, the header still fits: nothing of it is cut off
+  // at the edge of a phone.
+  const width = page.viewportSize()!.width;
+  for (const part of [picker, page.getByRole("button", { name: /^Theme:/ })]) {
+    const box = (await part.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(width);
+  }
+  const clock = (await page.getByText("Feeder time").boundingBox())!;
+  expect(clock.x + clock.width).toBeLessThanOrEqual(width);
   await picker.selectOption("SUB-007-LV1");
   await expect(page).toHaveURL(/[?&]feeder=SUB-007-LV1/);
   await expect(page.getByText("AEDT").or(page.getByText("AEST")).first()).toBeVisible();
@@ -716,7 +1127,7 @@ test("the network is drawn as the engine solved it, at each of its three operati
   await expect(drawing.locator('[data-line="L_far"]')).toHaveAttribute("data-level", "ok");
   // Dashes move along each line, away from the transformer: the way the
   // forecast's power flows. They can be stopped, from the address.
-  const flow = drawing.locator('[data-line="L_far"] .flow');
+  const flow = drawing.locator('.flow[data-flow="L_far"]');
   await expect(flow).toHaveAttribute("data-direction", "out");
   expect(await flow.evaluate((el) => getComputedStyle(el).animationName)).not.toBe("none");
   await page.getByRole("link", { name: "Stop the moving dashes" }).click();
@@ -756,6 +1167,60 @@ test("the network is drawn as the engine solved it, at each of its three operati
   expect(errors).toEqual([]);
 });
 
+test("the network's drawing zooms from its buttons and its keys, and the part on show is in the address", async ({
+  page,
+  api,
+}) => {
+  void api;
+  await open(page, "/network", "Closest to a limit");
+  const sheet = page
+    .getByRole("img", { name: /500 metres of cable away/ })
+    .locator("svg")
+    .first();
+  await expect(sheet).toHaveAttribute("viewBox", "0 0 1000 100");
+  await page.getByRole("button", { name: "Zoom in" }).click();
+  await expect(page).toHaveURL(/[?&]view=\d+(%2C|,)\d+(%2C|,)1\.5/);
+  await expect(sheet).not.toHaveAttribute("viewBox", "0 0 1000 100");
+  // Shared as a link: the same part of the drawing.
+  await page.goto("/network?view=250,25,2");
+  await expect(page.getByText("Constrained")).toBeVisible();
+  await expect(sheet).toHaveAttribute("viewBox", "250 25 500 50");
+  // The keys, on the drawing's box: along, and back out to the whole.
+  await page.getByRole("region", { name: "Schematic of the feeder" }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(sheet).toHaveAttribute("viewBox", "350 25 500 50");
+  await page.keyboard.press("0");
+  await expect(page).not.toHaveURL(/view=/);
+  await expect(sheet).toHaveAttribute("viewBox", "0 0 1000 100");
+  await expect(page.getByRole("button", { name: "Show the whole feeder" })).toBeDisabled();
+});
+
+test("the network's instant can be moved with a slider, which says the time it is at", async ({
+  page,
+  api,
+}) => {
+  void api;
+  await open(page, "/network", "Closest to a limit");
+  const slider = page.getByRole("slider", { name: "The instant on show" });
+  await expect(slider).toHaveAttribute("aria-valuetext", /^\w{3} \d{1,2} \w{3}, \d\d:\d\d$/);
+  const now = Number(await slider.inputValue());
+  expect(now % 1800).toBe(0);
+  const asked = page.waitForRequest(
+    (r) => r.url().includes("GetFeederState") && /at/.test(r.url()),
+  );
+  await slider.focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page).toHaveURL(new RegExp(`[?&]at=${now + 1800}`));
+  await asked;
+  await expect(slider).toHaveValue(String(now + 1800));
+  // Back at now there is no instant in the address: the page follows the clock.
+  await page.keyboard.press("ArrowLeft");
+  await expect(page).not.toHaveURL(/[?&]at=/);
+  await expect(
+    page.getByRole("navigation", { name: "Time" }).getByRole("link", { name: "Now" }),
+  ).toHaveAttribute("aria-current", "true");
+});
+
 test("the network can be looked at half an hour on, and back at now, from the address", async ({
   page,
   api,
@@ -782,4 +1247,94 @@ test("the network can be looked at half an hour on, and back at now, from the ad
   await expect(page).toHaveURL(new RegExp(`[?&]at=${at - 1800}`));
   await time.getByRole("link", { name: "Now" }).click();
   await expect(page).not.toHaveURL(/[?&]at=/);
+});
+
+// The demo runs feeder time at sixty times the wall clock, and a page often
+// has its feeder before the API has said so. These are the pages in that
+// order of arrival, and at the size of the real feeder and fleet.
+test.describe("at the demo's speed", () => {
+  test.beforeEach(({ api }) => {
+    api.speed = 60;
+    api.clockDelayMs = 400;
+  });
+  // Longer than the clock's answer takes, and shorter than a poll.
+  const settle = (page: Page) => page.waitForTimeout(1200);
+
+  test("the feeder's overview asks for each thing once when it opens", async ({ page, api }) => {
+    await open(page, "/feeder", "Export: allowed and measured");
+    await settle(page);
+    expect(api.calls["TelemetryService/GetFeederSeries"]).toBe(1);
+    expect(api.calls["TelemetryService/GetDailyReport"]).toBe(1);
+    expect(api.calls["SiteService/ListSites"]).toBe(1);
+  });
+
+  test("the network asks for each thing once when it opens", async ({ page, api }) => {
+    await open(page, "/network", "Closest to a limit");
+    await settle(page);
+    expect(api.calls["FeederService/ListFeederNodes"]).toBe(1);
+    expect(api.calls["TelemetryService/GetFeederState"]).toBe(1);
+  });
+
+  test("a site's page and operations ask for each thing once when they open", async ({
+    page,
+    api,
+  }) => {
+    await open(page, `/sites/${NMI.breaching}`, "Envelope, forecast and telemetry");
+    await settle(page);
+    expect(api.calls["TelemetryService/GetSiteSeries"]).toBe(1);
+    await open(page, "/operations", "Engine runs");
+    await settle(page);
+    expect(api.calls["EnvelopeRunService/ListEnvelopeRuns"]).toBe(1);
+  });
+
+  test("the map asks for the fleet's state again within seconds", async ({ page, api }) => {
+    await open(page, "/?region=all", "Ausgrid Lidcombe Zone");
+    // A minute of feeder time is a second here; the floor is five seconds.
+    await expect
+      .poll(() => api.calls["TelemetryService/GetFleetState"], { timeout: 9000 })
+      .toBeGreaterThanOrEqual(2);
+  });
+
+  // How many times the page's content changed, counted from now.
+  const countChanges = (page: Page) =>
+    page.evaluate(() => {
+      const seen = { changes: 0 };
+      (window as unknown as { __seen: typeof seen }).__seen = seen;
+      new MutationObserver((records) => (seen.changes += records.length)).observe(
+        document.querySelector("main")!,
+        { subtree: true, childList: true, attributes: true, characterData: true },
+      );
+    });
+  const changes = (page: Page) =>
+    page.evaluate(() => (window as unknown as { __seen: { changes: number } }).__seen.changes);
+
+  test("a poll that changes nothing touches nothing on the network", async ({ page, api }) => {
+    api.network = "large";
+    await open(page, "/network", "Closest to a limit");
+    await expect(page.locator(".schematic .bus")).toHaveCount(223);
+    await settle(page);
+    const asked = api.calls["TelemetryService/GetFeederState"]!;
+    await countChanges(page);
+    await expect
+      .poll(() => api.calls["TelemetryService/GetFeederState"], { timeout: 15_000 })
+      .toBeGreaterThanOrEqual(asked + 2);
+    await page.waitForTimeout(300);
+    expect(await changes(page)).toBe(0);
+  });
+
+  test("a poll that changes nothing touches nothing on the map", async ({ page, api }) => {
+    api.fleet = "large";
+    await open(page, "/?sub=SUB-001", "Ausgrid Lidcombe Zone");
+    await expect(
+      page.getByRole("region", { name: "Sites on the map" }).getByRole("row"),
+    ).toHaveCount(77);
+    await settle(page);
+    const asked = api.calls["TelemetryService/GetFleetState"]!;
+    await countChanges(page);
+    await expect
+      .poll(() => api.calls["TelemetryService/GetFleetState"], { timeout: 15_000 })
+      .toBeGreaterThanOrEqual(asked + 2);
+    await page.waitForTimeout(300);
+    expect(await changes(page)).toBe(0);
+  });
 });

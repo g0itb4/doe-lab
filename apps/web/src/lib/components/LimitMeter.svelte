@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { hint } from "$lib/hovercard.svelte.ts";
   import { LIMIT_BAND_W, type Use } from "$lib/limit.ts";
   import type { Level } from "$lib/status.ts";
 
@@ -32,7 +33,18 @@
 
 <!-- Positioned, so that the sentence for a screen reader stays inside a table
      that scrolls sideways instead of widening the page. -->
-<div class="meter relative flex items-center gap-2" data-level={tone} title={use?.text}>
+<div
+  class="meter relative flex items-center gap-2"
+  data-level={tone}
+  use:hint={() =>
+    use
+      ? {
+          title:
+            use.direction === "export" ? "Export against its limit" : "Import against its limit",
+          lines: [use.text],
+        }
+      : undefined}
+>
   <div class="bar" class:none={!use} aria-hidden="true">
     {#if use}
       <div class="track">

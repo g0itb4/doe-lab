@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_RANGE, downsample, rangeKey, windowOf, zoomOf } from "./series.ts";
+import {
+  DEFAULT_RANGE,
+  downsample,
+  hiddenOf,
+  rangeKey,
+  toggleHidden,
+  windowed,
+  windowOf,
+  withHidden,
+  zoomOf,
+} from "./series.ts";
 
 describe("the time range", () => {
   it("reads a known range, and falls back for anything else", () => {
@@ -75,5 +85,79 @@ describe("downsampling", () => {
     const x = [1, 2, 3, 4, 5];
     const out = downsample(x, [[5, 1, 9, 2, 3]], 0);
     expect(out.x).toEqual([1, 2, 3, 5]);
+  });
+});
+
+describe("the part of a series in view", () => {
+  const x = [10, 20, 30, 40, 50, 60];
+  const columns = [
+    [1, 2, 3, 4, 5, 6],
+    [null, 20, 30, null, 50, 60],
+  ];
+
+  it("is the whole series when there is no range", () => {
+    expect(windowed(x, columns, undefined)).toEqual({ x, columns });
+    expect(windowed(x, columns, undefined).x).toBe(x);
+  });
+
+  it("is the points inside the range, and one either side so the line reaches the edge", () => {
+    expect(windowed(x, columns, [28, 42])).toEqual({
+      x: [20, 30, 40, 50],
+      columns: [
+        [2, 3, 4, 5],
+        [20, 30, null, 50],
+      ],
+    });
+    // A range that ends on a point keeps the point.
+    expect(windowed(x, columns, [30, 40]).x).toEqual([20, 30, 40, 50]);
+  });
+
+  it("stops at the ends of the series, and keeps the same arrays when everything is in view", () => {
+    expect(windowed(x, columns, [0, 25]).x).toEqual([10, 20, 30]);
+    expect(windowed(x, columns, [45, 999]).x).toEqual([40, 50, 60]);
+    expect(windowed(x, columns, [0, 999]).x).toBe(x);
+    expect(windowed(x, columns, [10, 60]).columns).toBe(columns);
+  });
+
+  it("has the neighbours of a range that holds no point, and nothing of a series of nothing", () => {
+    expect(windowed(x, columns, [32, 38]).x).toEqual([30, 40]);
+    expect(windowed(x, columns, [70, 80]).x).toEqual([60]);
+    expect(windowed([], [[]], [0, 10])).toEqual({ x: [], columns: [[]] });
+  });
+});
+
+describe("the hidden series in the address", () => {
+  it("are read for one chart, in order, and anything else is ignored", () => {
+    expect(hiddenOf("export.1,load.0,export.0", "export")).toEqual([0, 1]);
+    expect(hiddenOf("export.1,load.0", "load")).toEqual([0]);
+    expect(hiddenOf("export.1,export.1", "export")).toEqual([1]);
+    expect(hiddenOf(null, "export")).toEqual([]);
+    for (const junk of ["", "export", "export.", "export.x", "export.-1", "export.1.2", "exp.1"])
+      expect(hiddenOf(junk, "export")).toEqual([]);
+  });
+
+  it("are written for one chart, leaving the others as they were", () => {
+    expect(withHidden("export.1,load.0", "export", [2, 0])).toBe("load.0,export.0,export.2");
+    expect(withHidden(null, "export", [1])).toBe("export.1");
+    expect(withHidden("export.1,load.0", "export", [])).toBe("load.0");
+    expect(withHidden("export.1", "export", [3, 3])).toBe("export.3");
+    // With nothing hidden anywhere the parameter goes.
+    expect(withHidden("export.1", "export", [])).toBeNull();
+    expect(withHidden(null, "export", [])).toBeNull();
+  });
+});
+
+describe("a click on a series of the legend", () => {
+  it("hides it, and shows it again", () => {
+    expect(toggleHidden([], 1, 3)).toEqual([1]);
+    expect(toggleHidden([2], 0, 3)).toEqual([0, 2]);
+    expect(toggleHidden([0, 2], 2, 3)).toEqual([0]);
+  });
+
+  it("with the other key held, shows it alone; and alone already, shows everything", () => {
+    expect(toggleHidden([], 1, 3, true)).toEqual([0, 2]);
+    expect(toggleHidden([1], 1, 3, true)).toEqual([0, 2]);
+    expect(toggleHidden([0, 2], 1, 3, true)).toEqual([]);
+    expect(toggleHidden([0], 0, 1, true)).toEqual([]);
   });
 });

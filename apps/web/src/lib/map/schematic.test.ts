@@ -9,7 +9,8 @@ import { FeederLineSchema, FeederNodeSchema } from "@doelab/gen/doelab/v1/feeder
 import { SiteSchema } from "@doelab/gen/doelab/v1/site_pb.js";
 import { GetFeederStateResponseSchema } from "@doelab/gen/doelab/v1/telemetry_pb.js";
 import { describe, expect, it } from "vitest";
-import { atOf, pointOf, schematic, stepFrom } from "./schematic.ts";
+import { timestamp } from "../time.ts";
+import { atOf, colour, place, pointOf, schematic, solvedKey, stepFrom } from "./schematic.ts";
 
 // tx ── mid ── far, with a house off mid on a switch-less service.
 const nodes = [
@@ -268,6 +269,60 @@ describe("a feeder as a drawing", () => {
     // In the forecast only the customer's bus and the rated lines are listed:
     // a junction that is inside its limits says nothing.
     expect(draw().worst.map((w) => w.name)).toEqual(["B3 (NMI00000017)", "L_far", "main"]);
+  });
+
+  it("gives each line its corners as a polyline's points, and the place of its arrow", () => {
+    const view = draw();
+    const service = view.lines.find((l) => l.name === "Switch_1")!;
+    expect(service.path).toBe(service.points.map(([x, y]) => `${x},${y}`).join(" "));
+    // The middle of the last, level stretch.
+    const [, corner, end] = service.points;
+    expect(service.arrow).toEqual({ x: (corner![0] + end![0]) / 2, y: end![1] });
+  });
+
+  it("is placed once and judged many times: the same drawing, and the same corners", () => {
+    const placed = place(nodes, lines, sites);
+    expect(placed).toMatchObject({ rootId: "tx", width: 1000, height: 100, lengthM: 500 });
+    expect(placed.lineIds).toEqual(["l-main", "l-far", "l-house"]);
+    for (const point of ["forecast", "envelope", "static"] as const) {
+      const sample = bound(BindingConstraint.TRANSFORMER, "");
+      expect(colour(placed, state, sample, point, 230)).toEqual(draw(point, sample));
+    }
+    // Judged again, a line keeps the corners it was placed with.
+    const [first, second] = [
+      colour(placed, state, undefined, "forecast", 230),
+      colour(placed, undefined, undefined, "forecast", 230),
+    ];
+    expect(second.lines[0]!.points).toBe(first.lines[0]!.points);
+    expect(second.solved).toBe(false);
+  });
+
+  it("knows a state it has seen: the same run, interval, limits and binding", () => {
+    const again = create(GetFeederStateResponseSchema, state);
+    const sample = bound(BindingConstraint.VOLTAGE_HIGH, "NMI00000017");
+    expect(solvedKey(again, sample)).toBe(solvedKey(state, sample));
+    // Another run, another interval, another limit or another envelope is new.
+    const run = (id: string) =>
+      create(GetFeederStateResponseSchema, {
+        ...state,
+        nodes: [create(FeederNodeStateSchema, { ...state.nodes[0]!, envelopeRunId: id })],
+      });
+    expect(solvedKey(run("r-2"), sample)).not.toBe(solvedKey(run("r-1"), sample));
+    const later = create(GetFeederStateResponseSchema, {
+      ...state,
+      nodes: [
+        create(FeederNodeStateSchema, { ...state.nodes[0]!, validFrom: timestamp(1800) }),
+        ...state.nodes.slice(1),
+      ],
+    });
+    expect(solvedKey(later, sample)).not.toBe(solvedKey(state, sample));
+    const tighter = create(GetFeederStateResponseSchema, { ...state, vMaxPu: 1.08 });
+    expect(solvedKey(tighter, sample)).not.toBe(solvedKey(state, sample));
+    expect(solvedKey(state, create(EnvelopeSchema, { id: "e-2" }))).not.toBe(
+      solvedKey(state, create(EnvelopeSchema, { id: "e-1" })),
+    );
+    // Nothing solved, and no envelope: still a key.
+    expect(solvedKey(create(GetFeederStateResponseSchema, {}), undefined)).toBe("||0|0|0|0|0|0|");
   });
 
   it("skips a line whose ends the model does not have", () => {

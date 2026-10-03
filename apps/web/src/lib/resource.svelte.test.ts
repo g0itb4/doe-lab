@@ -79,6 +79,37 @@ describe("a resource", () => {
     expect(r).toMatchObject({ data: "new", loading: false });
   });
 
+  it("keeps the object it has when a reload brings the same thing back", async () => {
+    let version = 1;
+    const r = new Resource(() => Promise.resolve({ version, at: Math.random() }), {
+      same: (shown, next) => shown.version === next.version,
+    });
+    await r.load();
+    const first = r.data;
+    await r.load();
+    expect(r.data).toBe(first);
+
+    // Something new replaces it.
+    version = 2;
+    await r.load();
+    expect(r.data).not.toBe(first);
+    expect(r.data?.version).toBe(2);
+  });
+
+  it("clears a failure when a reload brings the same thing back", async () => {
+    let fail = false;
+    const r = new Resource(() => (fail ? Promise.reject(new Error("boom")) : Promise.resolve(1)), {
+      same: (shown, next) => shown === next,
+    });
+    await r.load();
+    fail = true;
+    await r.load();
+    expect(r.stale).toBe(true);
+    fail = false;
+    await r.load();
+    expect(r).toMatchObject({ data: 1, stale: false, error: undefined });
+  });
+
   it("drops the failure of a load that was replaced or cancelled", async () => {
     const { calls, fetch } = deferred<string>();
     const r = new Resource(fetch);
